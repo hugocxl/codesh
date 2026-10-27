@@ -301,10 +301,10 @@ impl AppState {
         beside: TabId,
         edge: Direction,
     ) -> Result<(), AppError> {
-        if crate::codesh::SINGLE_TAB {
+        let project = self.shared_project(tab, beside)?;
+        if self.single_tab(project) {
             return Ok(());
         }
-        let project = self.shared_project(tab, beside)?;
         let focused = self.window.selected_tab.get(&project).copied();
         let target = self.project_mut(project)?;
         let order: Vec<_> = target.tabs.iter().map(|tab| tab.id).collect();
@@ -340,10 +340,10 @@ impl AppState {
         into: TabId,
         before: Option<TabId>,
     ) -> Result<(), AppError> {
-        if crate::codesh::SINGLE_TAB {
+        let project = self.shared_project(tab, into)?;
+        if self.single_tab(project) {
             return Ok(());
         }
-        let project = self.shared_project(tab, into)?;
         let target = self.project_mut(project)?;
         let anchor = before.unwrap_or(into);
         if let Some(groups) = &mut target.groups
@@ -405,7 +405,7 @@ impl AppState {
         near: Option<TabId>,
     ) -> Result<(), AppError> {
         let target = self.project_mut(project)?;
-        if crate::codesh::SINGLE_TAB && !target.tabs.is_empty() {
+        if crate::codesh::SINGLE_TAB && !target.home && !target.tabs.is_empty() {
             target.tabs.push(tab);
             crate::codesh::normalize(target);
             debug_assert!(target.tabs.len() <= 1);

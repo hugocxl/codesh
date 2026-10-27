@@ -286,7 +286,7 @@ fn missing_folder_hides_its_terminal_until_refresh_finds_it_again(cx: &mut TestA
         assert!(model.active_pane().is_none());
         assert!(model.grids.is_empty());
         assert_eq!(model.state.current_project().tabs.len(), 1);
-        model.new_tab(cx);
+        model.new_tab_in(model.state.current_project().id, cx);
         assert_eq!(model.state.current_project().tabs.len(), 1);
     });
     std::fs::create_dir(&directory).expect("restore fixture");
@@ -371,7 +371,7 @@ fn run_projects_live_walkthrough(cx: &mut TestAppContext) -> Result {
     let first = view.update(cx, |model, cx| {
         assert!(model.add_project(first_path.clone(), cx).is_some());
         assert!(model.state.current_project().tabs.is_empty());
-        model.new_tab(cx);
+        model.new_tab_in(model.state.current_project().id, cx);
         model.state.current_project().id
     });
     wait_live(cx, &view)?;
@@ -385,7 +385,7 @@ fn run_projects_live_walkthrough(cx: &mut TestAppContext) -> Result {
     let second = view.update(cx, |model, cx| {
         assert!(model.add_project(second_path.clone(), cx).is_some());
         assert!(model.state.current_project().tabs.is_empty());
-        model.new_tab(cx);
+        model.new_tab_in(model.state.current_project().id, cx);
         model.state.current_project().id
     });
     wait_live(cx, &view)?;

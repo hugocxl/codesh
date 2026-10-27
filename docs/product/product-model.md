@@ -52,9 +52,10 @@ app. Layouts, workspaces, and project order stay in the app that made them.
 ## Home
 
 Every server has one Home project for the user's home folder. One-off terminals
-live there. Home is always first in the sidebar. It
-can't be deleted, have worktrees, or join a workspace. A remote server's Home
-goes by the server's name and is listed only under **Remote Servers**.
+live there as independent tabs, each with its own split layout. The desktop
+sidebar shows these terminals above projects without a Home header, including
+terminals from remote Homes. New standalone terminals open in local Home. Home
+can't be deleted, have worktrees, or join a workspace, and remains when empty.
 
 ## Workspaces
 

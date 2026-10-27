@@ -118,7 +118,7 @@ fn remote_terminal<'a>(
     let pane = view.update(cx, |model, cx| {
         let project = model.add_project_on(remote, folder, cx);
         model.select_project(project.expect("remote project"), cx);
-        model.new_tab(cx);
+        model.new_tab_in(model.state.current_project().id, cx);
         let pane = model.active_pane().expect("pane");
         model.start_attach(
             pane,

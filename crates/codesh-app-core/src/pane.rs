@@ -104,7 +104,7 @@ impl AppState {
             return Ok(pane);
         }
         let title = content.native_title().unwrap_or_default();
-        if crate::codesh::SINGLE_TAB {
+        if self.single_tab(project) {
             let pane = Pane {
                 id: PaneId::new(),
                 title,

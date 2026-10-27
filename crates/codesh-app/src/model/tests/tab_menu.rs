@@ -2,7 +2,12 @@ use super::*;
 
 fn fixture() -> (AppState, [TabId; 4]) {
     let mut state = AppState::bootstrap().expect("state");
-    let ids = std::array::from_fn(|_| state.open_terminal_tab(state.home().id).expect("tab"));
+    let tab = state.open_terminal_tab(state.home().id).expect("tab");
+    for _ in 0..3 {
+        let pane = state.window().active_pane.expect("pane");
+        state.split_pane(pane, Direction::Right).expect("split");
+    }
+    let ids = [tab; 4];
     state.select_tab(state.home().id, ids[2]).expect("select");
     (state, ids)
 }

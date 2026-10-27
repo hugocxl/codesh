@@ -1,4 +1,5 @@
 use super::*;
+use codesh_app_core::settings::AppLayout;
 use codesh_core::capability::{Capability, Feature};
 use codesh_core::shortcuts::ShortcutId;
 
@@ -106,7 +107,11 @@ fn palette_queries_still_run_the_commands_they_found_first(cx: &mut TestAppConte
 #[gpui::test]
 fn custom_command_titles_only_the_new_terminal_pane(cx: &mut TestAppContext) {
     let mut state = AppState::bootstrap().expect("state");
-    let tab = state.open_terminal_tab(state.home().id).expect("tab");
+    let project = state
+        .add_project(ServerId::local(), std::env::current_dir().expect("cwd"))
+        .expect("project");
+    state.select_project(project).expect("select");
+    let tab = state.open_terminal_tab(project).expect("tab");
     state
         .set_tab_title(tab, Some("Container".into()))
         .expect("title");
@@ -133,5 +138,87 @@ fn custom_command_titles_only_the_new_terminal_pane(cx: &mut TestAppContext) {
             "Build"
         );
         assert_eq!(model.state.startup_command(pane), Some("cargo build"));
+    });
+}
+
+#[gpui::test]
+fn new_tab_always_creates_and_selects_a_local_home_terminal(cx: &mut TestAppContext) {
+    let (state, project) = git::registered_current_project();
+    let (boot, _requests) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    for _ in 0..2 {
+        view.update(cx, |model, cx| {
+            model.select_project(project, cx);
+        });
+        cx.simulate_keystrokes(ShortcutId::NewTab.definition().keys[0]);
+        view.read_with(cx, |model, _| {
+            assert_eq!(model.state.current_project().id, model.state.home().id);
+            assert!(model.active_pane().is_some());
+        });
+    }
+    view.read_with(cx, |model, _| {
+        let home = model.state.home();
+        assert!(home.server_id.is_local());
+        assert_eq!(home.tabs.len(), 2);
+        assert_eq!(model.active_tab(), Some(home.tabs[1].id));
+        assert!(home.tabs.iter().all(|tab| tab.panes.len() == 1));
+    });
+}
+
+#[gpui::test]
+fn standalone_sidebar_cards_select_and_close_their_own_tab_in_every_layout(
+    cx: &mut TestAppContext,
+) {
+    let mut state = AppState::bootstrap().expect("state");
+    let home = state.home().id;
+    let first = state.open_terminal_tab(home).expect("first");
+    let second = state.open_terminal_tab(home).expect("second");
+    let (boot, _requests) = stub_boot(state);
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    for layout in [
+        AppLayout::ProjectFocused,
+        AppLayout::TabFocused,
+        AppLayout::AgentsFocused,
+    ] {
+        view.update(cx, |model, cx| {
+            model.appearance.sidebar_expanded = true;
+            model.set_layout(layout, cx);
+        });
+        cx.run_until_parked();
+        let first_bounds = cx
+            .debug_bounds(format!("terminal-{first}").leak())
+            .expect("first card");
+        let second_bounds = cx
+            .debug_bounds(format!("terminal-{second}").leak())
+            .expect("second card");
+        assert!(first_bounds.top() < second_bounds.top());
+        assert!(cx.debug_bounds("project-row-0").is_none());
+        cx.simulate_click(first_bounds.center(), Modifiers::default());
+        view.read_with(cx, |model, _| {
+            assert_eq!(model.state.current_project().id, home);
+            assert_eq!(model.active_tab(), Some(first));
+        });
+    }
+    let second_bounds = cx
+        .debug_bounds(format!("terminal-{second}").leak())
+        .expect("second card");
+    cx.simulate_mouse_down(
+        second_bounds.center(),
+        gpui::MouseButton::Right,
+        Modifiers::default(),
+    );
+    cx.simulate_mouse_up(
+        second_bounds.center(),
+        gpui::MouseButton::Right,
+        Modifiers::default(),
+    );
+    cx.run_until_parked();
+    let close = cx.debug_bounds("menu-item-0").expect("Close Terminal");
+    cx.simulate_click(close.center(), Modifiers::default());
+    cx.run_until_parked();
+    view.read_with(cx, |model, _| {
+        assert_eq!(model.state.home().tabs.len(), 1);
+        assert_eq!(model.active_tab(), Some(first));
     });
 }

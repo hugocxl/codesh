@@ -18,7 +18,7 @@ fn assert_equal_row(layout: &Layout, count: usize) {
 
 fn content(state: &AppState, pane: PaneId) -> Option<(&str, &PaneContent)> {
     state
-        .home()
+        .current_project()
         .tabs
         .iter()
         .flat_map(|tab| &tab.panes)
@@ -29,21 +29,23 @@ fn content(state: &AppState, pane: PaneId) -> Option<(&str, &PaneContent)> {
 #[test]
 fn editor_and_diff_open_as_splits_in_the_single_tab() -> Result {
     let mut state = AppState::bootstrap()?;
-    let home = state.home().id;
-    let tab = state.open_terminal_tab(home)?;
+    let project =
+        state.add_project(codesh_app_core::ServerId::local(), std::env::current_dir()?)?;
+    state.select_project(project)?;
+    let tab = state.open_terminal_tab(project)?;
     let terminal = state.window().active_pane.ok_or("terminal")?;
-    let editor = state.open_editor_pane(home, "src/main.rs")?;
-    let diff = state.open_diff_pane(home, "src/main.rs", false)?;
-    let staged = state.open_diff_pane(home, "src/main.rs", true)?;
+    let editor = state.open_editor_pane(project, "src/main.rs")?;
+    let diff = state.open_diff_pane(project, "src/main.rs", false)?;
+    let staged = state.open_diff_pane(project, "src/main.rs", true)?;
 
-    assert_eq!(state.home().tabs.len(), 1);
-    assert_eq!(state.home().tabs[0].id, tab);
+    assert_eq!(state.current_project().tabs.len(), 1);
+    assert_eq!(state.current_project().tabs[0].id, tab);
     assert_eq!(state.window().active_pane, Some(staged));
     assert_eq!(
-        state.home().tabs[0].layout.leaves(),
+        state.current_project().tabs[0].layout.leaves(),
         vec![terminal, editor, diff, staged]
     );
-    assert_equal_row(&state.home().tabs[0].layout, 4);
+    assert_equal_row(&state.current_project().tabs[0].layout, 4);
     assert_eq!(
         content(&state, editor),
         Some((
@@ -73,10 +75,12 @@ fn editor_and_diff_open_as_splits_in_the_single_tab() -> Result {
 #[test]
 fn an_empty_project_gets_its_one_tab_from_the_first_native_pane() -> Result {
     let mut state = AppState::bootstrap()?;
-    let home = state.home().id;
-    let editor = state.open_editor_pane(home, "README.md")?;
-    assert_eq!(state.home().tabs.len(), 1);
-    assert_eq!(state.home().tabs[0].layout, Layout::Leaf(editor));
+    let project =
+        state.add_project(codesh_app_core::ServerId::local(), std::env::current_dir()?)?;
+    state.select_project(project)?;
+    let editor = state.open_editor_pane(project, "README.md")?;
+    assert_eq!(state.current_project().tabs.len(), 1);
+    assert_eq!(state.current_project().tabs[0].layout, Layout::Leaf(editor));
     assert_eq!(state.window().active_pane, Some(editor));
     Ok(())
 }
@@ -84,33 +88,40 @@ fn an_empty_project_gets_its_one_tab_from_the_first_native_pane() -> Result {
 #[test]
 fn reopening_the_same_file_focuses_the_existing_pane() -> Result {
     let mut state = AppState::bootstrap()?;
-    let home = state.home().id;
-    state.open_terminal_tab(home)?;
-    let editor = state.open_editor_pane(home, "a.rs")?;
-    let diff = state.open_diff_pane(home, "a.rs", false)?;
-    let other = state.open_editor_pane(home, "b.rs")?;
+    let project =
+        state.add_project(codesh_app_core::ServerId::local(), std::env::current_dir()?)?;
+    state.select_project(project)?;
+    state.open_terminal_tab(project)?;
+    let editor = state.open_editor_pane(project, "a.rs")?;
+    let diff = state.open_diff_pane(project, "a.rs", false)?;
+    let other = state.open_editor_pane(project, "b.rs")?;
     assert_eq!(state.window().active_pane, Some(other));
 
-    assert_eq!(state.open_editor_pane(home, "a.rs")?, editor);
+    assert_eq!(state.open_editor_pane(project, "a.rs")?, editor);
     assert_eq!(state.window().active_pane, Some(editor));
-    assert_eq!(state.open_editor_pane(home, "./a.rs")?, editor);
-    assert_eq!(state.open_diff_pane(home, "a.rs", false)?, diff);
+    assert_eq!(state.open_editor_pane(project, "./a.rs")?, editor);
+    assert_eq!(state.open_diff_pane(project, "a.rs", false)?, diff);
     assert_eq!(state.window().active_pane, Some(diff));
-    assert_ne!(state.open_diff_pane(home, "a.rs", true)?, diff);
-    assert_eq!(state.home().tabs[0].panes.len(), 5);
-    assert_equal_row(&state.home().tabs[0].layout, 5);
+    assert_ne!(state.open_diff_pane(project, "a.rs", true)?, diff);
+    assert_eq!(state.current_project().tabs[0].panes.len(), 5);
+    assert_equal_row(&state.current_project().tabs[0].layout, 5);
     Ok(())
 }
 
 #[test]
 fn paths_outside_the_project_are_rejected() -> Result {
     let mut state = AppState::bootstrap()?;
-    let home = state.home().id;
+    let project =
+        state.add_project(codesh_app_core::ServerId::local(), std::env::current_dir()?)?;
+    state.select_project(project)?;
     for path in ["", "/etc/hosts", "../secret", "a/../../b"] {
-        assert!(state.open_editor_pane(home, path).is_err(), "{path}");
-        assert!(state.open_diff_pane(home, path, false).is_err(), "{path}");
+        assert!(state.open_editor_pane(project, path).is_err(), "{path}");
+        assert!(
+            state.open_diff_pane(project, path, false).is_err(),
+            "{path}"
+        );
     }
-    assert!(state.home().tabs.is_empty());
+    assert!(state.current_project().tabs.is_empty());
     Ok(())
 }
 
@@ -119,14 +130,16 @@ fn native_panes_survive_a_save_and_load() -> Result {
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("desktop-state.json");
     let mut state = AppState::bootstrap()?;
-    let home = state.home().id;
-    state.open_terminal_tab(home)?;
-    let editor = state.open_editor_pane(home, "src/lib.rs")?;
-    let diff = state.open_diff_pane(home, "src/lib.rs", true)?;
+    let project =
+        state.add_project(codesh_app_core::ServerId::local(), std::env::current_dir()?)?;
+    state.select_project(project)?;
+    state.open_terminal_tab(project)?;
+    let editor = state.open_editor_pane(project, "src/lib.rs")?;
+    let diff = state.open_diff_pane(project, "src/lib.rs", true)?;
     store::save(&path, &state)?;
 
     let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)?;
-    let panes = &saved["projects"][0]["tabs"][0]["panes"];
+    let panes = &saved["projects"][1]["tabs"][0]["panes"];
     assert_eq!(
         panes[1]["content"],
         serde_json::json!({"type": "editor", "path": "src/lib.rs"})
@@ -138,8 +151,8 @@ fn native_panes_survive_a_save_and_load() -> Result {
 
     let mut restored = store::load(&path)?;
     assert_eq!(restored, state);
-    assert_eq!(restored.open_editor_pane(home, "src/lib.rs")?, editor);
-    assert_eq!(restored.open_diff_pane(home, "src/lib.rs", true)?, diff);
+    assert_eq!(restored.open_editor_pane(project, "src/lib.rs")?, editor);
+    assert_eq!(restored.open_diff_pane(project, "src/lib.rs", true)?, diff);
     Ok(())
 }
 
@@ -153,7 +166,7 @@ fn bundled_extension_panes_migrate_and_others_close() -> Result {
     )?;
     let state = store::load(&path)?;
 
-    let tab = &state.home().tabs[0];
+    let tab = &state.current_project().tabs[0];
     let panes: Vec<_> = tab
         .panes
         .iter()

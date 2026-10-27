@@ -270,8 +270,8 @@ pub const ALL: &[Shortcut] = &[
     Shortcut {
         id: "new_tab",
         keys: platform_keys!(&["cmd-t"], &["ctrl-shift-t"]),
-        contexts: &[Some("WorkspaceTabs")],
-        key_contexts: &[&[Some("WorkspaceTabs")]],
+        contexts: &[Some("MainWindow")],
+        key_contexts: &[&[Some("MainWindow")]],
     },
     Shortcut {
         id: "existing_terminals",

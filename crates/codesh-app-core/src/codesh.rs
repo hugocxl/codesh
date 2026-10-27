@@ -9,7 +9,7 @@ pub const SINGLE_TAB: bool = true;
 /// Merge whole layout subtrees in tab order, retaining every pane and session.
 /// Empty projects stay empty; no terminal session is created by normalization.
 pub fn normalize(project: &mut Project) {
-    if !SINGLE_TAB {
+    if !SINGLE_TAB || project.home {
         return;
     }
     let merged = project.tabs.len() > 1 || project.groups.is_some();
@@ -33,6 +33,10 @@ pub fn normalize(project: &mut Project) {
 }
 
 impl AppState {
+    pub(crate) fn single_tab(&self, project: ProjectId) -> bool {
+        SINGLE_TAB && self.project(project).is_some_and(|project| !project.home)
+    }
+
     /// Insert typed content to the right of the project's focused leaf, or its
     /// last leaf. Does not change window focus; callers choose whether to select.
     pub fn open_pane_in_container(
@@ -69,6 +73,9 @@ impl AppState {
             return;
         }
         for project in &mut self.projects {
+            if project.home {
+                continue;
+            }
             normalize(project);
             if let Some(tab) = project.tabs.first() {
                 self.window.selected_tab.insert(project.id, tab.id);

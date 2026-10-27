@@ -336,7 +336,7 @@ fn action_handlers(cx: &mut Context<AppModel>) -> gpui::Div {
         .on_action(
             cx.listener(|model, _: &SelectCommandOutput, _, cx| model.prompt_action(None, cx)),
         )
-        .key_context("WorkspaceTabs")
+        .key_context("WorkspaceTabs MainWindow")
         .on_modifiers_changed(
             cx.listener(|model, event: &gpui::ModifiersChangedEvent, _, cx| {
                 model.update_shortcut_hints(event.modifiers, cx);
@@ -796,7 +796,7 @@ pub(crate) fn register_commands(
             .and_then(|tab| model.tab(tab))
             .is_none_or(|tab| tab.panes.len() < 2);
     for command in [
-        action(model, ShortcutId::NewTab, tr_key!("New Terminal"), NewTab).disabled(missing),
+        action(model, ShortcutId::NewTab, tr_key!("New Terminal"), NewTab),
         action(
             model,
             ShortcutId::NewHomeTab,
@@ -1147,15 +1147,10 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::AnyElement {
                 .text_size(m.font_body())
                 .cursor_pointer()
                 .hover(|style| style.opacity(0.85))
-                .on_click(cx.listener(|model, _, _, cx| model.new_tab(cx)))
-                .child(tr!("New Terminal"))
-                .when_some(model.settings.keymap.chord(ShortcutId::NewTab), |element, chord| element.child(
-                    div()
-                        .text_size(m.font_footnote())
-                        .font_weight(FontWeight::MEDIUM)
-                        .opacity(0.72)
-                        .child(chord.to_string()),
-                )),
+                .on_click(cx.listener(|model, _, _, cx| {
+                    model.new_tab_in(model.state.current_project().id, cx);
+                }))
+                .child(tr!("New Terminal")),
         ));
     let card = card.relative().when(
         super::codesh::style::HIDE_COLLAPSED_SIDEBAR && !model.appearance.sidebar_expanded,

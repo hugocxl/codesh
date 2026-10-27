@@ -212,7 +212,7 @@ impl AppState {
         browser: BrowserPane,
         select: bool,
     ) -> Result<(TabId, PaneId), AppError> {
-        if crate::codesh::SINGLE_TAB {
+        if self.single_tab(project) {
             let pane = Pane {
                 id: PaneId::new(),
                 title: "New Browser".into(),

@@ -50,11 +50,8 @@
 "%lld unread notifications" = "%lld unread notifications";
 "%lld working" = "%lld working";
 "%lld/%lld passing" = "%lld/%lld passing";
-"%lldd" = "%lldd";
 "%lldd ago" = "%lldd ago";
-"%lldh" = "%lldh";
 "%lldh ago" = "%lldh ago";
-"%lldm" = "%lldm";
 "%lldm ago" = "%lldm ago";
 "1 Change" = "1 Change";
 "1 unread notification" = "1 unread notification";
@@ -260,6 +257,7 @@
 "Close Tabs to the Left" = "Close Tabs to the Left";
 "Close Tabs to the Right" = "Close Tabs to the Right";
 "Close Tabs?" = "Close Tabs?";
+"Close Terminal" = "Close Terminal";
 "Close Window" = "Close Window";
 "Close pane" = "Close pane";
 "Close pull request #%lld (%@) without merging?" = "Close pull request #%lld (%@) without merging?";
@@ -794,7 +792,6 @@
 "New Group…" = "New Group…";
 "New Home Terminal" = "New Home Terminal";
 "New Terminal" = "New Terminal";
-"New Terminal (⌘T)" = "New Terminal (⌘T)";
 "New Terminal Tab" = "New Terminal Tab";
 "New Terminal in Project…" = "New Terminal in Project…";
 "New Workspace" = "New Workspace";
@@ -1518,6 +1515,5 @@
 "couldn't open the pull request" = "couldn't open the pull request";
 "couldn't push" = "couldn't push";
 "host, address, or ~/.ssh/config alias" = "host, address, or ~/.ssh/config alias";
-"now" = "now";
 "optional" = "optional";
 "pushed %@/%@" = "pushed %@/%@";

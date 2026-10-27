@@ -391,7 +391,7 @@ impl ShortcutSettings for Keymap {
 fn context_overlap(left: Option<&str>, right: Option<&str>) -> bool {
     fn scope(context: Option<&str>) -> Option<&str> {
         context.map(|context| {
-            if context == shortcuts::WORKSPACE_CLIPBOARD_CONTEXT {
+            if context == shortcuts::WORKSPACE_CLIPBOARD_CONTEXT || context == "MainWindow" {
                 "WorkspaceTabs"
             } else {
                 context

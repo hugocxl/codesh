@@ -90,7 +90,11 @@ fn filters_persist_and_sessions_share_the_panel_host(cx: &mut TestAppContext) {
 fn resume_is_transactional_and_uses_the_selected_project(cx: &mut TestAppContext) {
     let directory = tempfile::tempdir().expect("directory");
     let mut state = AppState::bootstrap().expect("state");
-    let tab = state.open_terminal_tab(state.home().id).expect("tab");
+    let project = state
+        .add_project(ServerId::local(), std::env::current_dir().expect("cwd"))
+        .expect("project");
+    state.select_project(project).expect("select");
+    let tab = state.open_terminal_tab(project).expect("tab");
     state
         .set_tab_title(tab, Some("Container".into()))
         .expect("title");

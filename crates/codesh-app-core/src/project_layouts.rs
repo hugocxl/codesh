@@ -81,7 +81,7 @@ impl Config {
         Ok(Self { root, extra_tabs })
     }
 
-    fn build(&self) -> (Vec<Tab>, BTreeMap<PaneId, String>) {
+    fn build(&self, single_tab: bool) -> (Vec<Tab>, BTreeMap<PaneId, String>) {
         let mut panes = Vec::new();
         let mut commands = BTreeMap::new();
         let layout = self.root.build(&mut panes, &mut commands);
@@ -92,7 +92,7 @@ impl Config {
         let mut tabs = vec![tab];
         for terminal in &self.extra_tabs {
             let pane = terminal.build(&mut commands);
-            if crate::codesh::SINGLE_TAB {
+            if single_tab {
                 let primary = &mut tabs[0];
                 primary.layout = Layout::Split {
                     axis: Axis::Horizontal,
@@ -274,7 +274,7 @@ impl AppState {
             .ok_or(AppError::UnknownProject(project))?;
         target.require_available()?;
         let server = target.server_id;
-        let (tabs, commands) = config.build();
+        let (tabs, commands) = config.build(self.single_tab(project));
         let selected = tabs[0].id;
         let panes: Vec<_> = tabs
             .iter()

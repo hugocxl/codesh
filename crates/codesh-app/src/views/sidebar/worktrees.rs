@@ -1,4 +1,4 @@
-use codesh_app_core::{Project, ProjectId, ProjectStatus};
+use codesh_app_core::{Project, ProjectId, ProjectStatus, Tab};
 use codesh_ui::{components::IconGlyph, icon::Icon, tr};
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -124,9 +124,18 @@ pub(super) fn group(
         group = group.child(worktrees.child(new_worktree(project.id, model, cx)));
     }
     if model.appearance.sidebar_expanded && !model.has_worktrees(project) {
-        group = group.child(row(project, !project.home, model, cx));
+        group = group.child(row(project, true, model, cx));
     }
     group.into_any_element()
+}
+
+pub(in crate::views) fn terminal(
+    project: &Project,
+    tab: &Tab,
+    model: &AppModel,
+    cx: &mut Context<AppModel>,
+) -> AnyElement {
+    activity_row(project, Some(tab), false, model, cx)
 }
 
 fn row(
@@ -135,16 +144,32 @@ fn row(
     model: &AppModel,
     cx: &mut Context<AppModel>,
 ) -> AnyElement {
+    activity_row(project, None, primary, model, cx)
+}
+
+fn activity_row(
+    project: &Project,
+    tab: Option<&Tab>,
+    primary: bool,
+    model: &AppModel,
+    cx: &mut Context<AppModel>,
+) -> AnyElement {
     let id = project.id;
+    let tab_id = tab.map(|tab| tab.id);
+    let key = tab_id.map_or_else(|| format!("worktree-{id}"), |tab| format!("terminal-{tab}"));
     let m = model.metrics;
     let theme = &model.theme;
-    let active = model.state.current_project().id == id;
+    let active = model.state.current_project().id == id
+        && tab_id.is_none_or(|tab| model.active_tab() == Some(tab));
     let missing = project.status() == ProjectStatus::Missing;
     let unavailable = missing || model.worktree_removing(id);
-    let activity = super::activity_card::Data::new(project, model);
+    let activity = tab.map_or_else(
+        || super::activity_card::Data::new(project, model),
+        |tab| super::activity_card::Data::for_tab(project, tab, model),
+    );
     div()
-        .id(SharedString::from(format!("worktree-{id}")))
-        .debug_selector(move || format!("worktree-{id}"))
+        .id(SharedString::from(key.clone()))
+        .debug_selector(move || key.clone())
         .flex()
         .flex_col()
         .px(m.scaled(10.0))
@@ -163,7 +188,11 @@ fn row(
         .when(!unavailable, |row| {
             row.cursor_pointer()
                 .on_click(cx.listener(move |model, _, window, cx| {
-                    model.select_project(id, cx);
+                    if let Some(tab) = tab_id {
+                        model.select_tab(tab, cx);
+                    } else {
+                        model.select_project(id, cx);
+                    }
                     model.focus_active(window, cx);
                 }))
         })
@@ -172,7 +201,15 @@ fn row(
             cx.listener(move |model, event: &gpui::MouseDownEvent, window, cx| {
                 if let Some(project) = model.state.project(id) {
                     model.open_menu(
-                        if project.parent_id.is_none() && !primary {
+                        if let Some(tab) = tab_id {
+                            vec![super::super::menu::Item::action(
+                                tr!("Close Terminal"),
+                                super::super::menu::Command::Tab(
+                                    tab,
+                                    super::super::tab_menu::Action::Close,
+                                ),
+                            )]
+                        } else if project.parent_id.is_none() && !primary {
                             model.project_menu(project)
                         } else {
                             super::super::project_menu::worktree_items(project, primary)
@@ -184,12 +221,13 @@ fn row(
                 }
             }),
         )
-        .child(card_content(project, primary, activity, model))
+        .child(card_content(project, tab, primary, activity, model))
         .into_any_element()
 }
 
 fn card_content(
     project: &Project,
+    tab: Option<&Tab>,
     primary: bool,
     activity: super::activity_card::Data,
     model: &AppModel,
@@ -214,7 +252,13 @@ fn card_content(
                         .flex_shrink()
                         .min_w(px(0.0))
                         .truncate()
-                        .child(project.name.clone()),
+                        .child(if tab.is_some() {
+                            activity
+                                .directory
+                                .unwrap_or_else(|| tr!("Terminal").to_string())
+                        } else {
+                            project.name.clone()
+                        }),
                 )
                 .children(activity.branch.map(|branch| {
                     div()
@@ -254,6 +298,7 @@ fn card_content(
                         .size(m.icon_sm())
                         .child(super::super::tab_activity::worktree_dot(
                             project.id,
+                            tab,
                             activity.working,
                             model,
                         )),

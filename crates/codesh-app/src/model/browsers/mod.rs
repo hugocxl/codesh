@@ -650,7 +650,12 @@ impl AppModel {
                 shortcut
                     .contexts
                     .iter()
-                    .filter(|context| matches!(context, None | Some("WorkspaceTabs" | "Browser")))
+                    .filter(|context| {
+                        matches!(
+                            context,
+                            None | Some("WorkspaceTabs" | "MainWindow" | "Browser")
+                        )
+                    })
                     .flat_map(|context| keymap.keys(shortcut.id, *context))
             })
             .filter_map(|key| gpui::Keystroke::parse(&key).ok())

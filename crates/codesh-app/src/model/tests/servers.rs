@@ -132,10 +132,10 @@ fn attach_local_and_remote(
     let api = ProjectId::new();
     connect_remote(model, remote, vec![], &[(api, "api")], cx);
     model.select_project(api, cx);
-    model.new_tab(cx);
+    model.new_tab_in(model.state.current_project().id, cx);
     let remote_pane = model.active_pane().expect("remote pane");
     model.select_project(model.state.home().id, cx);
-    model.new_tab(cx);
+    model.new_tab_in(model.state.current_project().id, cx);
     let local_pane = model.active_pane().expect("local pane");
     model.sync_visible(cx);
     // Keep the background view to exercise late channel events during a project switch.
@@ -259,7 +259,7 @@ fn show_local_and_remote(
         let api = ProjectId::new();
         connect_remote(model, remote, vec![], &[(api, "api")], cx);
         model.select_project(api, cx);
-        model.new_tab(cx);
+        model.new_tab_in(model.state.current_project().id, cx);
         let remote_pane = model.active_pane().expect("remote pane");
         let assigned = model.state.set_pane_session(remote_pane, Some(session));
         assigned.expect("session");
@@ -345,7 +345,7 @@ fn remote_terminal(cx: &mut TestAppContext) -> Result {
     let pane = view.update(cx, |model, cx| {
         let project = model.add_project_on(remote, directory.path().to_path_buf(), cx);
         model.select_project(project.expect("remote project"), cx);
-        model.new_tab(cx);
+        model.new_tab_in(model.state.current_project().id, cx);
         let pane = model.active_pane().expect("pane");
         model.start_attach(pane, Size { cols: 80, rows: 24 }, cx);
         pane
@@ -493,4 +493,42 @@ fn project_edits_wait_until_the_server_they_were_made_for_answers(cx: &mut TestA
         reconnect(model, remote, page(2, home, &[(api, "api")]), cx);
         assert_eq!(edits(), 1, "the server they were made for gets them");
     });
+}
+
+#[gpui::test]
+fn new_tab_from_a_remote_project_opens_local_home_and_remote_home_cards_stay_visible(
+    cx: &mut TestAppContext,
+) {
+    let remote = ServerId::new();
+    let (mut boot, _requests, _remotes) = remote_boot(
+        AppState::bootstrap().expect("state"),
+        vec![entry(remote, "box")],
+    );
+    boot.settings.appearance.sidebar_expanded = true;
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    let remote_tab = view.update(cx, |model, cx| {
+        model.appearance.sidebar_expanded = true;
+        model.receive(from(ServerId::local(), Update::Connected(vec![])), cx);
+        acknowledge_catalog(model, cx);
+        let api = ProjectId::new();
+        let home = connect_remote(model, remote, vec![], &[(api, "api")], cx);
+        model.new_tab_in(home, cx);
+        let remote_tab = model.active_tab().expect("remote tab");
+        model.select_project(api, cx);
+        model.new_tab(cx);
+        assert_eq!(model.state.current_project().id, model.state.home().id);
+        assert!(model.state.current_project().server_id.is_local());
+        assert_eq!(model.state.project(api).expect("api").tabs.len(), 0);
+        assert!(
+            model
+                .standalone_terminals()
+                .any(|(project, tab)| project.server_id == remote && tab.id == remote_tab)
+        );
+        remote_tab
+    });
+    redraw(cx);
+    assert!(
+        cx.debug_bounds(format!("terminal-{remote_tab}").leak())
+            .is_some()
+    );
 }

@@ -58,8 +58,7 @@ fn browser_panes_are_found_by_their_own_or_their_tab_id() -> TestResult {
     let terminal_tab = state.open_terminal_tab(home)?;
     let terminal = state.window().active_pane.ok_or("terminal pane")?;
     let beside = state.split_browser(terminal, BrowserPane::default(), false)?;
-    // With several browsers in the container, a tab ID falls back to its first browser.
-    assert_eq!(state.browser_pane(&terminal_tab.to_string()), Some(first));
+    assert_eq!(state.browser_pane(&terminal_tab.to_string()), Some(beside));
     assert_eq!(state.browser_pane(&beside.to_string()), Some(beside));
     assert_eq!(state.browser_pane(&terminal.to_string()), None);
     assert_eq!(state.browser_pane("nope"), None);

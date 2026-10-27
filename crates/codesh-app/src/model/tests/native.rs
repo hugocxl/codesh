@@ -230,3 +230,134 @@ fn files_panel_retries_when_its_server_side_connection_opens(cx: &mut TestAppCon
     assert!(requests.borrow().iter().any(|action| matches!(action,
         FilesAction::List(path) if path.0.is_empty())));
 }
+
+#[gpui::test]
+fn new_terminal_shortcut_leaves_editors_and_side_panels_for_local_home(cx: &mut TestAppContext) {
+    use gpui::Focusable;
+
+    let (state, project) = git::registered_current_project();
+    let (mut boot, _requests) = stub_boot(state);
+    let key = if cfg!(target_os = "macos") {
+        "cmd-alt-shift-t"
+    } else {
+        "ctrl-alt-shift-t"
+    };
+    boot.settings.keymap = boot
+        .settings
+        .keymap
+        .with_binding("new_tab", Some(key.parse().expect("chord")))
+        .expect("binding");
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    let (stub, _) = stub_files("fn main() {}\n");
+    view.update(cx, |model, cx| {
+        model.native.stub = Some(stub);
+        model.open_project_file(project, "src/main.rs", None, cx);
+    });
+    cx.run_until_parked();
+    let editor = view.read_with(cx, |model, _| model.active_pane().expect("editor"));
+    for (index, panel) in [SidePanel::None, SidePanel::Files, SidePanel::SourceControl]
+        .into_iter()
+        .enumerate()
+    {
+        view.update_in(cx, |model, window, cx| {
+            model.select_project(project, cx);
+            model.state.focus_pane(editor).expect("focus editor");
+            model.focus_active(window, cx);
+            if panel != SidePanel::None {
+                model.toggle_side_panel(panel, window, cx);
+                assert!(model.side_panel_focused(window, cx));
+            }
+        });
+        cx.run_until_parked();
+        cx.simulate_keystrokes(key);
+        cx.run_until_parked();
+        view.read_with(cx, |model, _| {
+            assert_eq!(model.state.current_project().id, model.state.home().id);
+            assert_eq!(model.state.home().tabs.len(), index + 1);
+            assert!(
+                model
+                    .state
+                    .home()
+                    .tabs
+                    .iter()
+                    .all(|tab| tab.panes.len() == 1)
+            );
+            let pane = model.active_pane().expect("terminal");
+            assert!(matches!(
+                model
+                    .tab(model.active_tab().expect("tab"))
+                    .expect("tab")
+                    .panes[0]
+                    .content,
+                PaneContent::Terminal { .. }
+            ));
+            assert_ne!(pane, editor);
+        });
+        view.update_in(cx, |model, window, cx| {
+            let pane = model.active_pane().expect("terminal");
+            assert!(
+                model
+                    .grids
+                    .get(&pane)
+                    .expect("terminal view")
+                    .view
+                    .read(cx)
+                    .focus
+                    .contains_focused(window, cx)
+            );
+        });
+    }
+    view.update_in(cx, |model, window, cx| {
+        model.select_project(project, cx);
+        model.sidebar_filter_input.focus_handle(cx).focus(window);
+        model.focus_requested = false;
+    });
+    cx.simulate_keystrokes(key);
+    view.read_with(cx, |model, _| assert_eq!(model.state.home().tabs.len(), 4));
+}
+
+#[gpui::test]
+fn new_terminal_shortcut_leaves_a_focused_diff_for_local_home(cx: &mut TestAppContext) {
+    use gpui::Focusable;
+    let (state, project) = git::registered_current_project();
+    let (boot, _requests) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update(cx, |model, cx| {
+        model.select_project(project, cx);
+        model.open_diff(project, "src/main.rs", false, cx);
+    });
+    cx.run_until_parked();
+    view.update_in(cx, |model, window, cx| {
+        model.receive_git(
+            &GitRequest {
+                project,
+                action: GitAction::Diff(codesh_protocol::GitDiffRequest {
+                    path: Some(ServerPath(b"src/main.rs".to_vec())),
+                    staged: false,
+                    raw: false,
+                    line_limit: None,
+                    context: None,
+                }),
+            },
+            Ok(GitReply::Diff(codesh_protocol::GitDiff {
+                rows: Vec::new(),
+                additions: 0,
+                deletions: 0,
+                truncated: false,
+                binary: false,
+            })),
+            cx,
+        );
+        model.focus_active(window, cx);
+        let diff = model
+            .diffs
+            .get(&model.active_pane().expect("diff"))
+            .and_then(|diff| diff.view.as_ref())
+            .expect("diff view");
+        assert!(diff.focus_handle(cx).contains_focused(window, cx));
+    });
+    cx.simulate_keystrokes(codesh_core::shortcuts::ShortcutId::NewTab.definition().keys[0]);
+    view.read_with(cx, |model, _| assert_eq!(model.state.home().tabs.len(), 1));
+}

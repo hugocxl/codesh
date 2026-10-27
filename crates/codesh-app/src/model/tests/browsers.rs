@@ -36,10 +36,12 @@ fn sidebar_footer_opens_browser_panes_after_layout_and_group_requests(cx: &mut T
     use codesh_app_core::{Direction, settings::AppLayout};
 
     let mut state = AppState::bootstrap().expect("state");
-    let first = state.open_terminal_tab(state.home().id).expect("first tab");
-    let second = state
-        .open_terminal_tab(state.home().id)
-        .expect("second tab");
+    let project = state
+        .add_project(ServerId::local(), std::env::current_dir().expect("cwd"))
+        .expect("project");
+    state.select_project(project).expect("select");
+    let first = state.open_terminal_tab(project).expect("first tab");
+    let second = state.open_terminal_tab(project).expect("second tab");
     let (boot, _requests) = stub_boot(state);
     let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
     for grouped in [false, true] {

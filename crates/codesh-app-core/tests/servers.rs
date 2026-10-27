@@ -540,3 +540,39 @@ fn the_remote_servers_tab_moves_to_home_when_its_folder_is_gone() -> TestResult 
     assert_eq!(project.tabs[0].panes[0].id, terminal);
     Ok(())
 }
+
+#[test]
+fn remote_home_keeps_independent_tabs_across_catalog_refresh_and_restore() -> TestResult {
+    let TwoServers {
+        mut state,
+        remote,
+        remote_home,
+        ..
+    } = two_servers()?;
+    let first = state.open_terminal_tab(remote_home)?;
+    let second = state.open_terminal_tab(remote_home)?;
+    let focused = state.window().active_pane;
+    let api = state
+        .projects()
+        .iter()
+        .find(|project| project.server_id == remote && !project.home)
+        .ok_or("remote project")?
+        .id;
+    let mut page = remote_catalog(2, remote_home, &[(api, "api")]);
+    page.revision = state.catalog_revision(remote) + 1;
+    state.apply_catalog(remote, &page)?;
+    let restored: AppState = serde_json::from_value(serde_json::to_value(&state)?)?;
+    assert_eq!(
+        restored
+            .project(remote_home)
+            .ok_or("remote Home")?
+            .tabs
+            .iter()
+            .map(|tab| tab.id)
+            .collect::<Vec<_>>(),
+        [first, second]
+    );
+    assert_eq!(restored.window().selected_tab[&remote_home], second);
+    assert_eq!(restored.window().active_pane, focused);
+    Ok(())
+}

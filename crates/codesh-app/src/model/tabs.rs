@@ -38,15 +38,20 @@ impl AppModel {
         previous: Option<TabId>,
         cx: &mut Context<Self>,
     ) {
-        if codesh_app_core::codesh::SINGLE_TAB {
-            return;
-        }
         if self.close_request.is_some() {
             return;
         }
         let Some(project) = self.tab_project(tab).map(|project| project.id) else {
             return;
         };
+        if codesh_app_core::codesh::SINGLE_TAB
+            && self
+                .state
+                .project(project)
+                .is_some_and(|project| !project.home)
+        {
+            return;
+        }
         if self.edit_tab(
             |state| {
                 match drop {

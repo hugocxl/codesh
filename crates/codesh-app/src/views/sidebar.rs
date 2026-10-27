@@ -383,6 +383,16 @@ impl AppModel {
         }
     }
 
+    pub(crate) fn standalone_terminals(
+        &self,
+    ) -> impl Iterator<Item = (&Project, &codesh_app_core::Tab)> {
+        self.state
+            .projects()
+            .iter()
+            .filter(|project| project.home)
+            .flat_map(|project| project.tabs.iter().map(move |tab| (project, tab)))
+    }
+
     pub(crate) fn sidebar_projects(&self) -> Vec<&Project> {
         let active = self.state.current_project();
         let focused = active.parent_id.unwrap_or(active.id);
@@ -445,16 +455,18 @@ fn project_list(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
     let targets = Rc::new(RefCell::new(ProjectRows::default()));
     let measured = targets.clone();
     let moving = targets.clone();
-    let projects = model.sidebar_projects();
+    let projects: Vec<_> = model
+        .sidebar_projects()
+        .into_iter()
+        .filter(|project| !project.home)
+        .collect();
+    let terminals: Vec<_> = model.standalone_terminals().collect();
     let shortcuts = model.navigation_projects();
-    let ids: Vec<_> = projects
-        .iter()
-        .map(|project| {
-            (!project.home
-                && project.parent_id.is_none()
-                && project.status() == ProjectStatus::Available)
+    let ids: Vec<_> = std::iter::repeat_n(None, terminals.len())
+        .chain(projects.iter().map(|project| {
+            (project.parent_id.is_none() && project.status() == ProjectStatus::Available)
                 .then_some(project.id)
-        })
+        }))
         .collect();
     div()
         .id("projects-scroll")
@@ -496,6 +508,7 @@ fn project_list(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
                 .pt(if wide { m.spacing5() } else { m.spacing2() })
                 .pb(m.spacing3())
                 .when(!wide, Styled::items_center)
+                .children(terminals.into_iter().map(|(project, tab)| worktrees::terminal(project, tab, model, cx)))
                 .children(projects.iter().enumerate().map(|(index, project)| {
                     let shortcut = shortcuts.iter().take(9).position(|id| *id == project.id);
                     worktrees::group(project, index, shortcut, model, cx)
@@ -598,8 +611,7 @@ fn project_row(
             }),
         )
         .when(
-            !project.home
-                && project.parent_id.is_none()
+            project.parent_id.is_none()
                 && !missing
                 && model.appearance.sidebar_project_order == ProjectOrder::Manual,
             |row| row.on_drag(drag, |_, _, _, cx| cx.new(|_| Empty)),
@@ -770,11 +782,7 @@ pub(super) fn add_project_button(model: &AppModel, cx: &mut Context<AppModel>) -
 
 fn project_tile(project: &Project, model: &AppModel, group: SharedString) -> AnyElement {
     let m = model.metrics;
-    let color = if project.home && project.server_id.is_local() {
-        model.theme.accent.to_rgb()
-    } else {
-        parse_hex(project.color.as_str()).unwrap_or(gpui::rgb(0x80_80_80))
-    };
+    let color = parse_hex(project.color.as_str()).unwrap_or(gpui::rgb(0x80_80_80));
     let foreground = contrasting_foreground(color);
     let glyph = if let Some((_, logo)) = model.project_logos.get(&project.id) {
         gpui::img(logo.clone())
@@ -796,8 +804,6 @@ fn project_tile(project: &Project, model: &AppModel, group: SharedString) -> Any
                 .child(icon.clone())
                 .into_any_element()
         }
-    } else if project.home && project.server_id.is_local() {
-        SymbolGlyph::new("house.fill", m.font_title_large(), foreground.into()).into_any_element()
     } else {
         div()
             .text_size(m.font_emphasis())

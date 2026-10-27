@@ -951,7 +951,7 @@ impl AppModel {
     }
 
     pub(crate) fn new_tab(&mut self, cx: &mut Context<Self>) {
-        self.new_tab_in(self.state.current_project().id, cx);
+        self.new_tab_in(self.state.home().id, cx);
     }
 
     /// Opens a terminal tab in `project` and shows it, switching the sidebar's

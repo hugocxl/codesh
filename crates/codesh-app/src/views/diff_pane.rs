@@ -104,6 +104,16 @@ struct PaintedSegment {
 }
 
 /// Explicit cell positions keep flex sizing and clipping out of the text path.
+/// The part of `segment` between columns `first` and `last`, with the column
+/// it starts at.
+fn visible(segment: &PaintedSegment, first: usize, last: usize) -> Option<(usize, String)> {
+    let skip = first.saturating_sub(segment.column);
+    let start = segment.column.max(first);
+    let take = last.saturating_sub(start);
+    let text: String = segment.text.chars().skip(skip).take(take).collect();
+    (!text.is_empty()).then_some((start, text))
+}
+
 fn painted_segments(
     row: &GitDiffRow,
     old: bool,
@@ -326,8 +336,21 @@ impl DiffView {
             gpui::canvas(
                 |bounds, _, _| bounds,
                 move |bounds, _, window, cx| {
+                    // Only the columns inside the viewport are shaped, so very
+                    // long lines cost no more than short ones.
+                    let mask = window.content_mask().bounds;
+                    let cell = f32::from(size.width).max(1.0);
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let first = (f32::from(mask.left() - bounds.left()).max(0.0) / cell) as usize;
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let last = (f32::from(mask.right() - bounds.left()).max(0.0) / cell).ceil()
+                        as usize
+                        + 1;
                     for segment in segments {
-                        let text: SharedString = segment.text.into();
+                        let Some((column, text)) = visible(&segment, first, last) else {
+                            continue;
+                        };
+                        let text: SharedString = text.into();
                         let line = window.text_system().shape_line(
                             text.clone(),
                             font_size,
@@ -342,8 +365,8 @@ impl DiffView {
                             None,
                         );
                         #[allow(clippy::cast_precision_loss)]
-                        let origin = bounds.origin
-                            + gpui::point(size.width * segment.column as f32, px(0.0));
+                        let origin =
+                            bounds.origin + gpui::point(size.width * column as f32, px(0.0));
                         let _ = line.paint(origin, size.height, window, cx);
                     }
                 },
@@ -513,6 +536,19 @@ mod tests {
                 new_text.unwrap()
             );
         }
+    }
+
+    #[test]
+    fn only_visible_columns_are_shaped() {
+        let segment = PaintedSegment {
+            column: 10,
+            text: "abcdefghij".into(),
+            dim: false,
+        };
+        assert_eq!(visible(&segment, 0, 12), Some((10, "ab".into())));
+        assert_eq!(visible(&segment, 13, 15), Some((13, "de".into())));
+        assert_eq!(visible(&segment, 20, 30), None);
+        assert_eq!(visible(&segment, 0, 5), None);
     }
 
     #[test]

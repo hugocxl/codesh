@@ -150,7 +150,14 @@ pub(super) fn contents(
         .flex_col()
         .pt(model.metrics.spacing5())
         .pb(model.metrics.spacing3());
-    for project in model.sidebar_projects() {
+    for (project, tab) in model.standalone_terminals() {
+        rows = rows.child(super::sidebar::worktrees::terminal(project, tab, model, cx));
+    }
+    for project in model
+        .sidebar_projects()
+        .into_iter()
+        .filter(|project| !project.home)
+    {
         rows = rows.child(project_group(project, &numbers, targets.clone(), model, cx));
     }
     if !model.appearance.sidebar_focus {
@@ -505,7 +512,7 @@ fn project_controls(project: &Project, model: &AppModel, cx: &mut Context<AppMod
                             move |model, _, window, cx| {
                                 cx.stop_propagation();
                                 model.select_project(id, cx);
-                                model.new_tab(cx);
+                                model.new_tab_in(model.state.current_project().id, cx);
                                 model.focus_active(window, cx);
                             },
                         )),
@@ -681,7 +688,7 @@ pub(super) fn titlebar(
                 .child(model.project_title(project)),
         )
         .when(
-            !codesh_app_core::codesh::SINGLE_TAB
+            (!codesh_app_core::codesh::SINGLE_TAB || project.home)
                 && project.status() == ProjectStatus::Available
                 && project.groups().is_none(),
             |bar| bar.child(tab_strip::new_tab_button(None, model, cx)),

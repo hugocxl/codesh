@@ -1,13 +1,18 @@
 # Single tab per project
 
-In the desktop app, each project, including a worktree project, has zero or
+In the desktop app, each non-Home project, including a worktree project, has zero or
 one tab, and that tab holds the project's split layout. There is no tab strip.
 `codesh_app_core::codesh::SINGLE_TAB` enables this policy; the terminal UI keeps
 its own multi-tab layouts.
 
 ## Opening content
 
-New Terminal (`Cmd+T`), adjacent-terminal requests, editor and diff panes,
+New Terminal (`Cmd+T`) always creates a standalone terminal tab in local Home.
+Home tabs remain independent and appear as ungrouped cards above projects.
+Each tab can contain splits. Home is exempt from the single-tab policy, including
+normalization and restore.
+
+New terminal requests within a project, adjacent-terminal requests, editor and diff panes,
 browser opens, and the Remote Servers view all open panes in the project's
 container. Editor and diff panes for the same file, and Remote Servers, reuse
 their existing pane.
@@ -28,6 +33,8 @@ never during rendering.
 
 ## Closing
 
-Closing the last pane leaves the project empty. The next New Terminal creates a
+Closing the last pane leaves the project empty. The next terminal opened in that project creates a
 fresh container; closing never silently starts another terminal session.
+Closing a standalone terminal removes its tab and returns to the most recently
+focused surviving project or terminal. Home remains even when empty.
 Custom commands and agent resumes title their new pane.

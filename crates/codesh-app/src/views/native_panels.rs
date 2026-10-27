@@ -137,6 +137,33 @@ pub(crate) fn sidebar_buttons(model: &AppModel, cx: &mut Context<AppModel>) -> A
         .flex()
         .flex_none()
         .items_center()
+        .child(
+            crate::views::titlebar::icon_button(
+                "sidebar-new-terminal",
+                Icon::Plus,
+                model
+                    .settings
+                    .keymap
+                    .chord(codesh_core::shortcuts::ShortcutId::NewTab)
+                    .map_or_else(
+                        || tr!("New Terminal").to_string(),
+                        |chord| {
+                            format!(
+                                "{} ({})",
+                                tr!("New Terminal"),
+                                codesh_core::shortcuts::display_chord(chord.as_str())
+                            )
+                        },
+                    ),
+                model,
+            )
+            .debug_selector(|| "sidebar-new-terminal".into())
+            .on_click(cx.listener(|model, _, window, cx| {
+                cx.stop_propagation();
+                model.new_tab(cx);
+                model.focus_active(window, cx);
+            })),
+        )
         .child(button(
             "sidebar-files",
             SidePanel::Files,

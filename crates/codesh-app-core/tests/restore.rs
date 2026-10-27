@@ -73,6 +73,6 @@ fn mixed_restore_identifies_dead_panes_without_mutating_selection() -> TestResul
         vec![(panes[0], live), (panes[1], missing)]
     );
     assert!(all_missing.attach.is_empty());
-    assert_eq!(state.home().tabs.len(), 1);
+    assert_eq!(state.home().tabs.len(), 3);
     Ok(())
 }

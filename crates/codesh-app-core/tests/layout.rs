@@ -158,9 +158,8 @@ fn window_owns_focus_and_closing_chooses_neighbors_without_stealing_focus() -> R
     let last = state.split_pane(middle, Direction::Right)?;
     state.close_pane(last)?;
     assert_eq!(state.window().active_pane, Some(middle));
-    let container = state.open_terminal_tab(home)?;
-    assert_eq!(container, first_tab);
-    let added = state.window().active_pane.ok_or("focus")?;
+    let container = first_tab;
+    let added = state.split_pane(middle, Direction::Right)?;
     let right = state.split_pane(added, Direction::Right)?;
     state.focus_pane(middle)?;
     state.close_pane(first)?;

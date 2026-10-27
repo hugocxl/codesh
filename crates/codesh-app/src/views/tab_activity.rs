@@ -137,7 +137,12 @@ pub(super) fn worktree_status(id: ProjectId, model: &AppModel) -> Status {
 
 /// A worktree card's status: the accent when something needs the user, a
 /// spinner while work runs, and gray when idle.
-pub(super) fn worktree_dot(id: ProjectId, working: bool, model: &AppModel) -> AnyElement {
+pub(super) fn worktree_dot(
+    id: ProjectId,
+    tab: Option<&Tab>,
+    working: bool,
+    model: &AppModel,
+) -> AnyElement {
     let theme = &model.theme;
     let m = model.metrics;
     let dot = |color: Hsla| {
@@ -148,11 +153,16 @@ pub(super) fn worktree_dot(id: ProjectId, working: bool, model: &AppModel) -> An
             .into_any_element()
     };
     let spinner = || {
-        model
-            .spinners
-            .glyph(format!("worktree-activity-{id}"), m.icon_sm(), theme.accent)
+        model.spinners.glyph(
+            tab.map_or_else(
+                || format!("worktree-activity-{id}"),
+                |tab| format!("terminal-activity-{}", tab.id),
+            ),
+            m.icon_sm(),
+            theme.accent,
+        )
     };
-    match worktree_status(id, model) {
+    match tab.map_or_else(|| worktree_status(id, model), |tab| tab_status(tab, model)) {
         Status::Blocked | Status::Unread(_) | Status::Completed => dot(theme.accent),
         Status::Progress(progress) if progress.state == ProgressState::Error => dot(theme.danger),
         Status::Progress(progress) if progress.state == ProgressState::Paused => dot(theme.warning),

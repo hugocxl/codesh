@@ -77,6 +77,7 @@ fn application_handles(chord: &KeyChord, cx: &App) -> bool {
         gpui::KeyContext::default(),
     ];
     contexts[1].add("WorkspaceTabs");
+    contexts[1].add("MainWindow");
     contexts[2].add("TerminalPane");
     let (bindings, pending) = cx
         .key_bindings()

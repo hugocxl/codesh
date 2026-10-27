@@ -159,7 +159,7 @@ impl AppState {
             if let Some((stale, tab)) =
                 self.find_servers_tab(|project| project.status() != ProjectStatus::Available)
             {
-                if crate::codesh::SINGLE_TAB {
+                if self.single_tab(stale) {
                     let pane = self
                         .project(stale)
                         .and_then(|project| project.tabs.iter().find(|item| item.id == tab))
@@ -179,7 +179,7 @@ impl AppState {
                 project.server_id.is_local() && project.status() == ProjectStatus::Available
             });
             let project = if here { project } else { self.home().id };
-            let id = if crate::codesh::SINGLE_TAB {
+            let id = if self.single_tab(project) {
                 let pane = Pane {
                     id: PaneId::new(),
                     title: title.into(),

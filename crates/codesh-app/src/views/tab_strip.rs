@@ -165,7 +165,7 @@ pub(super) fn new_tab_button(
         || SharedString::from("new-tab"),
         |anchor| SharedString::from(format!("new-tab-{anchor}")),
     );
-    titlebar::icon_button(id, Icon::Plus, tr!("New Terminal (⌘T)"), model)
+    titlebar::icon_button(id, Icon::Plus, tr!("New Terminal"), model)
         .ml(model.metrics.spacing2())
         .debug_selector(move || {
             if anchor.is_some() {
@@ -179,7 +179,7 @@ pub(super) fn new_tab_button(
             cx.stop_propagation();
             match anchor {
                 Some(anchor) => model.new_tab_adjacent(anchor, TabSide::Right, cx),
-                None => model.new_tab(cx),
+                None => model.new_tab_in(model.state.current_project().id, cx),
             }
         }))
 }

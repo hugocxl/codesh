@@ -597,8 +597,7 @@ impl AppModel {
                 return;
             }
             Command::NewProjectTab(id) => {
-                self.select_project(id, cx);
-                self.new_tab(cx);
+                self.new_tab_in(id, cx);
             }
             Command::Worktrees(id) => {
                 self.toggle_worktree_visibility(id, cx);

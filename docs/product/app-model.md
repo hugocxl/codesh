@@ -48,7 +48,8 @@ flowchart LR
 ```
 
 - The sidebar shows **All projects** by default. Pick a workspace to filter it.
-  Home stays first and worktrees appear under their parent.
+  Standalone terminals stay above projects and worktrees appear under their parent.
+  `Cmd+T` opens a new standalone terminal in local Home from anywhere in the main window.
 - One project order applies under every filter.
 - Picking a project shows its split layout. The Files or Source Control panel
   can be pinned on the right.

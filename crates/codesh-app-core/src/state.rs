@@ -353,7 +353,7 @@ impl AppState {
         near: Option<TabId>,
     ) -> Result<TabId, AppError> {
         self.project_mut(project)?.require_available()?;
-        if crate::codesh::SINGLE_TAB {
+        if self.single_tab(project) {
             let pane = Pane {
                 id: PaneId::new(),
                 title: "Terminal".into(),
@@ -396,7 +396,7 @@ impl AppState {
                     project,
                     tab: anchor,
                 })?;
-        if crate::codesh::SINGLE_TAB {
+        if self.single_tab(project) {
             return self.open_terminal_tab_near(project, Some(anchor));
         }
         let boundary = target.tabs.iter().take_while(|tab| tab.pinned).count();
@@ -503,7 +503,25 @@ impl AppState {
                 self.window.selected_tab.remove(&project);
             }
         }
-        if removed_active {
+        if removed_active && self.project(project).is_some_and(|project| project.home) {
+            let recent = self
+                .window
+                .focus_history
+                .iter()
+                .rev()
+                .copied()
+                .find(|pane| {
+                    self.projects.iter().any(|project| {
+                        project.status() == ProjectStatus::Available
+                            && project.tabs.iter().any(|tab| tab.layout.contains(*pane))
+                    })
+                });
+            if let Some(pane) = recent {
+                self.focus_pane(pane)?;
+            } else {
+                self.window.activate(next_pane);
+            }
+        } else if removed_active {
             self.window.activate(next_pane);
         }
         self.sync_groups(project);

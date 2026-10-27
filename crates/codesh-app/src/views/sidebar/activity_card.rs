@@ -1,5 +1,5 @@
 //! Card content is derived exclusively from model caches.
-use codesh_app_core::{PaneContent, Project};
+use codesh_app_core::{PaneContent, Project, Tab};
 use codesh_protocol::{AgentProvider, AgentState};
 
 use crate::model::AppModel;
@@ -27,6 +27,7 @@ pub(super) enum Headline {
 
 pub(super) struct Data {
     pub headline: Headline,
+    pub directory: Option<String>,
     pub branch: Option<String>,
     pub pr: Option<u64>,
     /// An agent in the worktree is working.
@@ -36,7 +37,19 @@ pub(super) struct Data {
 
 impl Data {
     pub(super) fn new(project: &Project, model: &AppModel) -> Self {
-        let repo = model.git.projects.get(&project.id);
+        Self::from_tabs(project, &project.tabs, model)
+    }
+
+    pub(super) fn for_tab(project: &Project, tab: &Tab, model: &AppModel) -> Self {
+        Self::from_tabs(project, std::slice::from_ref(tab), model)
+    }
+
+    fn from_tabs(project: &Project, tabs: &[Tab], model: &AppModel) -> Self {
+        let repo = model
+            .git
+            .projects
+            .get(&project.id)
+            .filter(|_| !project.home);
         let summary = repo.and_then(|repo| repo.summary.as_ref());
         let pr = repo.and_then(|repo| repo.pull_request.as_ref());
         let snapshot = model
@@ -45,9 +58,7 @@ impl Data {
         // Session IDs are server-scoped. Resolve through this worktree's panes,
         // as the existing agents panel does, including mirrored sessions.
         let agent = snapshot.and_then(|snapshot| {
-            project
-                .tabs
-                .iter()
+            tabs.iter()
                 .flat_map(|tab| tab.panes.iter().map(move |pane| (tab, pane)))
                 .filter_map(|(tab, pane)| {
                     let PaneContent::Terminal {
@@ -68,12 +79,10 @@ impl Data {
                     _ => 2,
                 })
         });
-        let shown_pane = project
-            .tabs
+        let shown_pane = tabs
             .first()
             .and_then(|tab| tab.displayed_pane(model.state.shown_pane(tab)));
-        let shown = project
-            .tabs
+        let shown = tabs
             .first()
             .map(|tab| tab.title(model.state.shown_pane(tab)).trim());
         let browsing =
@@ -94,8 +103,10 @@ impl Data {
                     Some(title) => match idle_directory(title) {
                         Some(directory) => Headline::Shell {
                             shell: shell_name(),
-                            // The worktree's own folder goes without saying.
-                            directory: (directory != project.name).then_some(directory),
+                            // The worktree's own folder goes without saying, and
+                            // a standalone terminal's card names it below.
+                            directory: (!project.home && directory != project.name)
+                                .then_some(directory),
                         },
                         None => Headline::Command(title.to_owned()),
                     },
@@ -104,6 +115,7 @@ impl Data {
         let working = agent.is_some_and(|(agent, _, _)| agent.state == AgentState::Working);
         Self {
             headline,
+            directory: shown_pane.and_then(|pane| idle_directory(&pane.title)),
             // A branch named like its worktree adds nothing to the card.
             branch: summary
                 .and_then(|summary| summary.branch.clone())
@@ -135,7 +147,13 @@ fn idle_directory(title: &str) -> Option<String> {
     {
         return None;
     }
+    if directory.is_empty() {
+        return None;
+    }
     let directory = directory.trim_end_matches('/');
+    if directory.is_empty() {
+        return Some("/".to_owned());
+    }
     Some(match directory.rsplit_once('/') {
         Some((_, last)) if !last.is_empty() => last.to_owned(),
         _ => directory.to_owned(),
@@ -171,6 +189,8 @@ mod tests {
             Some("codesh")
         );
         assert_eq!(idle_directory("hugo@mini:~").as_deref(), Some("~"));
+        assert_eq!(idle_directory("hugo@mini:/").as_deref(), Some("/"));
+        assert_eq!(idle_directory("hugo@mini:"), None);
         assert_eq!(idle_directory("htop"), None);
         assert_eq!(idle_directory("ssh hugo@mini-pro: deploy"), None);
     }
