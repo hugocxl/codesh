@@ -1,0 +1,695 @@
+use super::{AppModel, Work};
+use crate::views::overlays::Overlay;
+use codesh_protocol::{
+    GitAction, GitBaseSwitch, GitBranch, GitFile, GitPullRequest, GitPullRequestAction, GitReply,
+    GitRequest, GitSummary, ProjectId, WorktreeAction, WorktreeIntent,
+};
+use codesh_ui::tr;
+use gpui::Context;
+use std::collections::{HashMap, VecDeque};
+
+#[derive(Default)]
+pub(crate) struct Repository {
+    pub(crate) summary: Option<GitSummary>,
+    pub(crate) branches: Vec<GitBranch>,
+    pub(crate) files: Vec<GitFile>,
+    pub(crate) pull_request: Option<GitPullRequest>,
+    pub(crate) error: Option<String>,
+    pub(crate) pending: bool,
+    /// The change Git is making now.
+    mutation: Option<GitAction>,
+    context: u64,
+    pub(super) queued: Option<(GitAction, u64)>,
+    pub(crate) loaded: bool,
+    reading: Option<GitAction>,
+    refresh: VecDeque<GitAction>,
+    read_loaded: [bool; 10],
+    read_errors: [Option<String>; 10],
+    /// The merged pull request number and base while the local base branch is updated.
+    post_merge: Option<(u64, String)>,
+    removal: Option<codesh_protocol::WorktreeRemoval>,
+    merge_removal: MergeRemoval,
+    removal_confirmation: Option<RemovalConfirmation>,
+}
+
+struct RemovalConfirmation {
+    expected: codesh_protocol::WorktreeRemoval,
+    hooks: Result<Vec<codesh_protocol::WorktreeHook>, String>,
+}
+
+/// Removing a worktree once its pull request merges.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum MergeRemoval {
+    #[default]
+    None,
+    /// The merge is running; removal follows if it succeeds.
+    Merging,
+    /// Removal is being prepared, so its confirmation shows even if the
+    /// interaction moved on.
+    Inspecting,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Presence {
+    Loading,
+    None,
+    Unavailable,
+    Found,
+}
+const PULL_REQUEST_SLOT: usize = 5;
+fn read_slot(action: &GitAction) -> Option<usize> {
+    match action {
+        GitAction::Summary => Some(0),
+        GitAction::Branches => Some(1),
+        GitAction::Changes => Some(2),
+        GitAction::Worktrees => Some(3),
+        GitAction::Watch => Some(4),
+        GitAction::WorktreeHooks { teardown } => Some(if *teardown { 7 } else { 6 }),
+        GitAction::PullRequest(GitPullRequestAction::Info) => Some(PULL_REQUEST_SLOT),
+        GitAction::Status { .. } => Some(8),
+        GitAction::Diff(_) => Some(9),
+        _ => None,
+    }
+}
+impl Repository {
+    pub(crate) fn has_loaded(&self, action: &GitAction) -> bool {
+        read_slot(action).is_some_and(|slot| self.read_loaded[slot])
+    }
+    /// Git answered, and the folder is not a repository.
+    pub(crate) fn not_a_repository(&self) -> bool {
+        self.loaded && self.summary.is_none() && self.load_error(&GitAction::Summary).is_none()
+    }
+
+    pub(crate) fn load_error(&self, action: &GitAction) -> Option<&String> {
+        self.error
+            .as_ref()
+            .or_else(|| read_slot(action).and_then(|slot| self.read_errors[slot].as_ref()))
+    }
+    pub(super) fn disconnect(&mut self) {
+        self.pending = false;
+        self.mutation = None;
+        self.queued = None;
+        self.reading = None;
+        self.refresh.clear();
+        self.post_merge = None;
+        self.removal = None;
+        self.merge_removal = MergeRemoval::None;
+        self.removal_confirmation = None;
+    }
+
+    pub(crate) fn busy(&self) -> bool {
+        self.mutation.is_some() || self.queued.is_some()
+    }
+
+    /// The change Git is making, or the one waiting for a read to finish.
+    pub(crate) fn mutation(&self) -> Option<&GitAction> {
+        self.mutation
+            .as_ref()
+            .or(self.queued.as_ref().map(|(action, _)| action))
+    }
+
+    pub(crate) fn pull_request_presence(&self) -> Presence {
+        if !self.read_loaded[PULL_REQUEST_SLOT] {
+            Presence::Loading
+        } else if self.pull_request.is_some() {
+            Presence::Found
+        } else if self.read_errors[PULL_REQUEST_SLOT].is_some() {
+            Presence::Unavailable
+        } else {
+            Presence::None
+        }
+    }
+}
+#[derive(Default)]
+pub(crate) struct GitState {
+    pub(crate) branch_anchor: codesh_ui::popover::PopoverAnchor,
+    pub(crate) changes_anchor: codesh_ui::popover::PopoverAnchor,
+    pub(crate) pull_request_anchor: codesh_ui::popover::PopoverAnchor,
+    pub(crate) projects: HashMap<ProjectId, Repository>,
+    current: Option<ProjectId>,
+    /// A new worktree to select once its server's catalog lists it.
+    pub(crate) select_after_catalog: Option<(codesh_app_core::ServerId, ProjectId, u64)>,
+    pub(crate) interaction: u64,
+    pub(super) worktrees: super::worktrees::WorktreeSync,
+    pub(super) creations: Vec<super::worktrees::Creation>,
+}
+impl GitState {
+    pub(super) fn reset_context(&mut self) {
+        self.current = None;
+    }
+}
+impl AppModel {
+    fn queue_worktree_removal_confirmation(
+        &mut self,
+        project: ProjectId,
+        expected: codesh_protocol::WorktreeRemoval,
+        hooks: Result<Vec<codesh_protocol::WorktreeHook>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.git
+            .projects
+            .entry(project)
+            .or_default()
+            .removal_confirmation = Some(RemovalConfirmation { expected, hooks });
+        self.resume_worktree_removal_confirmation(cx);
+    }
+
+    pub(crate) fn resume_worktree_removal_confirmation(&mut self, cx: &mut Context<Self>) {
+        if self.close_prompt.is_some() || self.quitting != super::Quitting::Idle {
+            return;
+        }
+        while let Some((project, confirmation)) =
+            self.git
+                .projects
+                .iter_mut()
+                .find_map(|(project, repository)| {
+                    repository
+                        .removal_confirmation
+                        .take()
+                        .map(|confirmation| (*project, confirmation))
+                })
+        {
+            let Some(server) = self.state.project_server(project) else {
+                continue;
+            };
+            if !self.ready(server) {
+                continue;
+            }
+            self.confirm_worktree_removal(project, confirmation.expected, confirmation.hooks, cx);
+            cx.notify();
+            return;
+        }
+    }
+
+    pub(super) fn git_invalidated(&mut self, project: ProjectId, cx: &mut Context<Self>) {
+        if self.git.current != Some(project) || !self.session_listing_ready() {
+            return;
+        }
+        let mut actions = vec![GitAction::Summary];
+        if let Some(Overlay::Git(picker)) = &self.overlay
+            && picker.project == project
+        {
+            actions.push(picker.kind.action());
+        }
+        self.queue_git_refresh(project, actions, cx);
+        self.resync_worktrees(project, cx);
+    }
+
+    /// Sends `action`, or queues it behind the running read. Returns whether
+    /// it will run.
+    pub(crate) fn git_request(
+        &mut self,
+        project: ProjectId,
+        action: GitAction,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.request_git_context(project, action, self.git.interaction, cx)
+    }
+
+    fn request_git_context(
+        &mut self,
+        project: ProjectId,
+        action: GitAction,
+        context: u64,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let server = self.project_server_or_local(project);
+        if !self.ready(server) {
+            return false;
+        }
+        if read_slot(&action).is_none() && self.ai.running(project) {
+            self.fail(
+                tr!("Wait for the AI repository action to finish").to_string(),
+                cx,
+            );
+            return false;
+        }
+        if action == GitAction::Watch && self.git.current != Some(project) {
+            self.dispatch_git_refresh(project, cx);
+            return false;
+        }
+        let read = read_slot(&action).is_some();
+        if let Some(repository) = self.git.projects.get_mut(&project).filter(|r| r.pending) {
+            if read {
+                if repository.reading.as_ref() != Some(&action)
+                    && !repository.refresh.contains(&action)
+                {
+                    repository.refresh.push_back(action);
+                }
+            } else if repository.mutation.is_none() && repository.queued.is_none() {
+                repository.queued = Some((action, context));
+                self.update_git_picker(cx);
+                cx.notify();
+            } else {
+                self.fail(tr!("A Git action is already pending").to_string(), cx);
+                return false;
+            }
+            return true;
+        }
+        let request = GitRequest {
+            project,
+            action: action.clone(),
+        };
+        let sent = self.send(server, Work::Git(request), cx);
+        if sent {
+            let repository = self.git.projects.entry(project).or_default();
+            repository.pending = true;
+            repository.mutation = (!read).then(|| action.clone());
+            repository.context = context;
+            repository.reading = read.then_some(action.clone());
+            if let Some(slot) = read_slot(&action) {
+                repository.read_errors[slot] = None;
+            } else {
+                repository.error = None;
+            }
+        }
+        self.update_git_picker(cx);
+        cx.notify();
+        sent
+    }
+    /// Merges a worktree's pull request, then asks to remove the worktree.
+    pub(crate) fn merge_and_remove_worktree(
+        &mut self,
+        project: ProjectId,
+        merge: GitPullRequestAction,
+        cx: &mut Context<Self>,
+    ) {
+        if self.git_request(project, GitAction::PullRequest(merge), cx)
+            && let Some(repository) = self.git.projects.get_mut(&project)
+        {
+            repository.merge_removal = MergeRemoval::Merging;
+        }
+    }
+
+    pub(super) fn sync_git(&mut self, cx: &mut Context<Self>) {
+        let current = self.state.current_project().id;
+        if self
+            .ai
+            .confirmation
+            .as_ref()
+            .is_some_and(|pending| pending.project != current)
+        {
+            self.ai.confirmation = None;
+        }
+        if self.state.project_creation_pending(current) {
+            return;
+        }
+        if self.git.current != Some(current) {
+            self.git.current = Some(current);
+            self.git.interaction = self.git.interaction.wrapping_add(1);
+            if matches!(
+                self.overlay,
+                Some(
+                    Overlay::Git(_)
+                        | Overlay::GitForm(_)
+                        | Overlay::PullRequest(_)
+                        | Overlay::AiProvider(_)
+                )
+            ) {
+                self.dismiss_overlay(cx);
+            }
+            self.queue_git_refresh(
+                current,
+                vec![
+                    GitAction::Watch,
+                    GitAction::Summary,
+                    GitAction::Branches,
+                    GitAction::PullRequest(GitPullRequestAction::Info),
+                ],
+                cx,
+            );
+            self.sync_worktrees(current, cx);
+        }
+    }
+    pub(crate) fn refresh_git(&mut self, cx: &mut Context<Self>) {
+        let current = self.state.current_project().id;
+        let mut actions = vec![GitAction::Watch, GitAction::Summary];
+        if self
+            .git
+            .projects
+            .get(&current)
+            .is_some_and(|r| r.summary.is_some())
+        {
+            actions.push(GitAction::Branches);
+        }
+        actions.push(GitAction::PullRequest(GitPullRequestAction::Info));
+        if let Some(Overlay::Git(picker)) = &self.overlay {
+            if picker.project == current {
+                actions.push(picker.kind.action());
+            } else {
+                self.queue_git_refresh(
+                    picker.project,
+                    vec![GitAction::Summary, picker.kind.action()],
+                    cx,
+                );
+            }
+        }
+        self.queue_git_refresh(current, actions, cx);
+    }
+
+    pub(crate) fn queue_git_refresh(
+        &mut self,
+        project: ProjectId,
+        actions: Vec<GitAction>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.session_listing_ready() || self.state.project_creation_pending(project) {
+            return;
+        }
+        let repository = self.git.projects.entry(project).or_default();
+        for action in actions {
+            if !repository.refresh.contains(&action) {
+                repository.refresh.push_back(action);
+            }
+        }
+        self.dispatch_git_refresh(project, cx);
+    }
+
+    fn dispatch_git_refresh(&mut self, project: ProjectId, cx: &mut Context<Self>) {
+        let Some(repository) = self.git.projects.get_mut(&project).filter(|r| !r.pending) else {
+            return;
+        };
+        if let Some((action, context)) = repository.queued.take() {
+            self.request_git_context(project, action, context, cx);
+        } else if let Some(action) = repository.refresh.pop_front() {
+            self.git_request(project, action, cx);
+        }
+    }
+    #[allow(
+        clippy::too_many_lines,
+        reason = "Handle all Git reply variants in one place"
+    )]
+    pub(super) fn receive_git(
+        &mut self,
+        request: &GitRequest,
+        result: Result<GitReply, codesh_client::ClientError>,
+        cx: &mut Context<Self>,
+    ) {
+        self.native_git_reply(request, &result, cx);
+        let creation = self.take_creation(request);
+        let repository = self.git.projects.entry(request.project).or_default();
+        repository.pending = false;
+        repository.mutation = None;
+        repository.reading = None;
+        if let Some(slot) = read_slot(&request.action) {
+            repository.read_loaded[slot] = true;
+            if result.is_ok() && request.action != GitAction::Watch {
+                repository.error = None;
+            }
+        }
+        let context_matches = repository.context == self.git.interaction;
+        let removing_after_merge = repository.merge_removal == MergeRemoval::Inspecting;
+        let setup_error = match &result {
+            Ok(GitReply::WorktreeSetupFailed { message, .. }) => Some(message.clone()),
+            _ => None,
+        };
+        match result {
+            Ok(GitReply::Summary(summary)) => {
+                let head_changed = repository.summary.as_ref().map(|s| (&s.branch, &s.head))
+                    != summary.as_ref().map(|s| (&s.branch, &s.head));
+                repository.summary = summary;
+                repository.loaded = true;
+                if repository.summary.is_none() {
+                    repository.pull_request = None;
+                    repository.read_loaded[PULL_REQUEST_SLOT] = false;
+                    repository.refresh.retain(|action| {
+                        !matches!(
+                            action,
+                            GitAction::Branches
+                                | GitAction::Changes
+                                | GitAction::PullRequest(GitPullRequestAction::Info)
+                        )
+                    });
+                } else if head_changed
+                    && request.project == self.state.current_project().id
+                    && !repository.refresh.contains(&GitAction::Branches)
+                {
+                    repository.refresh.push_back(GitAction::Branches);
+                }
+                if head_changed && repository.summary.is_some() {
+                    repository.pull_request = None;
+                    repository.read_loaded[PULL_REQUEST_SLOT] = false;
+                    if !repository
+                        .refresh
+                        .contains(&GitAction::PullRequest(GitPullRequestAction::Info))
+                    {
+                        repository
+                            .refresh
+                            .push_back(GitAction::PullRequest(GitPullRequestAction::Info));
+                    }
+                }
+            }
+            Ok(GitReply::Branches(branches)) => {
+                repository.branches = branches;
+                if context_matches {
+                    self.update_worktree_default(request.project, cx);
+                }
+            }
+            Ok(GitReply::Changes(files)) => repository.files = files,
+            Ok(GitReply::PullRequest(pr)) => repository.pull_request = pr.map(|pr| *pr),
+            Ok(GitReply::Removal(expected)) if context_matches || removing_after_merge => {
+                repository.removal = Some(expected);
+                self.git_request(
+                    request.project,
+                    GitAction::WorktreeHooks { teardown: true },
+                    cx,
+                );
+            }
+            Ok(GitReply::WorktreeHooks(hooks))
+                if request.action == (GitAction::WorktreeHooks { teardown: true })
+                    && (context_matches || removing_after_merge) =>
+            {
+                repository.merge_removal = MergeRemoval::None;
+                if let Some(expected) = repository.removal.take() {
+                    self.queue_worktree_removal_confirmation(
+                        request.project,
+                        expected,
+                        Ok(hooks),
+                        cx,
+                    );
+                }
+            }
+            Ok(GitReply::WorktreeHooks(hooks)) if context_matches => {
+                self.receive_worktree_hooks(request.project, Ok(hooks), cx);
+            }
+            Ok(GitReply::Project(project) | GitReply::WorktreeSetupFailed { project, .. }) => {
+                if let Some(creation) = creation {
+                    self.worktree_created(creation, project.id, cx);
+                }
+                self.refresh_catalog(self.project_server_or_local(request.project), cx);
+            }
+            Ok(GitReply::Done) if request.action == GitAction::Watch => (),
+            Ok(GitReply::Done) => {
+                let active = request.project == self.state.current_project().id;
+                let merged = match &request.action {
+                    GitAction::PullRequest(GitPullRequestAction::Merge { number, .. }) => {
+                        Some(*number)
+                    }
+                    _ => None,
+                };
+                let remove = merged.is_some()
+                    && std::mem::take(&mut repository.merge_removal) == MergeRemoval::Merging;
+                let follow_up = merged.filter(|_| active && !remove).and_then(|number| {
+                    repository
+                        .pull_request
+                        .as_ref()
+                        .filter(|pr| pr.number == number)
+                        .map(|pr| (number, pr.base_branch.clone()))
+                });
+                repository.post_merge.clone_from(&follow_up);
+                let notice =
+                    if active {
+                        match &request.action {
+                            GitAction::PullRequest(GitPullRequestAction::Merge {
+                                number, ..
+                            }) if follow_up.is_none() => Some(tr!("Merged PR #%lld", *number)),
+                            GitAction::PullRequest(GitPullRequestAction::Close { number }) => {
+                                Some(tr!("Closed PR #%lld", *number))
+                            }
+                            GitAction::PullRequest(GitPullRequestAction::UpdateBranch {
+                                number,
+                                ..
+                            }) => Some(tr!("Updated branch for PR #%lld", *number)),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                if let Some(notice) = notice {
+                    self.show_notice(notice.to_string(), cx);
+                }
+                if context_matches && matches!(self.overlay, Some(Overlay::GitForm(_))) {
+                    self.dismiss_overlay(cx);
+                }
+                if matches!(request.action, GitAction::Worktree(_)) {
+                    if context_matches {
+                        self.dismiss_overlay(cx);
+                    }
+                    self.refresh_catalog(self.project_server_or_local(request.project), cx);
+                }
+                if remove
+                    && self.git_request(request.project, GitAction::InspectRemoval, cx)
+                    && let Some(repository) = self.git.projects.get_mut(&request.project)
+                {
+                    repository.merge_removal = MergeRemoval::Inspecting;
+                }
+                if let Some((_, base)) = follow_up {
+                    self.git_request(request.project, GitAction::SwitchToBase(base), cx);
+                } else {
+                    let mut actions = vec![GitAction::Summary];
+                    if matches!(request.action, GitAction::PullRequest(_)) {
+                        actions.push(GitAction::PullRequest(GitPullRequestAction::Info));
+                    }
+                    if let Some(Overlay::Git(picker)) = &self.overlay
+                        && picker.project == request.project
+                    {
+                        actions.push(picker.kind.action());
+                    }
+                    self.queue_git_refresh(request.project, actions, cx);
+                }
+            }
+            Ok(GitReply::BaseSwitch(result)) => {
+                let merged = repository.post_merge.take();
+                if let Some((number, base)) = merged
+                    && request.project == self.state.current_project().id
+                {
+                    let detail = match result {
+                        GitBaseSwitch::Updated => {
+                            tr!("Switched to %@ and brought it up to date.", &base)
+                        }
+                        GitBaseSwitch::CheckedOutElsewhere(_) => tr!(
+                            "%@ is checked out in another worktree, so this one stays on its branch.",
+                            &base
+                        ),
+                    };
+                    self.show_toast(
+                        tr!("Merged PR #%lld into %@", number, &base).to_string(),
+                        Some(detail.to_string()),
+                        cx,
+                    );
+                }
+                self.queue_git_refresh(
+                    request.project,
+                    vec![
+                        GitAction::Summary,
+                        GitAction::Branches,
+                        GitAction::PullRequest(GitPullRequestAction::Info),
+                    ],
+                    cx,
+                );
+            }
+            Ok(_) => (),
+            Err(error) => {
+                if matches!(
+                    request.action,
+                    GitAction::PullRequest(GitPullRequestAction::Merge { .. })
+                        | GitAction::InspectRemoval
+                        | GitAction::WorktreeHooks { teardown: true }
+                ) {
+                    repository.merge_removal = MergeRemoval::None;
+                }
+                if let Some(slot) = read_slot(&request.action) {
+                    repository.read_errors[slot] = Some(error.to_string());
+                    if matches!(request.action, GitAction::Summary) {
+                        repository.summary = None;
+                        repository.loaded = true;
+                    } else if matches!(
+                        request.action,
+                        GitAction::PullRequest(GitPullRequestAction::Info)
+                    ) {
+                        repository.pull_request = None;
+                    }
+                    if (context_matches || removing_after_merge)
+                        && let GitAction::WorktreeHooks { teardown } = request.action
+                    {
+                        if teardown {
+                            if let Some(expected) = repository.removal.take() {
+                                self.queue_worktree_removal_confirmation(
+                                    request.project,
+                                    expected,
+                                    Err(error.to_string()),
+                                    cx,
+                                );
+                            }
+                        } else {
+                            self.receive_worktree_hooks(
+                                request.project,
+                                Err(error.to_string()),
+                                cx,
+                            );
+                        }
+                    }
+                } else {
+                    let failed = match &request.action {
+                        GitAction::SwitchToBase(base) => {
+                            repository.post_merge.take().map(|(number, _)| {
+                                tr!("Merged PR #%lld, but couldn't update %@", number, base)
+                                    .to_string()
+                            })
+                        }
+                        GitAction::PullRequest(GitPullRequestAction::Merge { number, .. }) => {
+                            Some(tr!("Couldn't merge PR #%lld", *number).to_string())
+                        }
+                        GitAction::PullRequest(GitPullRequestAction::Close { number }) => {
+                            Some(tr!("Couldn't close PR #%lld", *number).to_string())
+                        }
+                        GitAction::PullRequest(GitPullRequestAction::UpdateBranch {
+                            number,
+                            ..
+                        }) => Some(tr!("Couldn't update PR #%lld", *number).to_string()),
+                        GitAction::InspectRemoval if removing_after_merge => {
+                            Some(tr!("Merged, but couldn't remove the worktree").to_string())
+                        }
+                        GitAction::Worktree(WorktreeIntent {
+                            action: WorktreeAction::Create { .. },
+                            ..
+                        }) => Some(tr!("Couldn't create worktree").to_string()),
+                        GitAction::Worktree(WorktreeIntent {
+                            action: WorktreeAction::Remove { .. },
+                            ..
+                        }) => Some(tr!("Couldn't remove worktree").to_string()),
+                        _ => None,
+                    };
+                    repository.error = Some(failed.clone().unwrap_or_else(|| error.to_string()));
+                    // Worktree work goes on while you move elsewhere, so its
+                    // failures are always shown.
+                    let shown = request.project == self.state.current_project().id
+                        || matches!(
+                            request.action,
+                            GitAction::Worktree(_) | GitAction::InspectRemoval
+                        ) && failed.is_some();
+                    match failed {
+                        Some(title) if shown => self.fail_detail(title, &error.to_string(), cx),
+                        None if context_matches => self.fail(error.to_string(), cx),
+                        _ => (),
+                    }
+                    let mut actions = vec![GitAction::Summary];
+                    if matches!(
+                        request.action,
+                        GitAction::SwitchToBase(_) | GitAction::PullRequest(_)
+                    ) {
+                        actions.push(GitAction::Branches);
+                        actions.push(GitAction::PullRequest(GitPullRequestAction::Info));
+                    }
+                    if let Some(Overlay::Git(picker)) = &self.overlay
+                        && picker.project == request.project
+                    {
+                        actions.push(picker.kind.action());
+                    }
+                    self.queue_git_refresh(request.project, actions, cx);
+                }
+            }
+        }
+        if let Some(message) = setup_error {
+            self.fail_detail(
+                tr!("Worktree created, but setup failed").to_string(),
+                &message,
+                cx,
+            );
+        }
+        self.dispatch_git_refresh(request.project, cx);
+        self.update_git_picker(cx);
+        if matches!(request.action, GitAction::Summary) {}
+        cx.notify();
+    }
+}

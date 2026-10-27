@@ -1,0 +1,1010 @@
+//! Remote servers: other computers' servers, which the sidebar's Remote
+//! section adds, edits, tests, and forgets. Their entries live in
+//! `settings.toml`; passwords are only ever in memory.
+
+use codesh_app_core::ServerId;
+use codesh_app_core::settings::ServerEntry;
+use codesh_client::SshTarget;
+use codesh_ui::l10n::tr_key;
+use codesh_ui::tr;
+use gpui::{AnyWindowHandle, Context};
+
+use super::{AppModel, ConnectionState, Quitting, ServerStatus};
+
+/// One remote server as the Remote section lists it.
+#[derive(Clone, Debug)]
+pub(crate) struct RemoteServer {
+    pub(crate) entry: ServerEntry,
+    /// It logs in with a password that hasn't been typed this session.
+    pub(crate) needs_password: bool,
+    pub(crate) status: ServerStatus,
+    /// Why it isn't connected, when it failed.
+    pub(crate) error: Option<String>,
+    /// Codesh isn't installed there.
+    pub(crate) missing: bool,
+    /// Codesh there can't talk to this app.
+    pub(crate) incompatible: bool,
+    pub(crate) install: Option<Install>,
+}
+
+/// What waits for a remote server to be ready, if that happens soon after the
+/// user asked.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PendingRemote {
+    pub(crate) server: ServerId,
+    pub(crate) intent: RemoteIntent,
+    pub(crate) asked: std::time::Instant,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RemoteIntent {
+    /// Add Project opens its folder picker.
+    AddProject,
+    /// A terminal tab opens in its Home.
+    HomeTab,
+}
+
+impl PendingRemote {
+    pub(crate) fn new(server: ServerId, intent: RemoteIntent) -> Self {
+        Self {
+            server,
+            intent,
+            asked: std::time::Instant::now(),
+        }
+    }
+}
+
+/// Installing Codesh on a remote server.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Install {
+    Running,
+    Failed(String),
+}
+
+/// This app's version when it is a published release, which remote servers
+/// can install. Local builds have none.
+pub(crate) fn released_version() -> Option<&'static str> {
+    let version = env!("CARGO_PKG_VERSION");
+    (!cfg!(debug_assertions) && codesh_core::release::Version::parse(version).is_some())
+        .then_some(version)
+}
+
+/// Runs this release's installer there, which downloads it from GitHub,
+/// checks it, and puts `codesh` and `codesh-server` in `~/.local/bin`.
+pub(super) fn install_command(version: &str) -> String {
+    crate::remote_install::Source::Release(version.into()).command()
+}
+
+/// The command that replaces Codesh on another computer with this release.
+pub(crate) fn update_command(version: &str) -> String {
+    format!(
+        "curl -fsSL {}/v{version}/install-codesh.sh | sh -s -- --version {version} --replace",
+        crate::updater::RELEASES
+    )
+}
+
+/// Prints the version of Codesh installed there, found as the bridge finds it.
+const VERSION_COMMAND: &str =
+    "sh -c 'export PATH=\"$PATH:$HOME/.local/bin\"; exec codesh --version'";
+
+/// Why Codesh on another computer can't talk to this app, and how to fix it.
+/// `there` is the version installed there, when it could be read. When it is
+/// this app's own, the server still running there is an older one.
+pub(crate) fn incompatible_guidance(name: &str, there: Option<&str>) -> String {
+    let here = env!("CARGO_PKG_VERSION");
+    if there == Some(here) {
+        return tr!(
+            "Codesh on %@ is %@, but its running server is another version. Restart it there, which ends its terminals: pkill -x codesh-server",
+            name,
+            here
+        )
+        .to_string();
+    }
+    let there = there.map_or_else(
+        || tr!("Codesh on %@ is another version", name),
+        |version| tr!("Codesh on %@ is %@", name, version),
+    );
+    let protocol = codesh_protocol::CURRENT.0;
+    let fix = released_version().map_or_else(
+        || tr!("Install a matching build there by hand, from scripts/build-linux-dev.sh."),
+        |version| tr!("Update Codesh on %@: %@", name, update_command(version)),
+    );
+    tr!(
+        "%@; this app needs a version that speaks protocol V%lld, like %@. %@",
+        &there,
+        protocol,
+        here,
+        &fix
+    )
+    .to_string()
+}
+
+/// What the server form submits.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct DeviceForm {
+    pub(crate) name: String,
+    /// A host or `~/.ssh/config` alias, or a whole destination when the user
+    /// and port fields are empty.
+    pub(crate) host: String,
+    pub(crate) ssh_command: Option<String>,
+    pub(crate) user: String,
+    pub(crate) port: String,
+    pub(crate) identity_file: String,
+    pub(crate) password_login: bool,
+    /// Kept in memory until Codesh quits, so connecting doesn't ask; empty
+    /// asks when connecting.
+    pub(crate) password: String,
+    /// Empty leaves it ungrouped.
+    pub(crate) group: String,
+}
+
+impl DeviceForm {
+    pub(crate) fn destination(&self) -> Result<String, String> {
+        match &self.ssh_command {
+            Some(command) => Ok(command.trim().to_owned()),
+            None => join_destination(&self.host, &self.user, &self.port),
+        }
+    }
+
+    pub(crate) fn probe_key(&self) -> String {
+        self.destination()
+            .unwrap_or_else(|_| self.host.trim().to_owned())
+    }
+
+    /// The settings entry for this form: the device `id`, or a new one.
+    fn entry(&self, id: Option<ServerId>) -> Result<ServerEntry, String> {
+        let destination = self.destination()?;
+        let name = match self.name.trim() {
+            "" => destination.clone(),
+            name => name.to_owned(),
+        };
+        let mut entry = ServerEntry::new(name, String::new());
+        if self.ssh_command.is_some() {
+            entry.ssh_command = Some(destination);
+        } else {
+            entry.ssh = destination;
+            entry.identity_file =
+                Some(self.identity_file.trim().to_owned()).filter(|path| !path.is_empty());
+            entry.password_login = self.password_login;
+        }
+        if let Some(id) = id {
+            entry.id = id;
+        }
+        entry.group = group_name(&self.group);
+        entry.validate().map_err(|error| error.to_string())?;
+        Ok(entry)
+    }
+}
+
+/// Servers under their groups, in the listed order, then the ungrouped.
+pub(crate) fn by_group<'a, T>(
+    servers: &'a [T],
+    entry: impl Fn(&'a T) -> &'a ServerEntry,
+) -> Vec<(Option<&'a str>, Vec<&'a T>)> {
+    let mut groups: Vec<(Option<&str>, Vec<&T>)> = Vec::new();
+    for server in servers {
+        let group = entry(server).group.as_deref();
+        match groups.iter_mut().find(|(name, _)| *name == group) {
+            Some((_, members)) => members.push(server),
+            None => groups.push((group, vec![server])),
+        }
+    }
+    groups.sort_by_key(|(group, _)| group.is_none());
+    groups
+}
+
+/// A typed group name, or none when it is blank.
+fn group_name(typed: &str) -> Option<String> {
+    Some(typed.trim().to_owned()).filter(|group| !group.is_empty())
+}
+
+/// An SSH destination from the editor's host, user, and port. With no user
+/// and port, the host may itself be `user@host` or `ssh://user@host:port`.
+pub(crate) fn join_destination(host: &str, user: &str, port: &str) -> Result<String, String> {
+    let (host, user, port) = (host.trim(), user.trim(), port.trim());
+    let invalid =
+        || tr!("Enter an SSH host: a ~/.ssh/config alias, a host name, or an address").to_string();
+    let destination = if user.is_empty() && port.is_empty() {
+        host.to_owned()
+    } else {
+        if host.contains('@') || host.starts_with("ssh://") {
+            return Err(
+                tr!("Put the user and port either in the host or in their own fields").to_string(),
+            );
+        }
+        if user.contains('@') || user.contains(':') {
+            return Err(tr!("Enter a user name without @ or :").to_string());
+        }
+        let login = if user.is_empty() {
+            host.to_owned()
+        } else {
+            format!("{user}@{host}")
+        };
+        if port.is_empty() {
+            login
+        } else {
+            let port: u16 = port
+                .parse()
+                .ok()
+                .filter(|port| *port > 0)
+                .ok_or_else(|| tr!("Use a port from 1 to 65535").to_string())?;
+            let login = if host.contains(':') && !host.starts_with('[') {
+                login.replacen(host, &format!("[{host}]"), 1)
+            } else {
+                login
+            };
+            format!("ssh://{login}:{port}")
+        }
+    };
+    SshTarget::new(&destination).map_err(|_| invalid())?;
+    Ok(destination)
+}
+
+/// The editor's host, user, and port for a destination.
+pub(crate) fn split_destination(destination: &str) -> (String, String, String) {
+    let Some(rest) = destination.strip_prefix("ssh://") else {
+        return match destination.split_once('@') {
+            Some((user, host)) => (host.into(), user.into(), String::new()),
+            None => (destination.into(), String::new(), String::new()),
+        };
+    };
+    let (user, address) = rest.rsplit_once('@').unwrap_or(("", rest));
+    let (host, port) = match address.rsplit_once(':') {
+        Some((host, port)) if port.parse::<u16>().is_ok() && !host.ends_with(':') => {
+            (host.trim_start_matches('[').trim_end_matches(']'), port)
+        }
+        _ => (address, ""),
+    };
+    (host.into(), user.into(), port.into())
+}
+
+/// A Test Connection in Settings.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ConnectionTest {
+    Testing,
+    UntrustedHost(String),
+    Installing,
+    NotInstalled(String),
+    InstallFailed(String),
+    /// It connected; this is the server's Codesh version.
+    Succeeded(String),
+    Failed(String),
+}
+
+impl AppModel {
+    pub(crate) fn remote_servers(&self) -> Vec<RemoteServer> {
+        self.settings
+            .servers
+            .iter()
+            .map(|entry| {
+                let runtime = self.servers.get(entry.id);
+                RemoteServer {
+                    entry: entry.clone(),
+                    needs_password: entry.password_login && !self.servers.passwords.has(entry.id),
+                    status: self.status_of(entry.id),
+                    error: runtime.and_then(|runtime| runtime.error.clone()),
+                    missing: runtime.is_some_and(|runtime| {
+                        runtime.failure == Some(codesh_client::RemoteReason::NotInstalled)
+                    }),
+                    incompatible: runtime.is_some_and(|runtime| {
+                        runtime.failure == Some(codesh_client::RemoteReason::Incompatible)
+                    }),
+                    install: runtime.and_then(|runtime| runtime.install.clone()),
+                }
+            })
+            .collect()
+    }
+
+    /// The last Test Connection, if it tried `destination`.
+    pub(crate) fn server_probe(&self, destination: &str) -> Option<&ConnectionTest> {
+        self.server_probe
+            .as_ref()
+            .filter(|(tried, _)| tried == destination.trim())
+            .map(|(_, probe)| probe)
+    }
+
+    /// Adds a remote server, or edits the one with `id`, and connects it. A
+    /// typed password stays in memory, never in `settings.toml`. It is kept
+    /// first: if it can't be, nothing is saved, so saving again can't add the
+    /// server twice.
+    pub(crate) fn save_remote_server(
+        &mut self,
+        id: Option<ServerId>,
+        form: &DeviceForm,
+        cx: &mut Context<Self>,
+    ) -> Result<ServerId, String> {
+        if self.quitting != Quitting::Idle {
+            return Err(tr!("Codesh is quitting").to_string());
+        }
+        if id.is_some_and(|id| self.settings.server(id).is_none()) {
+            return Err(tr!("This remote server is no longer listed").to_string());
+        }
+        let entry = form.entry(id)?;
+        let server = entry.id;
+        let password_login = entry.password_login;
+        if password_login && !form.password.is_empty() {
+            self.servers
+                .passwords
+                .set(server, form.password.clone())
+                .map_err(|error| error.to_string())?;
+        }
+        let path = self.path.with_file_name("settings.toml");
+        let result = if id.is_some() {
+            self.settings.update_server(entry, &path)
+        } else {
+            self.settings.add_server(entry, &path)
+        };
+        if let Err(error) = result {
+            if id.is_none() {
+                self.servers.passwords.forget(server);
+            }
+            return Err(error.to_string());
+        }
+        if !password_login {
+            self.servers.passwords.forget(server);
+        }
+        self.sync_servers(cx);
+        Ok(server)
+    }
+
+    /// Matches the running servers to the list in settings, which also takes
+    /// in hand edits made since launch. A new server, or one reached in a new
+    /// way, gets a worker and connects. One no longer listed stops, and its
+    /// projects stay hidden until it returns.
+    fn sync_servers(&mut self, cx: &mut Context<Self>) {
+        let listed = self.settings.servers.clone();
+        let unlisted: Vec<_> = self
+            .servers
+            .ids()
+            .into_iter()
+            .filter(|server| !server.is_local() && self.settings.server(*server).is_none())
+            .collect();
+        let hidden = !unlisted.is_empty();
+        for server in unlisted {
+            self.disconnect(server, cx);
+            self.servers.remove(server);
+        }
+        if hidden {
+            self.sync_visible(cx);
+        }
+        for entry in listed {
+            let target = self.servers.target(&entry).ok();
+            let Some(runtime) = self.servers.get(entry.id) else {
+                self.servers.restart(&entry);
+                self.connect_server(entry.id, cx);
+                continue;
+            };
+            if runtime.target == target {
+                continue;
+            }
+            self.disconnect(entry.id, cx);
+            self.servers.restart(&entry);
+            self.connect_server(entry.id, cx);
+        }
+        self.sync_preferences(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn connect_remote_server(&mut self, server: ServerId, cx: &mut Context<Self>) {
+        if server.is_local() {
+            return;
+        }
+        if self.servers.get(server).is_none() {
+            self.sync_servers(cx);
+        }
+        self.connect_server(server, cx);
+    }
+
+    /// Runs a Test Connection off the UI thread with what the form holds,
+    /// before it is saved. It starts that computer's server if needed, as
+    /// connecting would, and then hangs up. A typed password is answered
+    /// only while the test runs.
+    pub(crate) fn test_remote_server(
+        &mut self,
+        id: Option<ServerId>,
+        form: &DeviceForm,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_server_probe(id, form, None, None, cx);
+    }
+
+    pub(crate) fn trust_test_server(
+        &mut self,
+        id: Option<ServerId>,
+        form: &DeviceForm,
+        cx: &mut Context<Self>,
+    ) {
+        let Ok(destination) = form.destination() else {
+            return;
+        };
+        let Some(ConnectionTest::UntrustedHost(prompt)) = self.server_probe(&destination) else {
+            return;
+        };
+        self.run_server_probe(id, form, None, Some(prompt.clone()), cx);
+    }
+
+    pub(crate) fn clear_server_probe(&mut self) {
+        self.server_probe = None;
+        self.server_probe_generation = self.server_probe_generation.wrapping_add(1);
+    }
+
+    pub(crate) fn install_test_server(
+        &mut self,
+        id: Option<ServerId>,
+        form: &DeviceForm,
+        source: crate::remote_install::Source,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_server_probe(id, form, Some(source), None, cx);
+    }
+
+    fn run_server_probe(
+        &mut self,
+        id: Option<ServerId>,
+        form: &DeviceForm,
+        install: Option<crate::remote_install::Source>,
+        trusted_host: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_server_probe();
+        let generation = self.server_probe_generation;
+        let entry = match form.entry(id) {
+            Ok(entry) => entry,
+            Err(error) => {
+                let tried = form.probe_key();
+                self.server_probe = Some((tried, ConnectionTest::Failed(error)));
+                self.sync_preferences(cx);
+                return;
+            }
+        };
+        let destination = entry.destination().to_owned();
+        let target = match self.test_target(id, &entry, form, trusted_host) {
+            Ok(target) => target,
+            Err(error) => {
+                self.server_probe = Some((destination, ConnectionTest::Failed(error)));
+                self.sync_preferences(cx);
+                return;
+            }
+        };
+        let (target, once) = target;
+        let answers = self.servers.passwords.shared();
+        let pending = if install.is_some() {
+            ConnectionTest::Installing
+        } else {
+            ConnectionTest::Testing
+        };
+        self.server_probe = Some((destination.clone(), pending.clone()));
+        self.sync_preferences(cx);
+        let probe = self.servers.probe();
+        let run = self.servers.run();
+        let result = cx.background_executor().spawn(async move {
+            let installed = install.map_or(Ok(()), |source| {
+                run(&target, &source.command(), source.archive()).map(drop)
+            });
+            let result = match installed {
+                Err(error) => ConnectionTest::InstallFailed(error),
+                Ok(()) => match probe(&target) {
+                    Ok(version) => ConnectionTest::Succeeded(version),
+                    Err(crate::boot::ProbeFailure::NotInstalled(error)) => {
+                        ConnectionTest::NotInstalled(error)
+                    }
+                    Err(crate::boot::ProbeFailure::Other(error)) => ConnectionTest::Failed(error),
+                },
+            };
+            if let Some(once) = once
+                && let Some(prompt) = crate::askpass::Passwords::finish_test(&answers, &once)
+            {
+                return ConnectionTest::UntrustedHost(prompt);
+            }
+            result
+        });
+        cx.spawn(async move |model, cx| {
+            let result = result.await;
+            let _ = model.update(cx, |model, cx| {
+                if model.server_probe_generation == generation {
+                    model.server_probe = Some((destination, result));
+                    model.sync_preferences(cx);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// How a Test Connection reaches `entry`: with the typed password, else
+    /// the one typed this session, and the one-off token to forget after.
+    fn test_target(
+        &mut self,
+        id: Option<ServerId>,
+        entry: &ServerEntry,
+        form: &DeviceForm,
+        trusted_host: Option<String>,
+    ) -> Result<(SshTarget, Option<String>), String> {
+        let target = super::servers::ssh_target(entry, self.servers.proxy.as_ref())
+            .map_err(|error| error.to_string())?;
+        if target.is_custom_command() {
+            return Ok((target, None));
+        }
+        let target = target.with_host_key_prompt();
+        let (password, login) = if entry.password_login {
+            let password = if form.password.is_empty() {
+                id.and_then(|id| self.servers.passwords.password(id))
+            } else {
+                Some(form.password.clone())
+            }
+            .ok_or_else(|| tr!("Enter the password to test logging in with it.").to_string())?;
+            (
+                Some(password),
+                Some(target.login().map_err(|error| error.to_string())?),
+            )
+        } else {
+            (None, None)
+        };
+        let (token, askpass) = self
+            .servers
+            .passwords
+            .for_test(password, login, trusted_host)
+            .map_err(|error| error.to_string())?;
+        Ok((target.with_askpass(askpass), Some(token)))
+    }
+
+    /// Asks once, then forgets every server in `servers`.
+    pub(crate) fn confirm_forget_servers(
+        &mut self,
+        servers: Vec<ServerId>,
+        window: AnyWindowHandle,
+        cx: &mut Context<Self>,
+    ) {
+        let servers: Vec<_> = servers
+            .into_iter()
+            .filter(|server| self.server_name(*server).is_some())
+            .collect();
+        let name = match servers.as_slice() {
+            [] => return,
+            [server] => self.server_name(*server).map(str::to_owned),
+            _ => None,
+        };
+        if self.close_prompt.is_some() || self.quitting != Quitting::Idle {
+            return;
+        }
+        let count = servers.len();
+        self.close_prompt = Some(cx.spawn(async move |model, cx| {
+            let response = match name {
+                Some(name) => crate::views::confirm::prompt_forget_server(window, &name, cx).await,
+                None => crate::views::confirm::prompt_forget_servers(window, count, cx).await,
+            };
+            let _ = model.update(cx, |model, cx| {
+                model.finish_confirmation(cx);
+                let result = match response {
+                    Ok(true) => model.forget_remote_servers(&servers, cx),
+                    Ok(false) => Ok(()),
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = result {
+                    model.fail(error, cx);
+                }
+                cx.notify();
+            });
+        }));
+    }
+
+    /// Removes remote servers from settings in one write, and their projects
+    /// and layouts from this app. Nothing on those computers changes.
+    pub(crate) fn forget_remote_servers(
+        &mut self,
+        servers: &[ServerId],
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.quitting != Quitting::Idle {
+            return Err(tr!("Codesh is quitting").to_string());
+        }
+        let path = self.path.with_file_name("settings.toml");
+        self.settings
+            .remove_servers(servers, &path)
+            .map_err(|error| error.to_string())?;
+        for server in servers {
+            self.servers.passwords.forget(*server);
+        }
+        self.remote_selection
+            .retain(|selected| !servers.contains(selected));
+        self.sync_servers(cx);
+        let forgotten = self.edit_project(
+            |state| {
+                servers
+                    .iter()
+                    .try_for_each(|server| state.forget_server(*server))
+            },
+            cx,
+        );
+        if forgotten {
+            self.select_listed_project(cx);
+        }
+        Ok(())
+    }
+
+    /// Moves remote servers to the end of `group`, or of the ungrouped.
+    pub(crate) fn move_remote_servers(
+        &mut self,
+        servers: &[ServerId],
+        group: Option<&str>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.quitting != Quitting::Idle {
+            return Err(tr!("Codesh is quitting").to_string());
+        }
+        let group = group.and_then(group_name);
+        let listed = &self.settings.servers;
+        let before = listed
+            .iter()
+            .rposition(|entry| entry.group == group && !servers.contains(&entry.id))
+            .and_then(|last| {
+                listed[last + 1..]
+                    .iter()
+                    .find(|entry| !servers.contains(&entry.id))
+            })
+            .map(|entry| entry.id);
+        let path = self.path.with_file_name("settings.toml");
+        self.settings
+            .place_servers(servers, group.as_deref(), before, &path)
+            .map_err(|error| error.to_string())?;
+        self.sync_servers(cx);
+        Ok(())
+    }
+
+    /// Renames a group, or ungroups its servers, where they are listed.
+    pub(crate) fn regroup_remote_servers(
+        &mut self,
+        servers: &[ServerId],
+        group: Option<&str>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.quitting != Quitting::Idle {
+            return Err(tr!("Codesh is quitting").to_string());
+        }
+        let group = group.and_then(group_name);
+        let path = self.path.with_file_name("settings.toml");
+        self.settings
+            .set_servers_group(servers, group.as_deref(), &path)
+            .map_err(|error| error.to_string())?;
+        self.sync_servers(cx);
+        Ok(())
+    }
+
+    /// Asks, then deletes a group; its servers stay, ungrouped.
+    pub(crate) fn confirm_delete_server_group(
+        &mut self,
+        servers: Vec<ServerId>,
+        group: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let message = tr!("Delete “%@”? Its servers will not be removed.", group).to_string();
+        self.confirm(
+            tr_key!("Delete Group?"),
+            message,
+            tr_key!("Delete"),
+            cx,
+            move |model, cx| {
+                if let Err(error) = model.regroup_remote_servers(&servers, None, cx) {
+                    model.fail(error, cx);
+                }
+            },
+        );
+    }
+
+    /// Hangs up on the remote servers that are connected or connecting.
+    /// They stay disconnected, with their terminals running there, until
+    /// Connect or until one of their projects is opened.
+    pub(crate) fn disconnect_remote_servers(
+        &mut self,
+        servers: &[ServerId],
+        cx: &mut Context<Self>,
+    ) {
+        for &server in servers {
+            if server.is_local() || self.connection(server) == ConnectionState::Disconnected {
+                continue;
+            }
+            let Some(runtime) = self
+                .servers
+                .get_mut(server)
+                .filter(|runtime| !runtime.stopping)
+            else {
+                continue;
+            };
+            let Some(generation) = runtime.generation.checked_add(1) else {
+                continue;
+            };
+            runtime.generation = generation;
+            runtime.retry.hold();
+            runtime.error = None;
+            runtime.failure = None;
+            if let Some(worker) = &runtime.work {
+                let _ = worker.send((generation, super::Work::Disconnect));
+            }
+            if self
+                .pending_remote
+                .is_some_and(|pending| pending.server == server)
+            {
+                self.pending_remote = None;
+            }
+            self.disconnect(server, cx);
+        }
+        self.sync_preferences(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn confirm_install_server(
+        &mut self,
+        server: ServerId,
+        window: AnyWindowHandle,
+        cx: &mut Context<Self>,
+    ) {
+        let (Some(name), Some(version)) = (
+            self.server_name(server).map(str::to_owned),
+            released_version(),
+        ) else {
+            return;
+        };
+        if self.close_prompt.is_some() || self.quitting != Quitting::Idle {
+            return;
+        }
+        self.close_prompt = Some(cx.spawn(async move |model, cx| {
+            let source = crate::remote_install::Source::Release(version.into());
+            let response =
+                crate::views::confirm::prompt_install_server(window, &name, &source, cx).await;
+            let _ = model.update(cx, |model, cx| {
+                model.finish_confirmation(cx);
+                match response {
+                    Ok(true) => model.install_server(server, version, cx),
+                    Ok(false) => {}
+                    Err(error) => model.fail(error, cx),
+                }
+                cx.notify();
+            });
+        }));
+    }
+
+    /// Installs release `version` on a remote server over its SSH login,
+    /// then connects. It runs off the UI thread; downloading takes a while.
+    pub(crate) fn install_server(
+        &mut self,
+        server: ServerId,
+        version: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(runtime) = self.servers.get_mut(server) else {
+            return;
+        };
+        let Some(target) = runtime.target.clone() else {
+            return;
+        };
+        if runtime.install == Some(Install::Running) {
+            return;
+        }
+        runtime.install = Some(Install::Running);
+        self.sync_preferences(cx);
+        let run = self.servers.run();
+        let command = install_command(version);
+        let result = cx
+            .background_executor()
+            .spawn(async move { run(&target, &command, None).map(drop) });
+        cx.spawn(async move |model, cx| {
+            let result = result.await;
+            let _ = model.update(cx, |model, cx| {
+                let Some(runtime) = model.servers.get_mut(server) else {
+                    return;
+                };
+                match result {
+                    Ok(()) => {
+                        runtime.install = None;
+                        runtime.failure = None;
+                        runtime.error = None;
+                        model.connect_server(server, cx);
+                    }
+                    Err(error) => runtime.install = Some(Install::Failed(error)),
+                }
+                model.sync_preferences(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Explains a version mismatch on the server's own status, then reads
+    /// the version installed there to name it. The app never updates it.
+    pub(super) fn explain_incompatible(&mut self, server: ServerId, cx: &mut Context<Self>) {
+        let name = self.server_label(server);
+        let Some(runtime) = self.servers.get_mut(server) else {
+            return;
+        };
+        runtime.error = Some(incompatible_guidance(&name, None));
+        let Some(target) = runtime.target.clone() else {
+            return;
+        };
+        let generation = runtime.generation;
+        let run = self.servers.run();
+        let version = cx
+            .background_executor()
+            .spawn(async move { run(&target, VERSION_COMMAND, None) });
+        cx.spawn(async move |model, cx| {
+            let Ok(printed) = version.await else {
+                return;
+            };
+            let version = printed
+                .trim()
+                .trim_start_matches("codesh")
+                .trim()
+                .to_owned();
+            let _ = model.update(cx, |model, cx| {
+                let Some(runtime) = model.servers.get_mut(server) else {
+                    return;
+                };
+                if runtime.generation == generation
+                    && runtime.failure == Some(codesh_client::RemoteReason::Incompatible)
+                    && !version.is_empty()
+                {
+                    runtime.error = Some(incompatible_guidance(&name, Some(&version)));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Copies the command that updates Codesh on an incompatible server.
+    pub(crate) fn copy_update_command(&mut self, cx: &mut Context<Self>) {
+        if let Some(version) = released_version() {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(update_command(version)));
+            self.show_notice(tr!("Copied the update command").to_string(), cx);
+        }
+    }
+
+    /// Shows the Remote Servers tab, opening it in the current project when
+    /// it isn't open.
+    pub(crate) fn open_servers_tab(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
+        self.ensure_servers_search(cx);
+        let previous = self.state.clone();
+        let project = self.state.current_project().id;
+        if let Err(error) = self.state.show_servers_tab(project, &tr!("Remote Servers")) {
+            self.fail(error.to_string(), cx);
+            return;
+        }
+        if !self.save(cx) {
+            self.state = previous;
+            return;
+        }
+        self.dismiss_overlay(cx);
+        self.changed(cx);
+        self.focus_active(window, cx);
+        self.focus_requested = false;
+    }
+
+    /// Connects, or connects again: a fresh SSH login and server check.
+    pub(crate) fn reconnect_remote_server(&mut self, server: ServerId, cx: &mut Context<Self>) {
+        if self.connection(server) != ConnectionState::Disconnected {
+            self.disconnect(server, cx);
+        }
+        self.connect_remote_server(server, cx);
+    }
+
+    /// Connects, or connects again, each of `servers`. Only the first one
+    /// whose password isn't known yet asks for it.
+    pub(crate) fn reconnect_remote_servers(
+        &mut self,
+        servers: &[ServerId],
+        cx: &mut Context<Self>,
+    ) {
+        let (asking, ready): (Vec<_>, Vec<_>) = servers
+            .iter()
+            .copied()
+            .filter(|server| self.server_name(*server).is_some())
+            .partition(|server| {
+                self.settings
+                    .server(*server)
+                    .is_some_and(|entry| entry.password_login)
+                    && !self.servers.passwords.has(*server)
+            });
+        for server in ready.into_iter().chain(asking.into_iter().take(1)) {
+            self.reconnect_remote_server(server, cx);
+        }
+    }
+
+    /// Opens a terminal tab in another computer's Home. A server whose Home
+    /// isn't known yet connects first, asking for its password if needed, and
+    /// the tab opens once its catalog arrives.
+    pub(crate) fn new_remote_home_tab(&mut self, server: ServerId, cx: &mut Context<Self>) {
+        if self.server_name(server).is_none() {
+            return;
+        }
+        if let Some(home) = self.state.server_home(server).map(|home| home.id) {
+            self.pending_remote = None;
+            self.new_tab_in(home, cx);
+            return;
+        }
+        self.pending_remote = Some(PendingRemote::new(server, RemoteIntent::HomeTab));
+        self.connect_remote_server(server, cx);
+        cx.notify();
+    }
+
+    /// Does what waited for `server` to be ready. It is dropped once the user
+    /// moved on: something else is open, or the wait was long.
+    pub(crate) fn resume_remote(&mut self, server: ServerId, cx: &mut Context<Self>) {
+        const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
+        let Some(pending) = self
+            .pending_remote
+            .filter(|pending| pending.server == server)
+        else {
+            return;
+        };
+        if self.overlay.is_some() || pending.asked.elapsed() > PATIENCE {
+            self.pending_remote = None;
+            return;
+        }
+        match pending.intent {
+            RemoteIntent::AddProject => self.open_remote_project_picker(server, cx),
+            RemoteIntent::HomeTab if self.state.server_home(server).is_some() => {
+                self.new_remote_home_tab(server, cx);
+            }
+            RemoteIntent::HomeTab => {}
+        }
+    }
+
+    /// Keeps a typed password until Codesh quits, then connects with it.
+    pub(crate) fn remember_password(
+        &mut self,
+        server: ServerId,
+        password: String,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(pending) = &mut self.pending_remote
+            && pending.server == server
+        {
+            pending.asked = std::time::Instant::now();
+        }
+        match self.servers.passwords.set(server, password) {
+            Ok(()) => self.connect_remote_server(server, cx),
+            Err(error) => {
+                if let Some(runtime) = self.servers.get_mut(server) {
+                    runtime.error =
+                        Some(tr!("Could not take the password: %@", error.to_string()).to_string());
+                }
+                self.sync_preferences(cx);
+                cx.notify();
+            }
+        }
+    }
+
+    /// Whether a password prompt or form may open now.
+    pub(crate) fn accepts_prompts(&self) -> bool {
+        self.quitting == Quitting::Idle && self.close_prompt.is_none()
+    }
+
+    /// The server refused the last login, so its password was wrong.
+    pub(crate) fn server_failed_login(&self, server: ServerId) -> bool {
+        self.servers.get(server).is_some_and(|runtime| {
+            runtime.failure == Some(codesh_client::RemoteReason::AuthenticationFailed)
+        })
+    }
+
+    /// What the status bar and Settings show for a server.
+    pub(crate) fn status_of(&self, server: ServerId) -> ServerStatus {
+        if server.is_local() {
+            if self.updates.replacing() {
+                return ServerStatus::Restarting;
+            }
+            if self.server_preferences.control_busy {
+                return ServerStatus::Stopping;
+            }
+        } else if self
+            .servers
+            .get(server)
+            .is_some_and(|runtime| runtime.stopping)
+        {
+            return ServerStatus::Stopping;
+        }
+        match self.connection(server) {
+            ConnectionState::Ready => ServerStatus::Connected,
+            ConnectionState::Connecting => ServerStatus::Connecting,
+            ConnectionState::Disconnected => ServerStatus::Disconnected,
+        }
+    }
+}

@@ -1,0 +1,474 @@
+use super::*;
+use std::error::Error;
+use std::fs;
+use std::os::unix::net::UnixListener;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+use codesh_protocol::wire::{Decoder, Encoder};
+use codesh_protocol::{CONTROL, Message, ReplyBody, RequestBody, SUPPORTED};
+
+type TestResult = Result<(), Box<dyn Error + Send + Sync>>;
+
+/// An `ssh` for tests that plays the other computer: it prints the bridge's
+/// ready line and relays to `socket` with macOS's `nc`.
+pub(crate) fn fake_ssh(
+    directory: &std::path::Path,
+    socket: &std::path::Path,
+) -> std::io::Result<SshTarget> {
+    use std::os::unix::fs::PermissionsExt;
+    let program = directory.join("ssh");
+    fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\nprintf 'CODESH-STDIO/1\\n'\nexec /usr/bin/nc -U '{}'\n",
+            socket.display()
+        ),
+    )?;
+    fs::set_permissions(&program, fs::Permissions::from_mode(0o755))?;
+    Ok(SshTarget::new("box")?.with_program(program))
+}
+
+/// This computer's worker on `socket`, with the updates it sends.
+fn local_worker(socket: PathBuf) -> std::io::Result<(Worker, Updates)> {
+    let (sender, updates) = async_channel::unbounded();
+    Ok((
+        worker(ServerId::local(), Target::Local(socket), sender)?,
+        updates,
+    ))
+}
+
+#[test]
+fn blocked_client_request_does_not_block_input_or_acks_and_flush_waits() -> TestResult {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let directory = PathBuf::from(format!(
+        "/tmp/codesh-bridge-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir(&directory)?;
+    let socket = directory.join("server.sock");
+    let listener = UnixListener::bind(&socket)?;
+    let (progress, received) = mpsc::channel();
+    let (release, gate) = mpsc::channel();
+    let server = thread::spawn(move || fake_server(&listener, &progress, &gate));
+    let (work, updates) = local_worker(socket)?;
+    work.send((1, Work::Connect))?;
+    assert!(matches!(updates.recv_blocking()?.2, Update::ServerInfo(..)));
+    assert!(matches!(updates.recv_blocking()?.2, Update::Connected(_)));
+    let session = SessionId::from(std::num::NonZeroU64::MIN);
+    work.send((
+        1,
+        Work::ReadSaved {
+            pane: PaneId::new(),
+            session,
+        },
+    ))?;
+    received.recv_timeout(Duration::from_secs(2))?;
+    work.send((1, Work::Input(ChannelId(1), b"input".to_vec())))?;
+    work.send((
+        1,
+        Work::TerminalInput(ChannelId(1), codesh_protocol::TerminalInput::ClearScreen),
+    ))?;
+    work.send((1, Work::Ack(ChannelId(1), 17)))?;
+    work.send((1, Work::Flush))?;
+    let fast_path_completed = received.recv_timeout(Duration::from_secs(2));
+    let early_update = updates.try_recv();
+    release.send(())?;
+    fast_path_completed?;
+    assert!(
+        early_update.is_err(),
+        "flush must not overtake the blocked request"
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saved = false;
+    let mut flushed = false;
+    while !flushed && Instant::now() < deadline {
+        match updates.try_recv() {
+            Ok((_, 1, Update::Saved { .. })) => saved = true,
+            Ok((_, 1, Update::Flushed)) => {
+                assert!(saved);
+                flushed = true;
+            }
+            Ok(other) => return Err(format!("unexpected update: {other:?}").into()),
+            Err(_) => thread::sleep(Duration::from_millis(5)),
+        }
+    }
+    work.send((1, Work::Stop))?;
+    server.join().map_err(|_| "fake server panicked")??;
+    fs::remove_dir_all(directory)?;
+    assert!(flushed, "flush must finish after pending work completes");
+    Ok(())
+}
+
+fn fake_server(
+    listener: &UnixListener,
+    progress: &Sender<()>,
+    gate: &mpsc::Receiver<()>,
+) -> TestResult {
+    let (socket, _) = listener.accept()?;
+    socket.set_read_timeout(Some(Duration::from_secs(3)))?;
+    let mut decoder = Decoder::new(socket.try_clone()?);
+    let mut encoder = Encoder::new(socket);
+    assert!(matches!(decoder.next()?, (CONTROL, Message::Hello { .. })));
+    encoder.send(
+        CONTROL,
+        &Message::HelloReply {
+            versions: SUPPORTED.to_vec(),
+            server: codesh_protocol::ServerInfo::current(),
+            features: codesh_protocol::FEATURES.to_vec(),
+        },
+    )?;
+    identify_desktop(&mut decoder, &mut encoder)?;
+    let (
+        CONTROL,
+        Message::Request {
+            id,
+            body: RequestBody::ListSessions,
+        },
+    ) = decoder.next()?
+    else {
+        return Err("expected listing".into());
+    };
+    encoder.send(
+        CONTROL,
+        &Message::Reply {
+            id,
+            body: ReplyBody::Sessions(Vec::new()),
+        },
+    )?;
+    let (
+        CONTROL,
+        Message::Request {
+            id,
+            body: RequestBody::ReadSavedScreen(_),
+        },
+    ) = decoder.next()?
+    else {
+        return Err("expected saved request".into());
+    };
+    progress.send(())?;
+    assert_eq!(
+        decoder.next()?,
+        (ChannelId(1), Message::Input(b"input".to_vec()))
+    );
+    assert_eq!(
+        decoder.next()?,
+        (
+            ChannelId(1),
+            Message::TerminalInput(codesh_protocol::TerminalInput::ClearScreen)
+        )
+    );
+    assert_eq!(
+        decoder.next()?,
+        (
+            CONTROL,
+            Message::FrameAck {
+                channel: ChannelId(1),
+                seq: 17
+            }
+        )
+    );
+    progress.send(())?;
+    gate.recv_timeout(Duration::from_secs(3))?;
+    encoder.send(
+        CONTROL,
+        &Message::Reply {
+            id,
+            body: ReplyBody::Error(codesh_protocol::ErrorReply {
+                code: ErrorCode::SavedContentUnavailable,
+                message: "test record".into(),
+            }),
+        },
+    )?;
+    let _ = decoder.next();
+    Ok(())
+}
+
+#[test]
+fn attachment_completion_precedes_early_frames_and_disconnect_without_blocking_other_channels()
+-> TestResult {
+    let mut delivery = delivery::Delivery::default();
+    delivery.pending = 1;
+    let first = attachment_update(ChannelId(1))?;
+    assert!(matches!(
+        delivery.complete(Some(first)).as_slice(),
+        [Update::Attached { .. }]
+    ));
+    delivery.pending = 2;
+    let early = frame_event(ChannelId(2));
+    assert!(delivery.event(early.clone())?.is_empty());
+    assert!(delivery.event(ClientEvent::Disconnected)?.is_empty());
+    assert!(matches!(
+        delivery.event(frame_event(ChannelId(1)))?.as_slice(),
+        [Update::Event(ClientEvent::Frame {
+            channel: ChannelId(1),
+            ..
+        })]
+    ));
+    assert!(delivery.flush().is_empty());
+    let ready = delivery.complete(Some(attachment_update(ChannelId(2))?));
+    assert!(
+        matches!(ready.as_slice(), [Update::Attached { .. }, Update::Event(event)] if *event == early)
+    );
+    assert!(matches!(
+        delivery.complete(None).as_slice(),
+        [Update::Event(ClientEvent::Disconnected), Update::Flushed]
+    ));
+    Ok(())
+}
+
+#[test]
+fn exit_closes_known_panes_immediately_and_follows_its_pending_attachment() -> TestResult {
+    let mut delivery = delivery::Delivery::default();
+    delivery.pending = 2;
+    let session = SessionId::from(std::num::NonZeroU64::MIN);
+    let event = ClientEvent::SessionEnded {
+        session,
+        reason: codesh_protocol::ExitReason::Ended,
+    };
+    assert!(
+        matches!(delivery.event(event.clone())?.as_slice(), [Update::CloseSessionPanes(id)] if *id == session)
+    );
+    let updates = delivery.complete(Some(attachment_update(ChannelId(1))?));
+    assert!(
+        matches!(updates.as_slice(), [Update::Attached { .. }, Update::Event(ended)] if *ended == event)
+    );
+    assert_eq!(delivery.pending, 1);
+    assert!(delivery.complete(None).is_empty());
+    Ok(())
+}
+
+fn attachment_update(channel: ChannelId) -> Result<Update, Box<dyn Error + Send + Sync>> {
+    let snapshot = Message::samples()
+        .into_iter()
+        .find_map(|message| match message {
+            Message::Reply {
+                body: ReplyBody::Attached { snapshot, .. },
+                ..
+            } => Some(snapshot),
+            _ => None,
+        })
+        .ok_or("missing attachment sample")?;
+    Ok(Update::Attached {
+        pane: PaneId::new(),
+        session: SessionId::from(std::num::NonZeroU64::MIN),
+        attachment: Attachment {
+            channel,
+            server_input: false,
+            grid: codesh_client::RunGrid::from_snapshot(&snapshot),
+            title: snapshot.title,
+            directory: snapshot.directory,
+            process: None,
+        },
+        created: true,
+    })
+}
+
+fn frame_event(channel: ChannelId) -> ClientEvent {
+    ClientEvent::Frame {
+        channel,
+        frame: codesh_protocol::ScreenFrame {
+            size: Size { cols: 80, rows: 24 },
+            graphics: None,
+            seq: 1,
+            reset: false,
+            rows: Vec::new(),
+            cursor: codesh_protocol::Cursor {
+                shape: codesh_protocol::CursorShape::default(),
+                row: 0,
+                col: 0,
+                visible: true,
+            },
+            modes: codesh_protocol::Modes::default(),
+        },
+    }
+}
+
+#[test]
+fn a_full_event_buffer_preserves_the_only_disconnect_after_history_completion() -> TestResult {
+    let mut delivery = delivery::Delivery::default();
+    delivery.pending = 1;
+    for id in 1..=1024 {
+        assert!(matches!(
+            delivery
+                .event(ClientEvent::SessionEnded {
+                    session: SessionId::from(std::num::NonZeroU64::new(id).ok_or("zero session")?),
+                    reason: codesh_protocol::ExitReason::Ended,
+                })?
+                .as_slice(),
+            [Update::CloseSessionPanes(_)]
+        ));
+    }
+    assert!(delivery.event(ClientEvent::Disconnected)?.is_empty());
+    assert!(delivery.flush().is_empty());
+    let ready = delivery.complete(Some(Update::History {
+        pane: PaneId::new(),
+        request: HistoryRequest::recent(),
+        result: Err(ClientError::Disconnected),
+    }));
+    assert!(matches!(ready.first(), Some(Update::History { .. })));
+    assert!(matches!(
+        &ready[ready.len() - 2..],
+        [Update::Event(ClientEvent::Disconnected), Update::Flushed]
+    ));
+    assert_eq!(ready.len(), 1027);
+    assert!(delivery.event(ClientEvent::Disconnected)?.is_empty());
+    Ok(())
+}
+
+mod clipboard;
+mod resize;
+mod servers;
+
+fn identify_desktop<R: std::io::Read, W: std::io::Write>(
+    decoder: &mut Decoder<R>,
+    encoder: &mut Encoder<W>,
+) -> TestResult {
+    let (
+        CONTROL,
+        Message::Request {
+            id,
+            body: RequestBody::IdentifyClient(kind),
+        },
+    ) = decoder.next()?
+    else {
+        return Err("expected client identity".into());
+    };
+    assert_eq!(kind, codesh_protocol::ClientKind::Desktop);
+    encoder.send(
+        CONTROL,
+        &Message::Reply {
+            id,
+            body: ReplyBody::ClientIdentified(codesh_protocol::SessionClient {
+                kind,
+                ..Default::default()
+            }),
+        },
+    )?;
+    Ok(())
+}
+
+#[test]
+fn pending_side_connection_replies_do_not_block_app_requests_or_flush() -> TestResult {
+    let directory = tempfile::Builder::new()
+        .prefix("codesh-async-")
+        .tempdir_in("/tmp")?;
+    let listener = UnixListener::bind(directory.path().join("server.sock"))?;
+    let (started, pending) = mpsc::channel();
+    let server = thread::spawn(move || withhold_side_connection_replies(&listener, &started));
+    let (work, updates) = local_worker(directory.path().join("server.sock"))?;
+    work.send((1, Work::Connect))?;
+    assert!(matches!(updates.recv_blocking()?.2, Update::ServerInfo(..)));
+    assert!(matches!(updates.recv_blocking()?.2, Update::Connected(_)));
+    let (reply, client) = async_channel::bounded(1);
+    work.send((1, Work::LendClient(reply)))?;
+    let client = client.recv_blocking()?.ok_or("missing client")?;
+    let project = codesh_protocol::ProjectId::new();
+    let files = client.files_async(codesh_protocol::FilesRequest {
+        project,
+        action: codesh_protocol::FilesAction::List(codesh_protocol::ServerPath(Vec::new())),
+    });
+    let git = client.git_async(codesh_protocol::GitRequest {
+        project,
+        action: codesh_protocol::GitAction::Status { local: true },
+    });
+    let command = client.exec_async(codesh_protocol::ExecRequest {
+        job: 1,
+        project,
+        argv: vec!["pwd".into()],
+        shell: None,
+        cwd: None,
+        stdin: Vec::new(),
+        env: BTreeMap::new(),
+        timeout_ms: 30_000,
+    });
+    for _ in 0..3 {
+        pending.recv_timeout(Duration::from_secs(2))?;
+    }
+    work.send((
+        1,
+        Work::Git(codesh_protocol::GitRequest {
+            project,
+            action: codesh_protocol::GitAction::Summary,
+        }),
+    ))?;
+    pending.recv_timeout(Duration::from_secs(2))?;
+    for request in [
+        Work::ReadCatalog,
+        Work::ReadActivity,
+        Work::ReadServerSettings,
+        Work::ProjectSessions { project },
+        Work::ReadSaved {
+            pane: PaneId::new(),
+            session: SessionId::from(std::num::NonZeroU64::MIN),
+        },
+        Work::Flush,
+    ] {
+        work.send((1, request))?;
+    }
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut received = [false; 6];
+    while Instant::now() < deadline && !received.iter().all(|received| *received) {
+        match updates.try_recv() {
+            Ok((_, 1, update)) => match update {
+                Update::Catalog(_) => received[0] = true,
+                Update::Activity(_) => received[1] = true,
+                Update::ServerSettings(_) => received[2] = true,
+                Update::ProjectSessions { .. } => received[3] = true,
+                Update::Saved { .. } => received[4] = true,
+                Update::Flushed => received[5] = true,
+                _ => (),
+            },
+            _ => thread::sleep(Duration::from_millis(5)),
+        }
+    }
+    work.send((1, Work::Stop))?;
+    client.disconnect();
+    drop((files, git, command));
+    server.join().map_err(|_| "fake server panicked")??;
+    assert!(
+        received.iter().all(|received| *received),
+        "app catalog, activity, settings, project sessions, saved screens and flush must complete while side connection replies remain pending: {received:?}"
+    );
+    Ok(())
+}
+
+fn withhold_side_connection_replies(listener: &UnixListener, started: &Sender<()>) -> TestResult {
+    let (socket, _) = listener.accept()?;
+    socket.set_read_timeout(Some(Duration::from_secs(5)))?;
+    let mut decoder = Decoder::new(socket.try_clone()?);
+    let mut encoder = Encoder::new(socket);
+    assert!(matches!(decoder.next()?, (CONTROL, Message::Hello { .. })));
+    encoder.send(
+        CONTROL,
+        &Message::HelloReply {
+            versions: SUPPORTED.to_vec(),
+            server: codesh_protocol::ServerInfo::current(),
+            features: Vec::new(),
+        },
+    )?;
+    identify_desktop(&mut decoder, &mut encoder)?;
+    while let Ok((_, message)) = decoder.next() {
+        let Message::Request { id, body } = message else {
+            continue;
+        };
+        if matches!(
+            body,
+            RequestBody::Git(_) | RequestBody::Files(_) | RequestBody::Exec(_)
+        ) {
+            started.send(())?;
+            continue;
+        }
+        let body = if matches!(body, RequestBody::ListSessions) {
+            ReplyBody::Sessions(Vec::new())
+        } else {
+            ReplyBody::Error(codesh_protocol::ErrorReply {
+                code: ErrorCode::BadRequest,
+                message: "test response".into(),
+            })
+        };
+        encoder.send(CONTROL, &Message::Reply { id, body })?;
+    }
+    Ok(())
+}

@@ -1,0 +1,134 @@
+use codesh_ui::components::Tooltip;
+use codesh_ui::theme::Theme;
+use codesh_ui::tr;
+use gpui::prelude::FluentBuilder;
+use gpui::{
+    AnyElement, App, AppContext, ClickEvent, Decorations, Div, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, SharedString, Stateful, StatefulInteractiveElement, Styled, Window,
+    div, px, svg,
+};
+
+const BUTTON_SIZE: f32 = 24.0;
+const BUTTON_GAP: f32 = 4.0;
+const GROUP_PADDING: f32 = 8.0;
+const GROUP_MARGIN: f32 = 4.0;
+
+pub(in crate::views) fn controls_width(window: &Window) -> f32 {
+    if !matches!(window.window_decorations(), Decorations::Client { .. }) {
+        return 0.0;
+    }
+    let capabilities = window.window_controls();
+    let count = 1 + u8::from(capabilities.minimize) + u8::from(capabilities.maximize);
+    BUTTON_SIZE * f32::from(count)
+        + BUTTON_GAP * f32::from(count - 1)
+        + GROUP_PADDING * 2.0
+        + GROUP_MARGIN
+}
+
+pub(in crate::views) fn controls(
+    window: &Window,
+    theme: &Theme,
+    close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Option<Stateful<Div>> {
+    if !matches!(window.window_decorations(), Decorations::Client { .. }) {
+        return None;
+    }
+    let capabilities = window.window_controls();
+    Some(
+        div()
+            .id("window-controls")
+            .debug_selector(|| "window-controls".into())
+            .flex()
+            .flex_none()
+            .items_center()
+            .h_full()
+            .gap(px(BUTTON_GAP))
+            .ml(px(GROUP_MARGIN))
+            .px(px(GROUP_PADDING))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .when(capabilities.minimize, |controls| {
+                controls.child(button(
+                    "window-minimize",
+                    tr!("Minimize"),
+                    "icons/window-minimize.svg",
+                    theme,
+                    |_, window, _| window.minimize_window(),
+                ))
+            })
+            .when(capabilities.maximize, |controls| {
+                controls.child(button(
+                    "window-maximize",
+                    if window.is_maximized() {
+                        tr!("Restore Window")
+                    } else {
+                        tr!("Maximize")
+                    },
+                    if window.is_maximized() {
+                        "icons/window-restore.svg"
+                    } else {
+                        "icons/window-maximize.svg"
+                    },
+                    theme,
+                    |_, window, _| window.zoom_window(),
+                ))
+            })
+            .child(button(
+                "window-close",
+                tr!("Close Window"),
+                "icons/window-close.svg",
+                theme,
+                close,
+            )),
+    )
+}
+
+fn button(
+    id: &'static str,
+    label: SharedString,
+    icon: &'static str,
+    theme: &Theme,
+    action: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> AnyElement {
+    let (background, foreground, border, theme_background) =
+        (theme.raised(), theme.fg, theme.border, theme.bg);
+    div()
+        .id(id)
+        .group(id)
+        .debug_selector(move || id.into())
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(BUTTON_SIZE))
+        .rounded_full()
+        .hover(|style| style.bg(theme.hover))
+        .cursor_pointer()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+        .on_click(move |event, window, cx| {
+            cx.stop_propagation();
+            action(event, window, cx);
+        })
+        .tooltip(move |_, cx| {
+            cx.new(|_| {
+                Tooltip::new(
+                    label.clone(),
+                    background,
+                    foreground,
+                    border,
+                    theme_background,
+                )
+            })
+            .into()
+        })
+        .child(
+            svg()
+                .path(icon)
+                .size(px(16.0))
+                .flex_none()
+                .text_color(theme.fg_muted)
+                .group_hover(id, |style| style.text_color(foreground)),
+        )
+        .into_any_element()
+}

@@ -1,0 +1,103 @@
+# Server
+
+`codesh-server` runs every terminal. The desktop app, the terminal UI, the CLI,
+and phones are all clients of it. That is why terminals keep running after you
+quit an app, and why several apps can show the same terminal.
+
+```mermaid
+flowchart LR
+    DESKTOP["Desktop app"] <--> SERVER["codesh-server"]
+    TUI["codesh terminal UI"] <--> SERVER
+    CLI["codesh CLI"] <--> SERVER
+    PHONE["Phone"] <--> SERVER
+```
+
+## Lifetime
+
+- Apps and CLI commands start the server when they need it. You never need to
+  start it yourself.
+- It keeps running until you stop it, even with no app open.
+- Stopping or restarting it ends every terminal. Saved screens and history are
+  kept. Use the server menu in the sidebar footer, **Settings → Server**, or
+  `codesh server stop --force`.
+- Codesh never restarts it on its own while terminals are running. After an
+  update, the desktop app replaces this computer's server once no terminals are
+  running.
+
+## Sessions
+
+- A session is one running terminal. It belongs to the project it was created
+  in, wherever you `cd` later.
+- It ends when its program exits, when someone ends it, or when the server
+  stops. Closing the last pane that shows it ends it too.
+- Quitting an app, detaching, a crash, or sleep never ends it.
+- Any number of apps can show and type into a session at once. They share one
+  size.
+- **Existing Terminals** lists a project's sessions that this app isn't
+  showing, and which app owns each one, so you can open them here too.
+
+## History
+
+- The server saves each terminal's screen and scrollback to disk, even when no
+  app is watching. It is still there after the program ends or the server
+  restarts.
+- Scrollback size is a byte budget per terminal, 16 MiB by default. Older
+  history loads as you scroll.
+- Ended sessions and their saved output are removed after 7 days.
+
+## Settings
+
+Server settings apply to everyone using that server. Change them in
+**Settings → Server**, with `codesh settings set`, or in `server.toml`:
+
+| Setting | `server.toml` key | Default |
+| --- | --- | --- |
+| Default shell | `default_shell` | `$SHELL`, else `/bin/zsh` on macOS and `/bin/sh` on Linux |
+| History budget per session | `history_budget_bytes` | `16777216` (16 MiB) |
+| Shell integration | `shell_integration` | `true` |
+
+Shells start as login shells. Changes apply to new terminals. A new history
+budget applies to saved history after the server restarts.
+
+## Shell integration
+
+Shell integration lets Codesh track each terminal's folder, jump between prompts,
+and select a command's output. It loads automatically for zsh and fish, without
+editing your startup files.
+
+Bash is opt-in. Add this to the file your Bash profile loads for interactive
+shells:
+
+```bash
+if [[ ${CODESH_SHELL_INTEGRATION:-0} == 1 ]]; then
+    source "$CODESH_SHELL_INTEGRATION_DIR/codesh.bash"
+fi
+```
+
+Every terminal gets `TERM=xterm-256color`, `COLORTERM=truecolor`,
+`TERM_PROGRAM=codesh`, `CODESH_SERVER_ID`, and `CODESH_SESSION_ID`. If `LANG`,
+`LC_ALL`, and `LC_CTYPE` are all unset or empty, Codesh sets `LANG` to an
+installed UTF-8 locale for the system language, or `C.UTF-8`, so non-ASCII text
+displays correctly. If neither is installed, it leaves them unset.
+
+## Files
+
+Everything lives in one profile folder:
+
+| Platform | Stable | Beta |
+| --- | --- | --- |
+| macOS | `~/Library/Application Support/Codesh` | `~/Library/Application Support/Codesh Beta` |
+| Linux | `$XDG_STATE_HOME/codesh`, or `~/.local/state/codesh` | `$XDG_STATE_HOME/codesh-beta`, or `~/.local/state/codesh-beta` |
+
+| File | What it holds |
+| --- | --- |
+| `server.toml` | Server settings |
+| `server.log` | Server log |
+| `server.sock` | The socket apps connect to |
+| `sessions/` | Projects, sessions, and saved terminal output |
+| `remote.json` | Mobile access settings and paired phones |
+| `settings.toml`, `terminal.toml`, `themes/` | Desktop app settings, see [Settings](../user-guide/settings.md) |
+| `tui-state.json` | Terminal UI layouts |
+
+Set `CODESH_DIR` to use a different profile folder. Development builds use
+`Codesh Dev` (`codesh-dev` on Linux), so they never touch your real data.

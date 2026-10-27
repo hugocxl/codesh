@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<body>
+<div id="editor" contenteditable="true" style="white-space: pre; font: 16px/20px monospace">native clipboard probe</div>
+<script>
+  const editor = document.getElementById('editor');
+  const events = [];
+  window.selectProbe = () => {
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    return document.hasFocus();
+  };
+  window.probeText = () => editor.textContent;
+  window.probeEvents = () => events.join(',');
+  let preventNavigation = false;
+  let pageSelectsAll = false;
+  window.ownSelectAll = () => {
+    pageSelectsAll = true;
+    return 1;
+  };
+  window.resetNavigationProbe = (prevent = false) => {
+    events.length = 0;
+    preventNavigation = prevent;
+    pageSelectsAll = false;
+    editor.textContent = 'alpha\nbravo\ncharlie';
+    editor.focus();
+    getSelection().setPosition(editor.firstChild, 8);
+    return document.hasFocus();
+  };
+  window.probeSelection = () => `${getSelection().anchorOffset}:${getSelection().focusOffset}`;
+  editor.addEventListener('keydown', event => {
+    if (event.key.startsWith('Arrow')) {
+      events.push(event.key);
+      if (preventNavigation) event.preventDefault();
+    }
+  });
+  editor.addEventListener('copy', event => {
+    events.push('copy');
+    event.clipboardData.setData('text/plain', getSelection().toString());
+    event.preventDefault();
+  });
+  editor.addEventListener('cut', event => {
+    events.push('cut');
+    event.clipboardData.setData('text/plain', getSelection().toString());
+    event.preventDefault();
+    document.execCommand('delete');
+  });
+  editor.addEventListener('paste', event => {
+    events.push('paste');
+    event.preventDefault();
+    document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));
+  });
+  document.addEventListener('keydown', event => {
+    if (event.metaKey && ['f', 'g', 's', 'z'].includes(event.key.toLowerCase())) {
+      events.push((event.shiftKey ? 'shift-' : '') + event.key.toLowerCase());
+      event.preventDefault();
+    }
+    if (event.metaKey && event.key === 'a' && pageSelectsAll) {
+      events.push('select-all');
+      event.preventDefault();
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+Codesh/Resources/markdown-assets/** linguist-vendored
+scripts/** linguist-vendored
+crates/codesh-app/builtin-extensions/** linguist-generated

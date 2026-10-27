@@ -1,0 +1,267 @@
+use std::cell::Cell;
+use std::io;
+use std::rc::Rc;
+
+use block2::RcBlock;
+use objc2::MainThreadMarker;
+use objc2::rc::Retained;
+use objc2_app_kit::{
+    NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSAlertStyle, NSApplication,
+    NSControlStateValueOn, NSModalResponse, NSWindow,
+};
+use objc2_foundation::NSString;
+
+use crate::tr;
+
+#[allow(
+    unsafe_code,
+    reason = "AppKit text delegates and target/action use Objective-C FFI."
+)]
+mod prompt;
+pub use crate::dialog_types::{
+    ADDITIONAL_PROMPT_LIMIT, ConfirmationResponse, PromptCheckbox, PromptChoices, PromptPicker,
+    PromptResponse,
+};
+pub use prompt::{PromptConfirmation, confirm_with_prompt};
+
+#[derive(Debug)]
+pub struct Confirmation {
+    alert: Retained<NSAlert>,
+    parent: Retained<NSWindow>,
+    completed: Rc<Cell<bool>>,
+    /// The response reported when the sheet is dismissed by dropping it.
+    dismissal: NSModalResponse,
+}
+
+impl Drop for Confirmation {
+    fn drop(&mut self) {
+        if !self.completed.replace(true) {
+            self.parent
+                .endSheet_returnCode(&self.alert.window(), self.dismissal);
+        }
+    }
+}
+
+fn parent_window(
+    window: &gpui::Window,
+    main_thread: MainThreadMarker,
+) -> io::Result<Retained<NSWindow>> {
+    let windows = NSApplication::sharedApplication(main_thread).windows();
+    let title = window.window_title();
+    let mut matches = (0..windows.count())
+        .map(|index| windows.objectAtIndex(index))
+        .filter(|window| window.title().to_string() == title);
+    let parent = matches
+        .next()
+        .ok_or_else(|| io::Error::other("native dialog parent window is closed"))?;
+    if matches.next().is_some() {
+        return Err(io::Error::other("native dialog parent window is ambiguous"));
+    }
+    if parent.attachedSheet().is_some() {
+        return Err(io::Error::other("an application dialog is already open"));
+    }
+    Ok(parent)
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Native confirmation fields and GPUI context"
+)]
+pub fn confirm(
+    window: &mut gpui::Window,
+    _cx: &mut gpui::App,
+    title: &str,
+    message: &str,
+    confirm_label: &str,
+    suppression_label: Option<&str>,
+    on_complete: impl FnOnce(ConfirmationResponse) + 'static,
+) -> io::Result<Confirmation> {
+    let cancel = tr!("Cancel");
+    two_button_alert(
+        window,
+        NSAlertStyle::Warning,
+        title,
+        message,
+        [confirm_label, &cancel],
+        suppression_label,
+        move |response, dont_ask_again| on_complete(classify(response, dont_ask_again)),
+    )
+}
+
+/// Asks for confirmation with a checkbox that starts unchecked. Reports
+/// whether the checkbox was checked, or `None` when declined or dismissed.
+pub fn confirm_with_checkbox(
+    window: &mut gpui::Window,
+    _cx: &mut gpui::App,
+    title: &str,
+    message: &str,
+    [confirm_label, decline_label]: [&str; 2],
+    checkbox_label: &str,
+    on_complete: impl FnOnce(Option<bool>) + 'static,
+) -> io::Result<Confirmation> {
+    two_button_alert(
+        window,
+        NSAlertStyle::Informational,
+        title,
+        message,
+        [confirm_label, decline_label],
+        Some(checkbox_label),
+        move |response, checked| on_complete(checked_if_confirmed(response, checked)),
+    )
+}
+
+/// An alert whose first button answers Return and second answers Escape, with
+/// an optional checkbox reported alongside the response.
+fn two_button_alert(
+    window: &gpui::Window,
+    style: NSAlertStyle,
+    title: &str,
+    message: &str,
+    [confirm_label, decline_label]: [&str; 2],
+    checkbox_label: Option<&str>,
+    on_complete: impl FnOnce(NSModalResponse, bool) + 'static,
+) -> io::Result<Confirmation> {
+    let main_thread = MainThreadMarker::new()
+        .ok_or_else(|| io::Error::other("native dialogs require the main thread"))?;
+    let parent = parent_window(window, main_thread)?;
+    let alert = NSAlert::new(main_thread);
+    alert.setMessageText(&NSString::from_str(title));
+    alert.setInformativeText(&NSString::from_str(message));
+    alert.setAlertStyle(style);
+    alert
+        .addButtonWithTitle(&NSString::from_str(confirm_label))
+        .setKeyEquivalent(&NSString::from_str("\r"));
+    alert
+        .addButtonWithTitle(&NSString::from_str(decline_label))
+        .setKeyEquivalent(&NSString::from_str("\u{1b}"));
+    alert.setShowsSuppressionButton(checkbox_label.is_some());
+    let checkbox = alert.suppressionButton();
+    if let (Some(button), Some(label)) = (&checkbox, checkbox_label) {
+        button.setTitle(&NSString::from_str(label));
+    }
+    let completed = Rc::new(Cell::new(false));
+    let finished = Rc::clone(&completed);
+    let callback = Cell::new(Some(on_complete));
+    let handler = RcBlock::new(move |response| {
+        finished.set(true);
+        let checked = checkbox
+            .as_ref()
+            .is_some_and(|button| button.state() == NSControlStateValueOn);
+        if let Some(callback) = callback.take() {
+            callback(response, checked);
+        }
+    });
+    alert.beginSheetModalForWindow_completionHandler(&parent, Some(&handler));
+    Ok(Confirmation {
+        alert,
+        parent,
+        completed,
+        dismissal: NSAlertSecondButtonReturn,
+    })
+}
+
+fn classify(response: NSModalResponse, dont_ask_again: bool) -> ConfirmationResponse {
+    if response == NSAlertFirstButtonReturn {
+        ConfirmationResponse::Confirmed { dont_ask_again }
+    } else {
+        ConfirmationResponse::Cancelled
+    }
+}
+
+fn checked_if_confirmed(response: NSModalResponse, checked: bool) -> Option<bool> {
+    (response == NSAlertFirstButtonReturn).then_some(checked)
+}
+
+#[derive(Debug)]
+pub struct FolderPicker {
+    panel: Retained<objc2_app_kit::NSOpenPanel>,
+    completed: Rc<Cell<bool>>,
+}
+
+impl Drop for FolderPicker {
+    #[allow(
+        unsafe_code,
+        reason = "AppKit target/action cancellation accepts a nil sender."
+    )]
+    fn drop(&mut self) {
+        if !self.completed.replace(true) {
+            // SAFETY: No sender is passed; the retained panel is confined to the main thread.
+            unsafe {
+                self.panel.cancel(None);
+            }
+        }
+    }
+}
+
+pub fn choose_folder(
+    cx: &mut gpui::App,
+    message: &str,
+    directory: &std::path::Path,
+    on_complete: impl FnOnce(io::Result<Option<std::path::PathBuf>>) + 'static,
+) -> io::Result<FolderPicker> {
+    choose_folder_with(cx, message, "", directory, on_complete)
+}
+
+/// A folder picker whose confirm button reads `prompt`, when it is not empty.
+pub fn choose_folder_with(
+    _cx: &mut gpui::App,
+    message: &str,
+    prompt: &str,
+    directory: &std::path::Path,
+    on_complete: impl FnOnce(io::Result<Option<std::path::PathBuf>>) + 'static,
+) -> io::Result<FolderPicker> {
+    open_panel(message, prompt, directory, false, on_complete)
+}
+
+/// A file picker that also shows hidden files, such as keys in `~/.ssh`.
+pub fn choose_file(
+    _cx: &mut gpui::App,
+    message: &str,
+    directory: &std::path::Path,
+    on_complete: impl FnOnce(io::Result<Option<std::path::PathBuf>>) + 'static,
+) -> io::Result<FolderPicker> {
+    open_panel(message, "", directory, true, on_complete)
+}
+
+fn open_panel(
+    message: &str,
+    prompt: &str,
+    directory: &std::path::Path,
+    files: bool,
+    on_complete: impl FnOnce(io::Result<Option<std::path::PathBuf>>) + 'static,
+) -> io::Result<FolderPicker> {
+    let main_thread = MainThreadMarker::new()
+        .ok_or_else(|| io::Error::other("native dialogs require the main thread"))?;
+    let panel = objc2_app_kit::NSOpenPanel::openPanel(main_thread);
+    panel.setMessage(Some(&NSString::from_str(message)));
+    if !prompt.is_empty() {
+        panel.setPrompt(Some(&NSString::from_str(prompt)));
+    }
+    panel.setCanChooseFiles(files);
+    panel.setCanChooseDirectories(!files);
+    panel.setShowsHiddenFiles(files);
+    panel.setAllowsMultipleSelection(false);
+    panel.setDirectoryURL(Some(&objc2_foundation::NSURL::fileURLWithPath(
+        &NSString::from_str(&directory.to_string_lossy()),
+    )));
+    let completed = Rc::new(Cell::new(false));
+    let finished = Rc::clone(&completed);
+    let result_panel = panel.clone();
+    let callback = Cell::new(Some(on_complete));
+    let handler = RcBlock::new(move |response| {
+        finished.set(true);
+        let path = (response == objc2_app_kit::NSModalResponseOK)
+            .then(|| {
+                result_panel
+                    .URL()
+                    .and_then(|url| url.path())
+                    .map(|path| path.to_string().into())
+            })
+            .flatten();
+        if let Some(callback) = callback.take() {
+            callback(Ok(path));
+        }
+    });
+    panel.beginWithCompletionHandler(&handler);
+    Ok(FolderPicker { panel, completed })
+}

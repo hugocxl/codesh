@@ -1,0 +1,41 @@
+[package]
+name = "codesh-app"
+description = "The Codesh app executable"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+syntect = { version = "5.3", default-features = false, features = ["default-syntaxes", "regex-fancy"] }
+zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "ico"] }
+codesh-core = { path = "../codesh-core" }
+codesh-ui = { path = "../codesh-ui" }
+async-channel = "2"
+reqwest = { package = "zed-reqwest", version = "=0.12.15-zed", default-features = false, features = ["blocking", "rustls-tls-native-roots", "socks"] }
+serde_json.workspace = true
+tempfile = "3"
+gpui = { version = "=0.2.2", default-features = false, features = ["font-kit"] }
+codesh-app-core = { path = "../codesh-app-core" }
+codesh-client = { path = "../codesh-client" }
+codesh-protocol = { path = "../codesh-protocol" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui = { version = "=0.2.2", default-features = false, features = ["x11", "wayland"] }
+
+[dev-dependencies]
+codesh-core = { path = "../codesh-core", features = ["test-support"] }
+codesh-ui = { path = "../codesh-ui", features = ["test-support"] }
+codesh-server = { path = "../codesh-server" }
+codesh-terminal = { path = "../codesh-terminal" }
+gpui = { version = "=0.2.2", default-features = false, features = ["test-support"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+xim-ctext = "0.3"
+
+[lints]
+workspace = true

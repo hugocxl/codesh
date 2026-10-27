@@ -1,0 +1,621 @@
+use codesh_protocol::{GitAction, GitPullRequestAction, WorktreeAction, WorktreeIntent};
+use codesh_ui::components::{ButtonInteraction, IconGlyph, SymbolGlyph, Tooltip};
+use codesh_ui::icon::Icon;
+use codesh_ui::popover::PopoverAnchor;
+use codesh_ui::tr;
+use gpui::prelude::FluentBuilder;
+use gpui::{
+    AnyElement, AppContext, Context, FontWeight, Hsla, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled, canvas, div, px,
+};
+
+use super::git::Kind;
+use super::menu::{Command, Item};
+use crate::model::{AppModel, ai::Availability, git::Presence};
+use crate::repository_actions::Action as AiAction;
+
+pub(crate) fn status_bar(model: &AppModel, cx: &mut Context<AppModel>) -> impl IntoElement {
+    let m = model.metrics;
+    let theme = &model.theme;
+    div()
+        .debug_selector(|| "project-status-bar".into())
+        .flex()
+        .flex_none()
+        .items_center()
+        .h(m.status_bar_height())
+        .bg(theme.bg)
+        .border_t_1()
+        .border_color(theme.border)
+        .child(
+            div()
+                .flex()
+                .flex_grow()
+                .min_w(px(0.0))
+                .items_center()
+                .gap(px(8.0))
+                .h_full()
+                .px(px(10.0))
+                .child(path_chip(model, cx))
+                .children(git_controls(model, cx)),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(8.0))
+                .h_full()
+                .px(px(10.0))
+                .children(update_control(model, cx))
+                .children(super::disconnected::status(model, cx))
+                .child(super::proxy::control(model, cx))
+                .child(super::server_status::control(model, cx)),
+        )
+}
+
+fn update_control(model: &AppModel, cx: &mut Context<AppModel>) -> Option<AnyElement> {
+    let details = model.update_details();
+    if details.is_none() && !matches!(model.overlay, Some(super::overlays::Overlay::Updates)) {
+        model.update_anchor().set(None);
+        return None;
+    }
+    let m = model.metrics;
+    let theme = &model.theme;
+    let color = if details.as_ref().is_some_and(|details| details.failed) {
+        theme.warning
+    } else {
+        theme.accent
+    };
+    let label = details.map_or_else(|| tr!("Updates").to_string(), |details| details.label);
+    let anchor = model.update_anchor();
+    Some(
+        div()
+            .id("beta-update-status")
+            .debug_selector(|| "beta-update-status".into())
+            .relative()
+            .flex()
+            .flex_none()
+            .items_center()
+            .h_full()
+            .gap(px(6.0))
+            .pl(px(8.0))
+            .border_l_1()
+            .border_color(theme.border)
+            .text_color(theme.fg_muted)
+            .cursor_pointer()
+            .hover(|style| style.text_color(theme.fg))
+            .focus(|style| style.bg(theme.hover))
+            .button_interaction(
+                cx.listener(|model, _, window, cx| model.toggle_update_popover(window, cx)),
+            )
+            .child(
+                canvas(
+                    move |bounds, _, _| anchor.set(Some(bounds)),
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(
+                div()
+                    .size(m.scaled(5.0))
+                    .flex_none()
+                    .rounded_full()
+                    .bg(color),
+            )
+            .child(
+                div()
+                    .text_size(m.font_footnote())
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(label),
+            )
+            .into_any_element(),
+    )
+}
+
+fn path_chip(model: &AppModel, cx: &mut Context<AppModel>) -> impl IntoElement {
+    let project = model.state.current_project();
+    let id = project.id;
+    let available = project.status() == codesh_app_core::ProjectStatus::Available;
+    let local = project.server_id.is_local();
+    let display = model.project_path_label(project);
+    let count = display.chars().count();
+    let display = if count > 40 {
+        format!("…{}", display.chars().skip(count - 39).collect::<String>())
+    } else {
+        display
+    };
+    div()
+        .id("status-path")
+        .debug_selector(|| "status-path".into())
+        .flex()
+        .flex_initial()
+        .min_w(px(0.0))
+        .items_center()
+        .gap(px(4.0))
+        .h_full()
+        .text_color(model.theme.fg_muted)
+        .when(available, |path| {
+            path.when(local, Styled::cursor_pointer)
+                .on_click(cx.listener(move |model, _, _, cx| {
+                    if let Some(project) = model.state.project(id)
+                        && local
+                    {
+                        cx.reveal_path(&project.directory);
+                    }
+                }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |model, event: &gpui::MouseDownEvent, window, cx| {
+                        let mut items = vec![Item::action(tr!("Copy Path"), Command::CopyPath(id))];
+                        if local {
+                            items.push(Item::action(
+                                crate::opener::reveal_label(),
+                                Command::RevealPath(id),
+                            ));
+                        }
+                        model.open_menu(items, event.position, window, cx);
+                    }),
+                )
+        })
+        .child(IconGlyph::new(
+            Icon::Folder,
+            model.metrics.font_caption(),
+            model.theme.fg_muted,
+        ))
+        .child(
+            div()
+                .min_w(px(0.0))
+                .truncate()
+                .text_size(model.metrics.font_footnote())
+                .font_weight(FontWeight::MEDIUM)
+                .child(display),
+        )
+}
+
+fn separator(model: &AppModel) -> AnyElement {
+    div()
+        .debug_selector(|| "git-status-separator".into())
+        .w(px(1.0))
+        .h_full()
+        .flex_none()
+        .bg(model.theme.border)
+        .into_any_element()
+}
+
+fn git_controls(model: &AppModel, cx: &mut Context<AppModel>) -> Vec<AnyElement> {
+    let project = model.state.current_project().id;
+    let repository = model.git.projects.get(&project);
+    let Some(summary) = repository.and_then(|r| r.summary.as_ref()) else {
+        return vec![];
+    };
+    let enabled = model.session_listing_ready()
+        && repository.is_some_and(|r| !r.busy())
+        && !model.ai.running(project);
+    let branch = summary.branch.clone().unwrap_or_else(|| {
+        summary.head.as_ref().map_or_else(
+            || tr!("Unborn HEAD").to_string(),
+            |h| tr!("Detached %@", &h[..h.len().min(8)]).to_string(),
+        )
+    });
+    let changes = match summary.changed {
+        0 => tr!("Clean").to_string(),
+        1 => tr!("1 Change").to_string(),
+        count => tr!("%lld Changes", count).to_string(),
+    };
+    let color = if summary.conflicted > 0 {
+        model.theme.danger
+    } else if summary.changed > 0 {
+        model.theme.warning
+    } else {
+        model.theme.accent
+    };
+    let mut controls = vec![
+        separator(model),
+        repository_chip(
+            Kind::Branches,
+            branch,
+            model.theme.fg_muted,
+            enabled,
+            model,
+            cx,
+        ),
+        separator(model),
+        repository_chip(Kind::Changes, changes, color, enabled, model, cx),
+    ];
+    if let Some(chip) = ai_action_chip(AiAction::Commit, model, cx) {
+        controls.push(separator(model));
+        controls.push(chip);
+    }
+    // Removing a worktree moves you to its primary, which shows the removal.
+    let label = repository
+        .and_then(crate::model::git::Repository::mutation)
+        .and_then(progress_label)
+        .or_else(|| {
+            model
+                .worktree_children(project)
+                .iter()
+                .any(|child| model.worktree_removing(child.id))
+                .then(|| tr!("Removing worktree"))
+        });
+    if let Some(label) = label {
+        controls.push(separator(model));
+        controls.push(progress(label, model));
+        return controls;
+    }
+    match repository.map_or(
+        Presence::Loading,
+        crate::model::git::Repository::pull_request_presence,
+    ) {
+        Presence::Loading => (),
+        Presence::Found => {
+            if let Some(pr) = repository.and_then(|r| r.pull_request.as_ref()) {
+                controls.push(separator(model));
+                controls.push(pull_request_chip(
+                    pr.number, &pr.state, &pr.checks, enabled, model, cx,
+                ));
+            }
+        }
+        Presence::Unavailable => {
+            controls.push(separator(model));
+            controls.push(pull_request_unavailable(model, cx));
+        }
+        Presence::None => {
+            if let Some(chip) = ai_action_chip(AiAction::CreatePullRequest, model, cx) {
+                controls.push(separator(model));
+                controls.push(chip);
+            }
+        }
+    }
+    controls
+}
+
+pub(super) fn tooltip(
+    text: String,
+    model: &AppModel,
+) -> impl Fn(&mut gpui::Window, &mut gpui::App) -> gpui::AnyView + 'static {
+    let theme = model.theme.clone();
+    move |_, cx| {
+        cx.new(|_| {
+            Tooltip::new(
+                text.clone(),
+                theme.raised(),
+                theme.fg,
+                theme.border,
+                theme.bg,
+            )
+        })
+        .into()
+    }
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "Split action button with independent hover targets"
+)]
+fn ai_action_chip(
+    action: AiAction,
+    model: &AppModel,
+    cx: &mut Context<AppModel>,
+) -> Option<AnyElement> {
+    let project = model.state.current_project().id;
+    let step = model
+        .ai
+        .running_step(project)
+        .filter(|_| model.ai.running_action(project) == Some(action));
+    let running = step.is_some();
+    let can_run = match model.ai_availability(action) {
+        Availability::Hidden => return None,
+        Availability::Available(_) => true,
+        Availability::Disabled(_) => false,
+    };
+    let m = model.metrics;
+    let theme = &model.theme;
+    let label = step.map_or_else(|| action.title(), |step| step.title(action));
+    let id = match action {
+        AiAction::Commit => "ai-commit-status",
+        AiAction::CreatePullRequest => "ai-create-pr-status",
+    };
+    let menu_id = match action {
+        AiAction::Commit => "ai-commit-provider",
+        AiAction::CreatePullRequest => "ai-create-pr-provider",
+    };
+    let color = if can_run || running {
+        theme.fg_muted
+    } else {
+        theme.fg_dim
+    };
+    let menu_enabled = !model.ai.running(project);
+    let menu_color = if menu_enabled {
+        theme.fg_muted
+    } else {
+        theme.fg_dim
+    };
+    let chevron = IconGlyph::new(Icon::ChevronDown, m.font_caption(), menu_color);
+    let anchor = model.ai.anchors[action.index()].clone();
+    Some(
+        div()
+            .relative()
+            .flex()
+            .flex_none()
+            .items_center()
+            .h_full()
+            .gap(px(4.0))
+            .child(
+                canvas(
+                    move |bounds, _, _| anchor.set(Some(bounds)),
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(
+                div()
+                    .id(id)
+                    .debug_selector(move || id.into())
+                    .flex()
+                    .items_center()
+                    .h_full()
+                    .gap(px(4.0))
+                    .text_color(color)
+                    .when(can_run, |button| {
+                        button
+                            .cursor_pointer()
+                            .hover(|style| style.text_color(theme.fg))
+                            .button_interaction(cx.listener(move |model, _, window, cx| {
+                                model.open_ai_action(action, window, cx);
+                            }))
+                    })
+                    .child(if running {
+                        super::tab_activity::spinner(
+                            format!("{id}-progress"),
+                            m.font_caption(),
+                            model,
+                        )
+                    } else {
+                        SymbolGlyph::new(action.symbol(), m.font_caption(), color)
+                            .into_any_element()
+                    })
+                    .child(
+                        div()
+                            .text_size(m.font_footnote())
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(codesh_ui::l10n::translate(label)),
+                    ),
+            )
+            .child(
+                div()
+                    .id(menu_id)
+                    .debug_selector(move || menu_id.into())
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .h_full()
+                    .px(px(2.0))
+                    .text_color(menu_color)
+                    .when(menu_enabled, |button| {
+                        button
+                            .group(menu_id)
+                            .cursor_pointer()
+                            .button_interaction(cx.listener(move |model, _, window, cx| {
+                                model.open_ai_provider_menu(action, window, cx);
+                            }))
+                    })
+                    .child(if menu_enabled {
+                        chevron.hover_in_group(menu_id, theme.fg)
+                    } else {
+                        chevron
+                    }),
+            )
+            .into_any_element(),
+    )
+}
+
+/// What a long Git change is doing; quick ones show nothing.
+fn progress_label(action: &GitAction) -> Option<SharedString> {
+    match action {
+        GitAction::PullRequest(GitPullRequestAction::Merge { number, .. }) => {
+            Some(tr!("Merging PR #%lld", *number))
+        }
+        GitAction::PullRequest(GitPullRequestAction::Close { number }) => {
+            Some(tr!("Closing PR #%lld", *number))
+        }
+        GitAction::PullRequest(GitPullRequestAction::UpdateBranch { number, .. }) => {
+            Some(tr!("Updating PR #%lld", *number))
+        }
+        GitAction::SwitchToBase(base) => Some(tr!("Updating %@", base)),
+        GitAction::Worktree(WorktreeIntent {
+            action: WorktreeAction::Create { .. },
+            ..
+        }) => Some(tr!("Creating worktree")),
+        GitAction::Worktree(WorktreeIntent {
+            action: WorktreeAction::Remove { .. },
+            ..
+        }) => Some(tr!("Removing worktree")),
+        _ => None,
+    }
+}
+
+fn progress(label: SharedString, model: &AppModel) -> AnyElement {
+    div()
+        .debug_selector(|| "git-progress".into())
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(4.0))
+        .h_full()
+        .text_color(model.theme.fg_muted)
+        .child(super::tab_activity::spinner(
+            "git-progress",
+            model.metrics.font_caption(),
+            model,
+        ))
+        .child(
+            div()
+                .text_size(model.metrics.font_footnote())
+                .font_weight(FontWeight::MEDIUM)
+                .child(label),
+        )
+        .into_any_element()
+}
+
+fn pull_request_chip(
+    number: u64,
+    state: &str,
+    checks: &codesh_protocol::GitChecks,
+    enabled: bool,
+    model: &AppModel,
+    cx: &mut Context<AppModel>,
+) -> AnyElement {
+    let anchor = model.git.pull_request_anchor.clone();
+    let project = model.state.current_project().id;
+    let color = if state == "OPEN" {
+        if checks.failing > 0 {
+            model.theme.danger
+        } else if checks.pending > 0 {
+            model.theme.warning
+        } else {
+            model.theme.accent
+        }
+    } else {
+        model.theme.fg_muted
+    };
+    let checks_label = if checks.failing > 0 {
+        Some(tr!("%lld failing", checks.failing))
+    } else if checks.pending > 0 {
+        Some(tr!("%lld running", checks.pending))
+    } else if checks.passing > 0 {
+        Some(tr!("%lld passed", checks.passing))
+    } else {
+        None
+    };
+    div()
+        .id("git-pr-status")
+        .debug_selector(|| "git-pr-status".into())
+        .relative()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(4.0))
+        .h_full()
+        .text_color(color)
+        .when(enabled, |chip| {
+            chip.cursor_pointer()
+                .hover(|style| style.text_color(model.theme.fg))
+                .button_interaction(
+                    cx.listener(move |model, _, _, cx| model.open_pull_request(project, cx)),
+                )
+        })
+        .child(
+            canvas(
+                move |bounds, _, _| anchor.set(Some(bounds)),
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        )
+        .child(IconGlyph::new(
+            Icon::GitBranch,
+            model.metrics.font_caption(),
+            color,
+        ))
+        .child(
+            div()
+                .text_size(model.metrics.font_footnote())
+                .font_weight(FontWeight::MEDIUM)
+                .child(tr!("PR #%lld", number)),
+        )
+        .children(checks_label.map(|label| {
+            div()
+                .text_size(model.metrics.font_caption())
+                .child(format!("· {label}"))
+        }))
+        .into_any_element()
+}
+
+fn pull_request_unavailable(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
+    let project = model.state.current_project().id;
+    div()
+        .id("git-pr-unavailable")
+        .debug_selector(|| "git-pr-unavailable".into())
+        .flex()
+        .flex_none()
+        .items_center()
+        .h_full()
+        .px(px(2.0))
+        .cursor_pointer()
+        .hover(|style| style.text_color(model.theme.fg))
+        .tooltip(tooltip(
+            tr!("Pull request status is unavailable. Click to retry. GitHub pull requests require an installed and authenticated gh CLI.").to_string(),
+            model,
+        ))
+        .button_interaction(
+            cx.listener(move |model, _, _, cx| model.refresh_pull_request(project, cx)),
+        )
+        .child(IconGlyph::new(
+            Icon::GitBranch,
+            model.metrics.font_caption(),
+            model.theme.fg_dim,
+        ))
+        .into_any_element()
+}
+
+fn repository_chip(
+    kind: Kind,
+    label: String,
+    color: Hsla,
+    enabled: bool,
+    model: &AppModel,
+    cx: &mut Context<AppModel>,
+) -> AnyElement {
+    let (id, icon, anchor): (_, _, PopoverAnchor) = match kind {
+        Kind::Branches => (
+            "git-branch-status",
+            Icon::GitBranch,
+            model.git.branch_anchor.clone(),
+        ),
+        Kind::Changes => (
+            "git-changes-status",
+            Icon::ArrowUpDown,
+            model.git.changes_anchor.clone(),
+        ),
+    };
+    let project = model.state.current_project().id;
+    let color = if enabled { color } else { model.theme.fg_dim };
+    div()
+        .id(id)
+        .debug_selector(move || id.into())
+        .relative()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(4.0))
+        .h_full()
+        .text_color(color)
+        .when(enabled, |chip| {
+            chip.cursor_pointer()
+                .hover(|style| style.text_color(model.theme.fg))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |model, _, window, cx| {
+                        model.open_git_picker(project, kind, window, cx);
+                    }),
+                )
+        })
+        .child(
+            canvas(
+                move |bounds, _, _| anchor.set(Some(bounds)),
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        )
+        .child(IconGlyph::new(icon, model.metrics.font_caption(), color))
+        .child(
+            div()
+                .text_size(model.metrics.font_footnote())
+                .font_weight(FontWeight::MEDIUM)
+                .child(label),
+        )
+        .into_any_element()
+}

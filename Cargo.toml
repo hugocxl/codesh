@@ -1,0 +1,83 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/codesh-core",
+    "crates/codesh-protocol",
+    "crates/codesh-terminal",
+    "crates/codesh-server",
+    "crates/codesh-cli",
+    "crates/codesh-app-core",
+    "crates/codesh-client",
+    "crates/codesh-app",
+    "crates/codesh-ui",
+    "crates/codesh-mobile",
+]
+
+# Current boundary policy, not a permanent crate list. Structural changes update
+# this table and the affected crate-level documentation together.
+[workspace.metadata.architecture.allowed-dependencies]
+codesh-core = []
+codesh-protocol = []
+codesh-terminal = ["codesh-protocol"]
+codesh-server = ["codesh-core", "codesh-protocol", "codesh-terminal"]
+codesh-app-core = ["codesh-core", "codesh-protocol"]
+codesh-client = ["codesh-core", "codesh-protocol"]
+codesh-cli = ["codesh-core", "codesh-protocol", "codesh-client", "codesh-app-core"]
+codesh-app = ["codesh-core", "codesh-app-core", "codesh-client", "codesh-protocol", "codesh-ui"]
+codesh-ui = ["codesh-core"]
+codesh-mobile = ["codesh-client", "codesh-protocol"]
+
+[workspace.metadata.architecture.allowed-dev-dependencies]
+codesh-app = ["codesh-server", "codesh-terminal"]
+codesh-client = ["codesh-server"]
+codesh-cli = ["codesh-terminal"]
+codesh-mobile = ["codesh-server"]
+
+[workspace.package]
+version = "0.1.0-beta-0"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT"
+repository = "https://github.com/hugocxl/codesh"
+authors = ["Hugo Corta"]
+publish = false
+
+[workspace.dependencies]
+serde_json = "1.0"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+debug = 1
+
+[profile.bench]
+inherits = "release"
+
+[patch.crates-io]
+libghostty-vt = { path = "vendor/libghostty-vt" }
+libghostty-vt-sys = { path = "vendor/libghostty-vt-sys" }
+core-text = { path = "vendor/core-text" }
+xim-ctext = { path = "vendor/xim-ctext" }
+gpui = { git = "https://github.com/muxy-app/gpui", rev = "6c718f33b99b8d27e5987b746fe4b00dc6051a7c" }

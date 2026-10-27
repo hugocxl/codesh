@@ -1,0 +1,32 @@
+[package]
+name = "codesh-mobile"
+description = "Rust core for the Codesh mobile apps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[lints]
+workspace = true
+
+[dependencies]
+codesh-client = { path = "../codesh-client" }
+codesh-protocol = { path = "../codesh-protocol" }
+uniffi = "=0.32.2"
+
+[dev-dependencies]
+codesh-server = { path = "../codesh-server" }

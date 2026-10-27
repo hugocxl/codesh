@@ -1,0 +1,424 @@
+use std::collections::{BTreeSet, VecDeque};
+
+use codesh_protocol::{
+    AttachSnapshot, Cursor, HistoryCursor, HistoryPage, Modes, Row, Run, SavedScreen, ScreenFrame,
+    Size,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RunGrid {
+    pub graphics: codesh_protocol::Graphics,
+    pub prompts: BTreeSet<usize>,
+    pub prompt_state: ScreenPrompts,
+    pub links: ScreenLinks,
+    pub size: Size,
+    pub rows: Vec<Vec<Run>>,
+    pub cursor: Cursor,
+    pub modes: Modes,
+    pub history: VecDeque<Row>,
+    pub history_cursor: Option<HistoryCursor>,
+    pub history_total: u64,
+    pub history_fresh: bool,
+}
+
+impl RunGrid {
+    pub fn from_snapshot(snapshot: &AttachSnapshot) -> Self {
+        let mut grid = Self {
+            graphics: snapshot.graphics.clone(),
+            prompts: snapshot.prompts.iter().copied().map(usize::from).collect(),
+            prompt_state: ScreenPrompts::default(),
+            links: ScreenLinks::default(),
+            size: snapshot.size,
+            rows: blank_rows(snapshot.size.rows),
+            cursor: snapshot.cursor,
+            modes: snapshot.modes,
+            history: snapshot.history.clone().into(),
+            history_cursor: snapshot.history_cursor,
+            history_total: snapshot.history_total,
+            history_fresh: true,
+        };
+        grid.replace_rows(&snapshot.rows);
+        grid
+    }
+
+    pub fn apply(&mut self, frame: &ScreenFrame) {
+        if let Some(graphics) = &frame.graphics {
+            self.graphics = graphics.clone();
+        }
+        self.links.frame_seq = frame.seq;
+        self.prompt_state.frame_seq = frame.seq;
+        if frame.reset || self.prompt_state.seq > frame.seq {
+            self.prompts.retain(|row| *row < self.history.len());
+        }
+        if self.prompt_state.pending && self.prompt_state.seq <= frame.seq {
+            self.apply_screen_prompts();
+        }
+        self.history_fresh = false;
+        if frame.reset {
+            self.clear_history();
+            let rows = usize::from(self.size.rows).max(
+                frame
+                    .rows
+                    .iter()
+                    .map(|row| usize::from(row.index) + 1)
+                    .max()
+                    .unwrap_or(0),
+            );
+            self.rows = vec![Vec::new(); rows];
+        }
+        self.replace_rows(&frame.rows);
+        self.cursor = frame.cursor;
+        self.modes = frame.modes;
+    }
+
+    pub fn resize(&mut self, size: Size) {
+        self.graphics = codesh_protocol::Graphics::default();
+        self.links.rows.clear();
+        self.prompts.clear();
+        self.prompt_state.pending = false;
+        self.prompt_state.rows.clear();
+        self.size = size;
+        self.rows = blank_rows(size.rows);
+        self.history.clear();
+        self.history_cursor = None;
+        self.history_fresh = false;
+    }
+
+    pub fn from_saved(screen: SavedScreen) -> Self {
+        let mut cursor = screen.cursor;
+        cursor.visible = false;
+        Self {
+            graphics: screen.graphics,
+            prompts: BTreeSet::new(),
+            prompt_state: ScreenPrompts::default(),
+            links: ScreenLinks::default(),
+            size: screen.size,
+            rows: screen.rows.into_iter().map(|row| row.runs).collect(),
+            cursor,
+            modes: Modes::default(),
+            history: VecDeque::new(),
+            history_cursor: None,
+            history_total: 0,
+            history_fresh: false,
+        }
+    }
+
+    pub fn replace_history(&mut self, page: HistoryPage) {
+        self.prompts = page.prompts.into_iter().map(usize::from).collect();
+        self.prompt_state.pending = false;
+        if let Some(screen) = page.screen {
+            self.links.rows.clear();
+            self.graphics = screen.graphics;
+            self.size = screen.size;
+            self.rows = screen.rows.into_iter().map(|row| row.runs).collect();
+            self.cursor = screen.cursor;
+        }
+        self.history = page.rows.into();
+        self.history_cursor = page.next;
+        self.history_total = page.total_rows;
+        self.history_fresh = true;
+    }
+
+    pub fn fetch_older(&mut self, page: HistoryPage) {
+        self.prompts = self
+            .prompts
+            .iter()
+            .map(|row| row + page.rows.len())
+            .chain(page.prompts.into_iter().map(usize::from))
+            .collect();
+        for row in page.rows.into_iter().rev() {
+            self.history.push_front(row);
+        }
+        self.history_cursor = page.next;
+    }
+
+    pub fn clear_history(&mut self) {
+        let history = self.history.len();
+        self.prompts = self
+            .prompts
+            .iter()
+            .filter_map(|row| row.checked_sub(history))
+            .collect();
+        self.history.clear();
+        self.history_cursor = None;
+        self.history_fresh = false;
+    }
+
+    pub fn screen_prompts(&mut self, seq: u64, rows: Vec<u16>) {
+        if seq < self.prompt_state.seq {
+            return;
+        }
+        self.prompt_state.seq = seq;
+        self.prompt_state.rows = rows;
+        self.prompt_state.pending = true;
+        if seq <= self.prompt_state.frame_seq {
+            self.apply_screen_prompts();
+        }
+    }
+
+    fn apply_screen_prompts(&mut self) {
+        self.prompts.retain(|row| *row < self.history.len());
+        self.prompts.extend(
+            self.prompt_state
+                .rows
+                .iter()
+                .filter(|row| **row < self.size.rows)
+                .map(|row| self.history.len() + usize::from(*row)),
+        );
+        self.prompt_state.pending = false;
+    }
+
+    pub fn content_row(&self, index: usize) -> Option<&[Run]> {
+        if index < self.history.len() {
+            self.history.get(index).map(|row| row.runs.as_slice())
+        } else {
+            self.rows.get(index - self.history.len()).map(Vec::as_slice)
+        }
+    }
+
+    pub fn search_content_row(&self, row: u64, total_rows: u64) -> Option<usize> {
+        if self.history_total != total_rows {
+            return None;
+        }
+        let first = total_rows.checked_sub(self.history.len() as u64)?;
+        let index = usize::try_from(row.checked_sub(first)?).ok()?;
+        self.content_row(index).map(|_| index)
+    }
+
+    pub fn row_text(&self, index: usize) -> String {
+        self.rows
+            .get(index)
+            .map(|runs| runs.iter().map(|run| run.text.as_str()).collect())
+            .unwrap_or_default()
+    }
+
+    fn replace_rows(&mut self, rows: &[Row]) {
+        for row in rows {
+            if let Some(target) = self.rows.get_mut(usize::from(row.index)) {
+                target.clone_from(&row.runs);
+            }
+        }
+    }
+}
+
+fn blank_rows(count: u16) -> Vec<Vec<Run>> {
+    vec![Vec::new(); usize::from(count)]
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScreenLinks {
+    rows: Vec<codesh_protocol::LinkRow>,
+    seq: u64,
+    frame_seq: u64,
+}
+
+impl ScreenLinks {
+    pub fn replace(&mut self, seq: u64, rows: Vec<codesh_protocol::LinkRow>) {
+        if seq >= self.seq {
+            self.rows = rows;
+            self.seq = seq;
+        }
+    }
+
+    pub fn row(&self, row: u16, size: Size) -> &[codesh_protocol::LinkSpan] {
+        if row >= size.rows || self.seq > self.frame_seq {
+            return &[];
+        }
+        self.rows
+            .iter()
+            .find(|links| links.row == row)
+            .map_or(&[], |links| links.spans.as_slice())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use codesh_protocol::{ChannelId, ServerPath, Style};
+
+    use super::*;
+
+    fn run(text: &str) -> Run {
+        Run {
+            text: text.to_owned(),
+            width: u16::try_from(text.chars().count()).unwrap_or(u16::MAX),
+            style: Style::default(),
+        }
+    }
+
+    fn row(index: u16, text: &str) -> Row {
+        Row {
+            index,
+            runs: if text.is_empty() {
+                vec![]
+            } else {
+                vec![run(text)]
+            },
+        }
+    }
+
+    fn snapshot() -> AttachSnapshot {
+        AttachSnapshot {
+            graphics: codesh_protocol::Graphics::default(),
+            prompts: Vec::new(),
+            channel: ChannelId(1),
+            size: Size { cols: 10, rows: 3 },
+            rows: vec![row(0, "first"), row(2, "third")],
+            cursor: Cursor {
+                shape: codesh_protocol::CursorShape::default(),
+                row: 2,
+                col: 5,
+                visible: true,
+            },
+            modes: Modes::default(),
+            title: "shell".into(),
+            directory: ServerPath(b"/tmp".to_vec()),
+            history: vec![],
+            history_cursor: None,
+            history_total: 0,
+        }
+    }
+
+    fn frame(seq: u64, reset: bool, rows: Vec<Row>) -> ScreenFrame {
+        ScreenFrame {
+            size: Size { cols: 10, rows: 3 },
+            graphics: None,
+            seq,
+            reset,
+            rows,
+            cursor: Cursor {
+                shape: codesh_protocol::CursorShape::default(),
+                row: 0,
+                col: 1,
+                visible: false,
+            },
+            modes: Modes {
+                application_cursor_keys: true,
+                bracketed_paste: true,
+            },
+        }
+    }
+
+    #[test]
+    fn partial_frame_replaces_only_its_rows_and_updates_cursor_and_modes() {
+        let mut grid = RunGrid::from_snapshot(&snapshot());
+        let frame = frame(
+            1,
+            false,
+            vec![row(1, "second"), row(2, ""), row(9, "ignored")],
+        );
+        grid.apply(&frame);
+        assert_eq!(grid.row_text(0), "first");
+        assert_eq!(grid.row_text(1), "second");
+        assert_eq!(grid.row_text(2), "");
+        assert_eq!(grid.rows.len(), 3);
+        assert_eq!(grid.cursor, frame.cursor);
+        assert_eq!(grid.modes, frame.modes);
+    }
+
+    #[test]
+    fn reset_frame_blanks_unnamed_rows_and_grows_to_its_rows() {
+        let mut grid = RunGrid::from_snapshot(&snapshot());
+        grid.apply(&frame(1, true, vec![row(1, "only")]));
+        assert_eq!(grid.rows, vec![vec![], vec![run("only")], vec![]]);
+        grid.apply(&frame(2, true, vec![row(4, "fifth")]));
+        assert_eq!(grid.rows.len(), 5);
+        assert_eq!(grid.row_text(1), "");
+        assert_eq!(grid.row_text(4), "fifth");
+    }
+
+    #[test]
+    fn reset_after_a_delayed_larger_frame_returns_to_the_requested_height() {
+        let mut grid = RunGrid::from_snapshot(&snapshot());
+        grid.resize(Size { cols: 10, rows: 8 });
+        grid.resize(Size { cols: 10, rows: 3 });
+        grid.apply(&frame(
+            1,
+            true,
+            (0..8).map(|index| row(index, "")).collect(),
+        ));
+        grid.apply(&frame(
+            2,
+            true,
+            (0..3).map(|index| row(index, "")).collect(),
+        ));
+        assert_eq!(grid.rows.len(), 3);
+        assert_eq!(grid.history_total, 0);
+        assert!(grid.rows.iter().all(Vec::is_empty));
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScreenPrompts {
+    rows: Vec<u16>,
+    seq: u64,
+    frame_seq: u64,
+    pending: bool,
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use codesh_protocol::{ChannelId, ServerPath};
+
+    fn grid() -> RunGrid {
+        RunGrid::from_snapshot(&AttachSnapshot {
+            graphics: codesh_protocol::Graphics::default(),
+            prompts: vec![0, 3],
+            channel: ChannelId(1),
+            size: Size { cols: 10, rows: 4 },
+            rows: vec![],
+            cursor: Cursor {
+                shape: codesh_protocol::CursorShape::default(),
+                row: 1,
+                col: 0,
+                visible: true,
+            },
+            modes: Modes::default(),
+            title: String::new(),
+            directory: ServerPath(b"/tmp".to_vec()),
+            history: vec![
+                Row {
+                    index: 0,
+                    runs: vec![]
+                };
+                2
+            ],
+            history_cursor: Some(HistoryCursor(2)),
+            history_total: 4,
+        })
+    }
+
+    #[test]
+    fn future_marks_wait_for_frames_and_reset_frames_cannot_reuse_old_marks() {
+        let mut grid = grid();
+        let frame = |seq, reset| ScreenFrame {
+            size: Size { cols: 10, rows: 3 },
+            graphics: None,
+            seq,
+            reset,
+            rows: vec![],
+            cursor: Cursor {
+                shape: codesh_protocol::CursorShape::default(),
+                row: 1,
+                col: 0,
+                visible: true,
+            },
+            modes: Modes::default(),
+        };
+        grid.screen_prompts(3, vec![2]);
+        assert_eq!(grid.prompts, BTreeSet::from([0, 3]));
+        grid.apply(&frame(2, false));
+        assert_eq!(grid.prompts, BTreeSet::from([0]));
+        grid.apply(&frame(3, true));
+        assert_eq!(grid.prompts, BTreeSet::from([2]));
+        grid.screen_prompts(1, vec![0]);
+        assert_eq!(grid.prompts, BTreeSet::from([2]));
+        grid.screen_prompts(5, vec![]);
+        grid.apply(&frame(5, false));
+        assert!(grid.prompts.is_empty());
+        grid.screen_prompts(6, vec![1]);
+        grid.apply(&frame(6, false));
+        grid.apply(&frame(7, true));
+        assert!(grid.prompts.is_empty());
+    }
+}

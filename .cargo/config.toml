@@ -1,0 +1,6 @@
+[env]
+LIBGHOSTTY_VT_SYS_OPTIMIZE = "ReleaseFast"
+
+[alias]
+xcheck = "clippy --workspace --all-targets --all-features -- -D warnings"
+xtest = "test --workspace --all-features"

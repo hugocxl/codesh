@@ -1,0 +1,152 @@
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
+
+use codesh_protocol::ChannelId;
+
+type Pending = Mutex<Option<Contents>>;
+
+#[derive(Debug)]
+struct Contents {
+    sequence: u64,
+    text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ClipboardWrite {
+    pending: Arc<Pending>,
+    consumed: Arc<AtomicU64>,
+}
+
+impl ClipboardWrite {
+    pub fn take(self) -> Option<String> {
+        let contents = self
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()?;
+        (self
+            .consumed
+            .fetch_max(contents.sequence, Ordering::Relaxed)
+            < contents.sequence)
+            .then_some(contents.text)
+    }
+}
+
+impl PartialEq for ClipboardWrite {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.pending, &other.pending)
+    }
+}
+
+impl Eq for ClipboardWrite {}
+
+#[derive(Default)]
+pub(super) struct ClipboardWrites {
+    pending: HashMap<ChannelId, Weak<Pending>>,
+    sequence: u64,
+    consumed: Arc<AtomicU64>,
+}
+
+impl ClipboardWrites {
+    pub(super) fn push(&mut self, channel: ChannelId, text: String) -> Option<ClipboardWrite> {
+        self.sequence += 1;
+        let contents = Contents {
+            sequence: self.sequence,
+            text,
+        };
+        if let Some(pending) = self.pending.get(&channel).and_then(Weak::upgrade) {
+            let mut pending = pending.lock().unwrap_or_else(PoisonError::into_inner);
+            if pending.is_some() {
+                *pending = Some(contents);
+                return None;
+            }
+        }
+        self.pending.retain(|_, pending| pending.strong_count() > 0);
+        let write = ClipboardWrite {
+            pending: Arc::new(Mutex::new(Some(contents))),
+            consumed: self.consumed.clone(),
+        };
+        self.pending.insert(channel, Arc::downgrade(&write.pending));
+        Some(write)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Barrier;
+
+    use super::*;
+
+    #[test]
+    fn consuming_during_a_write_never_loses_the_latest_value()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut pending = ClipboardWrites::default();
+        for _ in 0..128 {
+            let write = pending
+                .push(ChannelId(1), "before".into())
+                .ok_or("missing initial notification")?;
+            let stale = write.clone();
+            let barrier = Barrier::new(2);
+            let (taken, next) = std::thread::scope(|scope| {
+                let consumer = scope.spawn(|| {
+                    barrier.wait();
+                    write.take()
+                });
+                barrier.wait();
+                let next = pending.push(ChannelId(1), "after".into());
+                (consumer.join(), next)
+            });
+            let taken = taken.map_err(|_| "clipboard consumer panicked")?;
+            assert_eq!(stale.take(), None);
+            match next {
+                Some(next) => {
+                    assert_eq!(taken.as_deref(), Some("before"));
+                    assert_eq!(next.take().as_deref(), Some("after"));
+                }
+                None => assert_eq!(taken.as_deref(), Some("after")),
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn discarded_channels_do_not_retain_clipboard_payloads_or_notifications()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut pending = ClipboardWrites::default();
+        for channel in 0..1024 {
+            let write = pending
+                .push(ChannelId(channel), "discarded".into())
+                .ok_or("missing notification")?;
+            let contents = Arc::downgrade(&write.pending);
+            drop(write);
+            assert!(contents.upgrade().is_none());
+            assert_eq!(pending.pending.len(), 1);
+        }
+        let write = pending
+            .push(ChannelId(1023), "next".into())
+            .ok_or("dropped notification suppressed a later write")?;
+        assert_eq!(write.take().as_deref(), Some("next"));
+        Ok(())
+    }
+
+    #[test]
+    fn delayed_channels_cannot_overwrite_a_newer_consumed_clipboard()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut pending = ClipboardWrites::default();
+        let first = pending
+            .push(ChannelId(1), "first".into())
+            .ok_or("missing first notification")?;
+        let second = pending
+            .push(ChannelId(2), "second".into())
+            .ok_or("missing second notification")?;
+        assert!(pending.push(ChannelId(1), "latest".into()).is_none());
+        assert_eq!(first.take().as_deref(), Some("latest"));
+        assert_eq!(second.take(), None);
+        let next = pending
+            .push(ChannelId(2), "next".into())
+            .ok_or("missing next notification")?;
+        assert_eq!(next.take().as_deref(), Some("next"));
+        Ok(())
+    }
+}

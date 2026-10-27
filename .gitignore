@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+*.pdb
+.DS_Store
+/spikes-archive.tar.gz
+/.plans
+/.agents/
+/.claude/
+/skills-lock.json
+__pycache__/
+.env.release
+.codesh/

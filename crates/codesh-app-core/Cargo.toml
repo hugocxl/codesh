@@ -1,0 +1,28 @@
+[package]
+name = "codesh-app-core"
+description = "App domain boundary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+toml = "1.1"
+codesh-core = { path = "../codesh-core" }
+codesh-protocol = { path = "../codesh-protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+serde-saphyr = { version = "1.3", default-features = false, features = ["deserialize"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+unicode-segmentation = "1"
+regex = "1"
+qrcodegen = "1.8"
+
+[dev-dependencies]
+tempfile = "3"

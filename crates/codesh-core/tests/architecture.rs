@@ -1,0 +1,368 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
+use std::process::Command;
+
+use serde_json::Value;
+
+type Graph = BTreeMap<String, BTreeSet<String>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum VisitState {
+    Visiting,
+    Visited,
+}
+
+#[test]
+fn workspace_dependencies_follow_architecture_policy() -> Result<(), String> {
+    let metadata = load_metadata()?;
+    let (actual, dev) = workspace_graph(&metadata)?;
+    let allowed = policy_graph(&metadata, "allowed-dependencies")?
+        .ok_or_else(|| "workspace architecture policy is missing".to_owned())?;
+    let allowed_dev = policy_graph(&metadata, "allowed-dev-dependencies")?.unwrap_or_default();
+    let mut violations = validate_architecture(&actual, &allowed);
+    violations.extend(validate_dev_dependencies(&dev, &allowed, &allowed_dev));
+
+    assert!(
+        violations.is_empty(),
+        "architecture violations:\n{}",
+        violations.join("\n")
+    );
+    Ok(())
+}
+
+#[test]
+fn production_dependencies_preserve_client_and_headless_boundaries() -> Result<(), String> {
+    let metadata = load_metadata()?;
+    let (graph, _) = workspace_graph(&metadata)?;
+    let boundaries: &[(&str, &[&str])] = &[
+        ("codesh-app", &["codesh-server", "codesh-terminal"]),
+        (
+            "codesh-cli",
+            &[
+                "codesh-server",
+                "codesh-terminal",
+                "codesh-app",
+                "codesh-ui",
+            ],
+        ),
+        (
+            "codesh-client",
+            &[
+                "codesh-server",
+                "codesh-terminal",
+                "codesh-app",
+                "codesh-ui",
+            ],
+        ),
+        (
+            "codesh-app-core",
+            &[
+                "codesh-server",
+                "codesh-terminal",
+                "codesh-app",
+                "codesh-ui",
+            ],
+        ),
+        ("codesh-server", &["codesh-app", "codesh-ui"]),
+        (
+            "codesh-mobile",
+            &[
+                "codesh-server",
+                "codesh-terminal",
+                "codesh-app",
+                "codesh-ui",
+                "codesh-app-core",
+            ],
+        ),
+    ];
+    for (root, forbidden) in boundaries {
+        let mut visited = BTreeSet::new();
+        let mut pending = vec![(*root).to_owned()];
+        while let Some(package) = pending.pop() {
+            if !visited.insert(package.clone()) {
+                continue;
+            }
+            assert!(
+                !forbidden.contains(&package.as_str()),
+                "{root} links forbidden production dependency {package}"
+            );
+            let dependencies = graph
+                .get(&package)
+                .ok_or_else(|| format!("missing workspace package {package}"))?;
+            pending.extend(dependencies.iter().cloned());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn rejects_a_dependency_cycle() {
+    let cycle = fixture(&[("first", &["second"]), ("second", &["first"])]);
+    let violations = validate_architecture(&cycle, &cycle);
+
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("dependency graph contains a cycle")),
+        "{violations:#?}"
+    );
+}
+
+fn load_metadata() -> Result<Value, String> {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let output = Command::new(env!("CARGO"))
+        .args(["metadata", "--format-version=1", "--no-deps"])
+        .current_dir(workspace_root)
+        .output()
+        .map_err(|error| format!("failed to run cargo metadata: {error}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "cargo metadata failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("cargo metadata returned invalid JSON: {error}"))
+}
+
+fn workspace_graph(metadata: &Value) -> Result<(Graph, Graph), String> {
+    let packages = metadata
+        .get("packages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "cargo metadata has no packages array".to_owned())?;
+    let member_ids = metadata
+        .get("workspace_members")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "cargo metadata has no workspace_members array".to_owned())?
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    let workspace_names = packages
+        .iter()
+        .filter(|package| {
+            package
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| member_ids.contains(id))
+        })
+        .filter_map(|package| package.get("name").and_then(Value::as_str))
+        .collect::<BTreeSet<_>>();
+    let mut graph = Graph::new();
+    let mut dev_graph = Graph::new();
+
+    for package in packages {
+        let id = string_field(package, "id")?;
+        if !member_ids.contains(id) {
+            continue;
+        }
+
+        let name = string_field(package, "name")?;
+        let dependencies = package
+            .get("dependencies")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("{name} has no dependencies array"))?;
+        let mut workspace_dependencies = BTreeSet::new();
+        let mut dev_dependencies = BTreeSet::new();
+        for dependency in dependencies {
+            let dependency_name = string_field(dependency, "name")?;
+            if !workspace_names.contains(dependency_name) {
+                continue;
+            }
+            if dependency.get("kind").and_then(Value::as_str) == Some("dev") {
+                dev_dependencies.insert(dependency_name.to_owned());
+            } else {
+                workspace_dependencies.insert(dependency_name.to_owned());
+            }
+        }
+        graph.insert(name.to_owned(), workspace_dependencies);
+        if !dev_dependencies.is_empty() {
+            dev_graph.insert(name.to_owned(), dev_dependencies);
+        }
+    }
+
+    Ok((graph, dev_graph))
+}
+
+fn policy_graph(metadata: &Value, table: &str) -> Result<Option<Graph>, String> {
+    let Some(policy) = metadata.pointer(&format!("/metadata/architecture/{table}")) else {
+        return Ok(None);
+    };
+    let policy = policy
+        .as_object()
+        .ok_or_else(|| format!("architecture table {table} is not a table"))?;
+    let mut graph = Graph::new();
+
+    for (name, dependencies) in policy {
+        let dependencies = dependencies
+            .as_array()
+            .ok_or_else(|| format!("architecture policy for {name} is not an array"))?
+            .iter()
+            .map(|dependency| {
+                dependency
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| format!("architecture dependency for {name} is not a string"))
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        graph.insert(name.clone(), dependencies);
+    }
+
+    Ok(Some(graph))
+}
+
+fn string_field<'a>(value: &'a Value, field: &str) -> Result<&'a str, String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("cargo metadata field {field} is missing or not a string"))
+}
+
+fn validate_architecture(actual: &Graph, allowed: &Graph) -> Vec<String> {
+    let mut violations = Vec::new();
+
+    for name in actual.keys() {
+        if !allowed.contains_key(name) {
+            violations.push(format!("{name} must declare an architecture policy"));
+        }
+    }
+    for name in allowed.keys() {
+        if !actual.contains_key(name) {
+            violations.push(format!("architecture policy names missing crate {name}"));
+        }
+    }
+    for (name, dependencies) in allowed {
+        for dependency in dependencies {
+            if !allowed.contains_key(dependency) {
+                violations.push(format!(
+                    "architecture policy for {name} names unknown crate {dependency}"
+                ));
+            }
+        }
+    }
+    for (name, dependencies) in actual {
+        let Some(permitted) = allowed.get(name) else {
+            continue;
+        };
+        for dependency in dependencies {
+            if !permitted.contains(dependency) {
+                violations.push(format!("{name} may not depend on {dependency}"));
+            }
+        }
+    }
+    if let Some(cycle) = find_cycle(allowed) {
+        violations.push(format!(
+            "allowed dependency graph contains a cycle: {}",
+            cycle.join(" -> ")
+        ));
+    }
+    if let Some(cycle) = find_cycle(actual) {
+        violations.push(format!(
+            "workspace dependency graph contains a cycle: {}",
+            cycle.join(" -> ")
+        ));
+    }
+
+    violations
+}
+
+fn validate_dev_dependencies(dev: &Graph, allowed: &Graph, allowed_dev: &Graph) -> Vec<String> {
+    let mut violations = Vec::new();
+
+    for (name, dependencies) in allowed_dev {
+        if !allowed.contains_key(name) {
+            violations.push(format!("test-only policy names unknown crate {name}"));
+        }
+        for dependency in dependencies {
+            if !allowed.contains_key(dependency) {
+                violations.push(format!(
+                    "test-only policy for {name} names unknown crate {dependency}"
+                ));
+            }
+        }
+    }
+    for (name, dependencies) in dev {
+        for dependency in dependencies {
+            let production = allowed
+                .get(name)
+                .is_some_and(|set| set.contains(dependency));
+            let test_only = allowed_dev
+                .get(name)
+                .is_some_and(|set| set.contains(dependency));
+            if !production && !test_only {
+                violations.push(format!(
+                    "{name} may not have a test-only dependency on {dependency}"
+                ));
+            }
+        }
+    }
+
+    violations
+}
+
+fn find_cycle(graph: &Graph) -> Option<Vec<String>> {
+    let mut states = BTreeMap::new();
+    let mut stack = Vec::new();
+
+    for node in graph.keys() {
+        if !states.contains_key(node)
+            && let Some(cycle) = visit(node, graph, &mut states, &mut stack)
+        {
+            return Some(cycle);
+        }
+    }
+
+    None
+}
+
+fn visit(
+    node: &str,
+    graph: &Graph,
+    states: &mut BTreeMap<String, VisitState>,
+    stack: &mut Vec<String>,
+) -> Option<Vec<String>> {
+    states.insert(node.to_owned(), VisitState::Visiting);
+    stack.push(node.to_owned());
+
+    if let Some(dependencies) = graph.get(node) {
+        for dependency in dependencies {
+            match states.get(dependency).copied() {
+                Some(VisitState::Visiting) => {
+                    let start = stack
+                        .iter()
+                        .position(|candidate| candidate == dependency)
+                        .unwrap_or_default();
+                    let mut cycle = stack[start..].to_vec();
+                    cycle.push(dependency.clone());
+                    return Some(cycle);
+                }
+                Some(VisitState::Visited) => {}
+                None => {
+                    if let Some(cycle) = visit(dependency, graph, states, stack) {
+                        return Some(cycle);
+                    }
+                }
+            }
+        }
+    }
+
+    stack.pop();
+    states.insert(node.to_owned(), VisitState::Visited);
+    None
+}
+
+fn fixture(entries: &[(&str, &[&str])]) -> Graph {
+    entries
+        .iter()
+        .map(|(name, dependencies)| {
+            (
+                (*name).to_owned(),
+                dependencies
+                    .iter()
+                    .map(|dependency| (*dependency).to_owned())
+                    .collect(),
+            )
+        })
+        .collect()
+}

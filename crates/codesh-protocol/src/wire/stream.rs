@@ -1,0 +1,100 @@
+use std::io::{Read, Write};
+
+use crate::{ChannelId, Message};
+
+use crate::wire::{
+    HEADER_LEN, Header, MAX_FRAME, WireError, decode, encode, legacy_version_unsupported,
+};
+
+#[derive(Debug)]
+pub struct Encoder<W: Write> {
+    writer: W,
+    buffer: Vec<u8>,
+}
+
+impl<W: Write> Encoder<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            writer,
+            buffer: Vec::new(),
+        }
+    }
+
+    pub fn send(&mut self, channel: ChannelId, message: &Message) -> Result<(), WireError> {
+        encode(message, channel, &mut self.buffer)?;
+        self.writer.write_all(&self.buffer)?;
+        Ok(())
+    }
+
+    /// Tells a peer from before V2, in a frame it can read, to update.
+    pub fn reject_legacy_peer(&mut self) -> Result<(), WireError> {
+        self.writer.write_all(&legacy_version_unsupported())?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Decoder<R: Read> {
+    reader: R,
+    buffer: Vec<u8>,
+    payload_limit: usize,
+}
+
+impl<R: Read> Decoder<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            reader,
+            buffer: Vec::new(),
+            payload_limit: MAX_FRAME,
+        }
+    }
+
+    /// Rejects larger frames before allocating for them, e.g. from unauthenticated peers.
+    pub fn set_payload_limit(&mut self, limit: usize) {
+        self.payload_limit = limit;
+    }
+
+    /// Reads the next message, skipping those from newer builds that this build ignores.
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Result<(ChannelId, Message), WireError> {
+        loop {
+            let mut bytes = [0; HEADER_LEN];
+            self.reader.read_exact(&mut bytes)?;
+            let header = Header::from_bytes(bytes)?;
+            let length = header.payload_len()?;
+            if length > self.payload_limit {
+                return Err(WireError::FrameTooLarge);
+            }
+            self.buffer.resize(length, 0);
+            self.reader.read_exact(&mut self.buffer)?;
+            if let Some(message) = decode(header, &self.buffer)? {
+                return Ok(message);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wire::{MAX_FRAME, MessageKind};
+
+    #[test]
+    fn oversized_headers_do_not_allocate_a_payload_buffer() {
+        for length in [17 * 1024 * 1024, u32::MAX] {
+            let bytes = Header {
+                length,
+                version: 1,
+                channel: 1,
+                kind: MessageKind::Input as u8,
+            }
+            .to_bytes();
+            let mut reader = bytes.as_slice();
+            let mut decoder = Decoder::new(&mut reader);
+            assert!(matches!(decoder.next(), Err(WireError::FrameTooLarge)));
+            assert_eq!(decoder.buffer.capacity(), 0);
+            assert!(reader.is_empty());
+        }
+        assert_eq!(MAX_FRAME, 16 * 1024 * 1024);
+    }
+}

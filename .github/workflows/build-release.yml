@@ -1,0 +1,264 @@
+name: Build release
+
+# Builds, signs, notarizes and verifies one release for every platform. Used
+# by the beta and stable release workflows.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: X.Y.Z or X.Y.Z-beta.N
+        required: true
+        type: string
+      source:
+        description: Commit to build
+        required: true
+        type: string
+      build_number:
+        description: Commit count of a stable release; a beta's is in its version
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  LIBGHOSTTY_VT_SYS_OPTIMIZE: ReleaseFast
+  MACOSX_DEPLOYMENT_TARGET: '14.0'
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }}, ${{ matrix.arch }})
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-build-${{ matrix.target }}
+      cancel-in-progress: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            directory: arm64
+            arch: arm64
+            target: aarch64-apple-darwin
+            runner: macos-15
+          # Cross-compiled and verified through Rosetta: Intel runners are far slower.
+          - platform: macos
+            directory: x86_64
+            arch: x86_64
+            target: x86_64-apple-darwin
+            runner: macos-15
+          - platform: linux
+            directory: linux-x86_64
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - platform: linux
+            directory: linux-arm64
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+    env:
+      VERSION: ${{ inputs.version }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      NOTARIZE: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+      ARCH: ${{ matrix.arch }}
+      PACKAGE_DIR: target/packages/${{ inputs.version }}/${{ matrix.directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source }}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config binutils
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.92.0
+          targets: ${{ matrix.target }}
+      - name: Install Rosetta to run the x86_64 build on Apple silicon
+        if: runner.os == 'macOS' && matrix.arch == 'x86_64'
+        run: arch -x86_64 /usr/bin/true || sudo softwareupdate --install-rosetta --agree-to-license
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: beta-${{ matrix.target }}-baseline
+      - name: Stamp the build version without committing a bump
+        run: |
+          rm -rf target/packages
+          python3 scripts/release.py stamp "$VERSION"
+      - name: Import signing certificate
+        if: runner.os == 'macOS'
+        env:
+          CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/codesh-release-signing.keychain-db"
+          : "${CERTIFICATE_P12:?Apple signing certificate is required}"
+          : "${CERTIFICATE_PASSWORD:?Certificate password is required}"
+          : "${KEYCHAIN_PASSWORD:?Keychain password is required}"
+          umask 077
+          CERTIFICATE="$RUNNER_TEMP/codesh-release-certificate.p12"
+          trap 'rm -f "$CERTIFICATE"' EXIT
+          printf '%s' "$CERTIFICATE_P12" | base64 --decode > "$CERTIFICATE"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db"
+          security import "$CERTIFICATE" -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+      - name: Resolve signing identity
+        if: runner.os == 'macOS'
+        id: identity
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/codesh-release-signing.keychain-db"
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Developer ID Application:|Apple Development:/ {print $2; exit}')
+          if [[ -z "$IDENTITY" ]]; then
+            echo "Error: no Developer ID Application or Apple Development identity found" >&2
+            exit 1
+          fi
+          echo "name=$IDENTITY" >> "$GITHUB_OUTPUT"
+      - name: Build and sign desktop and standalone client/server pair
+        if: runner.os == 'macOS'
+        env:
+          SIGN_IDENTITY: ${{ steps.identity.outputs.name }}
+        run: >-
+          bash scripts/build-release.sh --arch "$ARCH" --version "$VERSION"
+          ${BUILD_NUMBER:+--build-number "$BUILD_NUMBER"} --sign-identity "$SIGN_IDENTITY"
+      - name: Notarize and verify DMG
+        if: runner.os == 'macOS' && env.NOTARIZE == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash scripts/notarize-release.sh "$PACKAGE_DIR/Codesh-$VERSION-$ARCH.dmg"
+      - name: Notarize standalone ZIP and verify extracted executables
+        if: runner.os == 'macOS' && env.NOTARIZE == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash scripts/notarize-release.sh "$PACKAGE_DIR/codesh-$VERSION-macos-$ARCH.zip"
+      - name: Verify packaged pair, desktop bytes and standalone installation
+        if: runner.os == 'macOS'
+        # The universal system Python runs as the packaged architecture, so the
+        # x86_64 pair is installed and exercised under Rosetta.
+        run: >-
+          arch "-$ARCH" /usr/bin/python3 scripts/verify-release-package.py
+          "$PACKAGE_DIR/codesh-$VERSION-macos-$ARCH.zip"
+          --version "$VERSION" --dmg "$PACKAGE_DIR/Codesh-$VERSION-$ARCH.dmg"
+          ${{ env.NOTARIZE == 'true' && '--notarized' || '' }}
+      - name: Build and package the native glibc 2.35 pair
+        if: runner.os == 'Linux'
+        run: bash scripts/build-cli-linux.sh "$ARCH" "$VERSION"
+      - name: Verify packaged pair and standalone installation
+        if: runner.os == 'Linux'
+        run: >-
+          python3 scripts/verify-release-package.py
+          "$PACKAGE_DIR/codesh-$VERSION-linux-$ARCH.tar.gz"
+          --version "$VERSION"
+      - name: Upload distribution archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            ${{ env.PACKAGE_DIR }}/Codesh-${{ env.VERSION }}-${{ matrix.arch }}.dmg
+            ${{ env.PACKAGE_DIR }}/codesh-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}.zip
+            ${{ env.PACKAGE_DIR }}/codesh-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload debug symbols and dependency audits
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbols-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            ${{ env.PACKAGE_DIR }}/*-symbols.zip
+            ${{ env.PACKAGE_DIR }}/*-symbols.tar.gz
+            ${{ env.PACKAGE_DIR }}/*-dependencies.txt
+            ${{ env.PACKAGE_DIR }}/*-audit.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Keep packaged output out of the build cache
+        if: always()
+        run: rm -rf target/packages
+      - name: Remove signing keychain
+        if: always() && runner.os == 'macOS'
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/codesh-release-signing.keychain-db"
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          rm -f "$RUNNER_TEMP/codesh-release-certificate.p12"
+
+  linux-desktop:
+    name: Build (Linux desktop, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+    env:
+      VERSION: ${{ inputs.version }}
+      ARCH: ${{ matrix.arch }}
+      PACKAGE_DIR: target/packages/${{ inputs.version }}/linux-desktop-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source }}
+      - run: >-
+          sudo apt-get update && sudo apt-get install -y
+          build-essential pkg-config clang cmake binutils libfontconfig1-dev libfreetype-dev
+          libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libvulkan-dev
+          libssl-dev libwebkit2gtk-4.1-0 curl dpkg-dev file desktop-file-utils
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.92.0
+          targets: ${{ matrix.target }}
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-release-${{ matrix.target }}
+          cache-on-failure: true
+      - name: Stamp and build the desktop with matching helpers
+        run: |
+          rm -rf target/packages
+          python3 scripts/release.py stamp "$VERSION"
+          bash scripts/build-desktop-release-linux.sh "$ARCH" "$VERSION"
+      - name: Verify install, helpers, leases and uninstall without a display
+        run: >-
+          python3 scripts/verify-desktop-linux.py
+          "$PACKAGE_DIR/codesh-desktop-$VERSION-linux-$ARCH.tar.gz" --version "$VERSION"
+      - name: Verify APT dependencies, package lifecycle, AppImage and the user-local installer
+        run: bash scripts/verify-desktop-runtime.sh "$VERSION" "$ARCH" "$PACKAGE_DIR"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution-linux-desktop-${{ matrix.arch }}
+          path: |
+            ${{ env.PACKAGE_DIR }}/codesh-desktop-${{ env.VERSION }}-linux-${{ matrix.arch }}.tar.gz
+            ${{ env.PACKAGE_DIR }}/Codesh-${{ env.VERSION }}-linux-${{ matrix.arch }}.AppImage
+            ${{ env.PACKAGE_DIR }}/codesh-desktop*.deb
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symbols-linux-desktop-${{ matrix.arch }}
+          path: |
+            ${{ env.PACKAGE_DIR }}/*-symbols.tar.gz
+            ${{ env.PACKAGE_DIR }}/*-audit.txt
+          if-no-files-found: error
+          retention-days: 30
+      - if: always()
+        run: rm -rf target/packages

@@ -1,0 +1,149 @@
+{
+  "servers": {},
+  "starting_directories": {},
+  "version": 3,
+  "projects": [
+    {
+      "id": "7f8bf546ff934ddb8d7587d753c0f169",
+      "home": true,
+      "name": "Home",
+      "created_at": {
+        "secs_since_epoch": 1793107806,
+        "nanos_since_epoch": 41225000
+      },
+      "icon": null,
+      "logo": null,
+      "color": "#5b5bd6",
+      "server_id": "9eedd63357b54359b76e762c6bc2775c",
+      "directory": [
+        47,
+        116,
+        109,
+        112
+      ],
+      "kind": null,
+      "parent_id": null,
+      "tabs": [
+        {
+          "id": "f57bdf37aa6d47a9b53679d0b9e62c7f",
+          "custom_title": null,
+          "color": null,
+          "pinned": false,
+          "panes": [
+            {
+              "id": "b02d9c7bae0048ffb2eddf29ef3dac5a",
+              "title": "Terminal",
+              "content": {
+                "type": "terminal",
+                "session": null
+              }
+            },
+            {
+              "id": "ed5dea2765ef487b9ef321a58f45d329",
+              "title": "Editor",
+              "content": {
+                "type": "webview",
+                "owner": "files",
+                "kind": "code-editor",
+                "data": {
+                  "filePath": "src/main.rs",
+                  "replaceable": false
+                }
+              }
+            },
+            {
+              "id": "a19498a758584f1cbbbb76220152e5c1",
+              "title": "Diff",
+              "content": {
+                "type": "webview",
+                "owner": "git",
+                "kind": "diff-viewer",
+                "data": {
+                  "focusPath": "README.md"
+                }
+              }
+            },
+            {
+              "id": "8be80b5496504bd7898c563b5c12e0e0",
+              "title": "Acme",
+              "content": {
+                "type": "webview",
+                "owner": "acme",
+                "kind": "dashboard",
+                "data": {}
+              }
+            },
+            {
+              "id": "bbba4373e642458eab8b30606035a415",
+              "title": "Commit",
+              "content": {
+                "type": "webview",
+                "owner": "git",
+                "kind": "diff-viewer",
+                "data": {
+                  "hash": "abc",
+                  "source": "commit"
+                }
+              }
+            }
+          ],
+          "layout": {
+            "Split": {
+              "axis": "horizontal",
+              "ratio": 0.4,
+              "first": {
+                "Split": {
+                  "axis": "horizontal",
+                  "ratio": 0.5,
+                  "first": {
+                    "Leaf": "b02d9c7bae0048ffb2eddf29ef3dac5a"
+                  },
+                  "second": {
+                    "Leaf": "ed5dea2765ef487b9ef321a58f45d329"
+                  }
+                }
+              },
+              "second": {
+                "Split": {
+                  "axis": "horizontal",
+                  "ratio": 0.6666666,
+                  "first": {
+                    "Split": {
+                      "axis": "horizontal",
+                      "ratio": 0.5,
+                      "first": {
+                        "Leaf": "a19498a758584f1cbbbb76220152e5c1"
+                      },
+                      "second": {
+                        "Leaf": "8be80b5496504bd7898c563b5c12e0e0"
+                      }
+                    }
+                  },
+                  "second": {
+                    "Leaf": "bbba4373e642458eab8b30606035a415"
+                  }
+                }
+              }
+            }
+          },
+          "zoomed": null
+        }
+      ]
+    }
+  ],
+  "window": {
+    "active_pane": "bbba4373e642458eab8b30606035a415",
+    "focus_history": [
+      "b02d9c7bae0048ffb2eddf29ef3dac5a",
+      "ed5dea2765ef487b9ef321a58f45d329",
+      "a19498a758584f1cbbbb76220152e5c1",
+      "8be80b5496504bd7898c563b5c12e0e0",
+      "bbba4373e642458eab8b30606035a415"
+    ],
+    "current_project": "7f8bf546ff934ddb8d7587d753c0f169",
+    "selected_tab": {
+      "7f8bf546ff934ddb8d7587d753c0f169": "f57bdf37aa6d47a9b53679d0b9e62c7f"
+    },
+    "bounds": null
+  }
+}

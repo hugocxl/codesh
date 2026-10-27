@@ -1,0 +1,447 @@
+use crate::{
+    ErrorCode, HistoryCursor, Message, MetadataEvent, MouseAction, MouseEvent, ReplyBody,
+    RequestBody, Row, SavedScreen, SearchSource, ServerPath, Size, Version,
+};
+
+pub const MAX_COLS: u16 = 4096;
+pub const MAX_ROWS: u16 = 1024;
+pub const MAX_LINK_SPANS: usize = 1024;
+pub const MAX_LINK_URI: usize = 2048;
+pub const MAX_CLIPBOARD_TEXT: usize = 1024 * 1024;
+
+pub const MAX_INPUT: usize = 1024 * 1024;
+
+pub fn validate_search(query: &str, max_results: u16) -> Result<(), ErrorCode> {
+    if !(1..=256).contains(&query.len()) {
+        return Err(ErrorCode::BadRequest);
+    }
+    validate_page_size(max_results)
+}
+
+pub fn validate_size(size: Size) -> Result<(), ErrorCode> {
+    if (1..=MAX_COLS).contains(&size.cols) && (1..=MAX_ROWS).contains(&size.rows) {
+        Ok(())
+    } else {
+        Err(ErrorCode::BadSize)
+    }
+}
+
+pub fn validate_input(input: &[u8]) -> Result<(), ErrorCode> {
+    if input.len() <= MAX_INPUT {
+        Ok(())
+    } else {
+        Err(ErrorCode::BadRequest)
+    }
+}
+
+pub fn validate_path(path: &ServerPath) -> Result<(), ErrorCode> {
+    if path.0.is_empty() {
+        Err(ErrorCode::BadPath)
+    } else {
+        Ok(())
+    }
+}
+
+/// Variables a program starts with: at most 128, with names a process can
+/// hold, in 64 KiB together.
+pub fn validate_environment(
+    environment: &std::collections::BTreeMap<String, String>,
+) -> Result<(), ErrorCode> {
+    if environment.len() > 128
+        || environment
+            .iter()
+            .any(|(key, value)| key.is_empty() || key.contains(['=', '\0']) || value.contains('\0'))
+        || environment
+            .iter()
+            .map(|(key, value)| key.len() + value.len())
+            .sum::<usize>()
+            > 64 * 1024
+    {
+        Err(ErrorCode::BadRequest)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn validate_versions(versions: &[Version]) -> Result<(), ErrorCode> {
+    if versions.is_empty() {
+        Err(ErrorCode::BadRequest)
+    } else {
+        Ok(())
+    }
+}
+
+impl Message {
+    pub fn validate(&self) -> Result<(), ErrorCode> {
+        match self {
+            Self::Hello { versions, .. } | Self::HelloReply { versions, .. } => {
+                validate_versions(versions)
+            }
+            Self::Request { body, .. } => validate_request(body),
+            Self::Reply { body, .. } => validate_reply(body),
+            Self::Input(input) => validate_input(input),
+            Self::TerminalInput(input) => input.validate(),
+            Self::Mouse(event) => validate_mouse(event),
+            Self::CellSize(cell) => {
+                if (1..=4096).contains(&cell.width) && (1..=4096).contains(&cell.height) {
+                    Ok(())
+                } else {
+                    Err(ErrorCode::BadSize)
+                }
+            }
+            Self::Frame(frame) => {
+                validate_size(frame.size)?;
+                frame
+                    .graphics
+                    .as_ref()
+                    .map_or(Ok(()), crate::Graphics::validate)
+            }
+            Self::Metadata(MetadataEvent::ScreenPrompts { rows, .. }) => {
+                validate_prompts(rows, usize::from(MAX_ROWS))
+            }
+            Self::Metadata(MetadataEvent::Links { rows, .. }) => validate_links(rows),
+            Self::Metadata(MetadataEvent::Directory(path)) => validate_path(path),
+            Self::Metadata(MetadataEvent::ClipboardWrite(text)) => {
+                if text.is_empty() || text.len() > MAX_CLIPBOARD_TEXT {
+                    Err(ErrorCode::BadRequest)
+                } else {
+                    Ok(())
+                }
+            }
+            Self::Progress { progress, .. } => {
+                if progress
+                    .progress
+                    .is_some_and(|progress| progress.percent.is_some_and(|value| value > 100))
+                {
+                    Err(ErrorCode::BadRequest)
+                } else {
+                    Ok(())
+                }
+            }
+            Self::FilesChanged { changes, .. } => changes.validate(),
+            Self::SessionMetadata { metadata, .. } => validate_path(&metadata.directory),
+            Self::Changed { .. }
+            | Self::GitChanged { .. }
+            | Self::UnsupportedRequest { .. }
+            | Self::UnreadableReply { .. }
+            | Self::ServerRestarting
+            | Self::FrameAck { .. }
+            | Self::VersionUnsupported
+            | Self::SessionEnded { .. }
+            | Self::Fatal(_)
+            | Self::Metadata(
+                MetadataEvent::Title(_)
+                | MetadataEvent::ForegroundProcess { .. }
+                | MetadataEvent::Bell
+                | MetadataEvent::History { .. }
+                | MetadataEvent::InputModes(_)
+                | MetadataEvent::CursorBlinking(_),
+            ) => Ok(()),
+        }
+    }
+}
+
+fn validate_mouse(event: &MouseEvent) -> Result<(), ErrorCode> {
+    let valid = match event.action {
+        MouseAction::Press | MouseAction::Release => {
+            event.button.is_some() && event.scroll.is_none()
+        }
+        MouseAction::Motion => event.scroll.is_none(),
+        MouseAction::Scroll => event.button.is_none() && event.scroll.is_some(),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(ErrorCode::BadRequest)
+    }
+}
+
+fn validate_request(body: &RequestBody) -> Result<(), ErrorCode> {
+    match body {
+        RequestBody::ClearScreen(channel) => {
+            if *channel == crate::CONTROL {
+                Err(ErrorCode::UnknownChannel)
+            } else {
+                Ok(())
+            }
+        }
+        RequestBody::WriteInput { channel, bytes } => {
+            if *channel == crate::CONTROL {
+                return Err(ErrorCode::UnknownChannel);
+            }
+            validate_input(bytes)
+        }
+        RequestBody::AcknowledgeActivity(ids) | RequestBody::ClaimActivity(ids) => {
+            if ids.len() <= crate::ACTIVITY_HISTORY_LIMIT {
+                Ok(())
+            } else {
+                Err(ErrorCode::BadRequest)
+            }
+        }
+        RequestBody::Git(request) => request.validate(),
+        RequestBody::Files(request) => request.validate(),
+        RequestBody::ListFolders(path) => crate::validate_folder_path(path),
+        RequestBody::Upload(chunk) => chunk.validate(),
+        RequestBody::Exec(request) => request.validate(),
+        RequestBody::SyncSessionReferences { sessions, .. } => {
+            if sessions.len() > 16_384 {
+                Err(ErrorCode::BadRequest)
+            } else {
+                Ok(())
+            }
+        }
+        RequestBody::MutateProject(intent) => intent.mutation.validate(),
+        RequestBody::WriteServerSettings(settings) => settings.validate(),
+        RequestBody::Search {
+            source,
+            query,
+            max_results,
+            ..
+        } => {
+            if *source == SearchSource::Live(crate::CONTROL) {
+                return Err(ErrorCode::UnknownChannel);
+            }
+            validate_search(query, *max_results)
+        }
+        RequestBody::CreateSession {
+            directory,
+            size,
+            environment,
+            ..
+        } => {
+            validate_path(directory)?;
+            validate_environment(environment)?;
+            validate_size(*size)
+        }
+        RequestBody::Attach { size, .. } | RequestBody::Resize { size, .. } => validate_size(*size),
+        RequestBody::HistoryPage {
+            channel, max_rows, ..
+        } => {
+            if *channel == crate::CONTROL {
+                return Err(ErrorCode::UnknownChannel);
+            }
+            validate_page_size(*max_rows)
+        }
+        RequestBody::SavedHistoryPage { max_rows, .. } => validate_page_size(*max_rows),
+        RequestBody::Pair(request) => request.validate(),
+        RequestBody::WriteRemoteAccess(settings) => settings.validate(),
+        RequestBody::StartPairingWithHosts(hosts) => crate::validate_pairing_hosts(hosts),
+        RequestBody::Authenticate(_)
+        | RequestBody::ReadRemoteAccess
+        | RequestBody::StartPairing
+        | RequestBody::CancelPairing
+        | RequestBody::RevokeDevice(_)
+        | RequestBody::CancelExec(_)
+        | RequestBody::ReadActivity
+        | RequestBody::IdentifyClient(_)
+        | RequestBody::ReadCatalog { .. }
+        | RequestBody::ListProjectSessions { .. }
+        | RequestBody::CloseSession { .. }
+        | RequestBody::CancelCreation(_)
+        | RequestBody::ReadServerSettings
+        | RequestBody::StopServerIfIdle
+        | RequestBody::StopServer
+        | RequestBody::ListSessions
+        | RequestBody::EndSession(_)
+        | RequestBody::AttachWithoutResize(_)
+        | RequestBody::Detach(_)
+        | RequestBody::Ping
+        | RequestBody::ReadSavedScreen(_)
+        | RequestBody::DiscardSession(_)
+        | RequestBody::SetTerminalColors(_) => Ok(()),
+    }
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "Keep reply validation exhaustive in one place"
+)]
+fn validate_reply(body: &ReplyBody) -> Result<(), ErrorCode> {
+    match body {
+        ReplyBody::ActivityClaimed(ids) => {
+            if ids.len() <= crate::ACTIVITY_HISTORY_LIMIT {
+                Ok(())
+            } else {
+                Err(ErrorCode::BadRequest)
+            }
+        }
+        ReplyBody::Activity(snapshot) => {
+            if snapshot.events.len() <= crate::ACTIVITY_HISTORY_LIMIT
+                && snapshot.agents.len() <= 16_384
+            {
+                Ok(())
+            } else {
+                Err(ErrorCode::BadRequest)
+            }
+        }
+        ReplyBody::Files(reply) => reply.validate(),
+        ReplyBody::Folders(names) => crate::validate_folder_names(names),
+        ReplyBody::Uploaded(path) => crate::validate_uploaded(path.as_ref()),
+        ReplyBody::Exec(reply) => reply.validate(),
+        ReplyBody::Catalog(page) => page.validate(),
+        ReplyBody::ProjectSessions(page) => page.validate(),
+        ReplyBody::ServerSettings(settings) => settings.validate(),
+        ReplyBody::SearchPage(page) => {
+            if page.matches.len() > 500
+                || page.scanned_rows > 2000
+                || page.next == Some(HistoryCursor(0))
+                || (page.scanned_rows == 0 && (!page.matches.is_empty() || page.next.is_some()))
+                || page.matches.iter().any(|found| {
+                    found.start >= found.end
+                        || found.end > MAX_COLS
+                        || found.row >= page.total_rows.saturating_add(u64::from(MAX_ROWS))
+                })
+                || page
+                    .matches
+                    .windows(2)
+                    .any(|pair| (pair[0].row, pair[0].start) <= (pair[1].row, pair[1].start))
+            {
+                return Err(ErrorCode::BadRequest);
+            }
+            Ok(())
+        }
+        ReplyBody::Sessions(sessions) => {
+            for session in sessions {
+                validate_path(&session.directory)?;
+            }
+            Ok(())
+        }
+        ReplyBody::SessionCreated(session) => validate_path(&session.directory),
+        ReplyBody::Attached { snapshot, .. } => {
+            snapshot.graphics.validate()?;
+            validate_size(snapshot.size)?;
+            validate_path(&snapshot.directory)?;
+            validate_history(
+                &snapshot.history,
+                snapshot.history_cursor,
+                snapshot.history_total,
+                200,
+            )?;
+            validate_prompts(
+                &snapshot.prompts,
+                snapshot.history.len() + usize::from(snapshot.size.rows),
+            )
+        }
+        ReplyBody::HistoryPage(page) => {
+            validate_history(&page.rows, page.next, page.total_rows, 500)?;
+            if let Some(screen) = &page.screen {
+                validate_saved_screen(screen)?;
+            }
+            validate_prompts(
+                &page.prompts,
+                page.rows.len()
+                    + page
+                        .screen
+                        .as_ref()
+                        .map_or(0, |screen| usize::from(screen.size.rows)),
+            )
+        }
+        ReplyBody::SavedScreen(screen) => validate_saved_screen(screen),
+        ReplyBody::Paired(paired) => paired.validate(),
+        ReplyBody::RemoteAccess(state) => state.validate(),
+        ReplyBody::Pairing(offer) => offer.invite.validate(),
+        ReplyBody::Authenticated
+        | ReplyBody::ExecCancelled
+        | ReplyBody::ActivityAcknowledged
+        | ReplyBody::InputWritten
+        | ReplyBody::ScreenCleared
+        | ReplyBody::Git(_)
+        | ReplyBody::ProjectMutated { .. }
+        | ReplyBody::SessionReferencesSynced
+        | ReplyBody::ClientIdentified(_)
+        | ReplyBody::SessionClosed
+        | ReplyBody::CreationCancelled
+        | ReplyBody::ServerSettingsWritten
+        | ReplyBody::ServerBusy
+        | ReplyBody::ServerStopping
+        | ReplyBody::SessionEnded
+        | ReplyBody::Detached
+        | ReplyBody::Resized
+        | ReplyBody::TerminalColorsSet
+        | ReplyBody::Pong
+        | ReplyBody::Error(_)
+        | ReplyBody::SessionDiscarded => Ok(()),
+    }
+}
+
+fn validate_page_size(max_rows: u16) -> Result<(), ErrorCode> {
+    if (1..=500).contains(&max_rows) {
+        Ok(())
+    } else {
+        Err(ErrorCode::BadRequest)
+    }
+}
+
+fn validate_history(
+    rows: &[Row],
+    next: Option<HistoryCursor>,
+    total: u64,
+    limit: usize,
+) -> Result<(), ErrorCode> {
+    if rows.len() > limit
+        || rows.len() as u64 > total
+        || next == Some(HistoryCursor(0))
+        || (rows.is_empty() && next.is_some())
+        || rows.iter().enumerate().any(|(index, row)| {
+            usize::from(row.index) != index
+                || row.runs.iter().any(|run| run.width == 0)
+                || row.runs.iter().map(|run| u64::from(run.width)).sum::<u64>()
+                    > u64::from(MAX_COLS)
+        })
+    {
+        Err(ErrorCode::BadRequest)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_saved_screen(screen: &SavedScreen) -> Result<(), ErrorCode> {
+    screen.graphics.validate()?;
+    validate_size(screen.size)?;
+    if screen.rows.len() != usize::from(screen.size.rows)
+        || screen.cursor.row >= screen.size.rows
+        || screen.cursor.col >= screen.size.cols
+        || screen.rows.iter().enumerate().any(|(index, row)| {
+            usize::from(row.index) != index
+                || row.runs.iter().any(|run| run.width == 0)
+                || row.runs.iter().map(|run| u64::from(run.width)).sum::<u64>()
+                    > u64::from(screen.size.cols)
+        })
+    {
+        return Err(ErrorCode::BadRequest);
+    }
+    Ok(())
+}
+
+fn validate_links(rows: &[crate::LinkRow]) -> Result<(), ErrorCode> {
+    if rows.len() > usize::from(MAX_ROWS)
+        || rows.iter().map(|row| row.spans.len()).sum::<usize>() > MAX_LINK_SPANS
+        || rows.windows(2).any(|pair| pair[0].row >= pair[1].row)
+        || rows.iter().any(|row| {
+            row.row >= MAX_ROWS
+                || row.spans.is_empty()
+                || row.spans.windows(2).any(|pair| pair[0].end > pair[1].start)
+                || row.spans.iter().any(|span| {
+                    span.start >= span.end
+                        || span.end > MAX_COLS
+                        || span.uri.is_empty()
+                        || span.uri.len() > MAX_LINK_URI
+                        || span.uri.chars().any(char::is_control)
+                })
+        })
+    {
+        return Err(ErrorCode::BadRequest);
+    }
+    Ok(())
+}
+
+fn validate_prompts(rows: &[u16], count: usize) -> Result<(), ErrorCode> {
+    if rows.len() > count
+        || rows.windows(2).any(|pair| pair[0] >= pair[1])
+        || rows.last().is_some_and(|row| usize::from(*row) >= count)
+    {
+        Err(ErrorCode::BadRequest)
+    } else {
+        Ok(())
+    }
+}

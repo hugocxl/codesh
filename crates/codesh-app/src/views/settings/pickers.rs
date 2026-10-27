@@ -1,0 +1,136 @@
+use codesh_ui::controls;
+pub(crate) use codesh_ui::popover::PopoverAnchor as PickerAnchor;
+use gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
+
+use super::{SettingsEvent, SettingsView};
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum FontSlot {
+    Regular,
+    Fallback,
+    Bold,
+    Italic,
+    BoldItalic,
+    Codepoint,
+}
+
+impl FontSlot {
+    pub(super) const ALL: [Self; 6] = [
+        Self::Regular,
+        Self::Fallback,
+        Self::Bold,
+        Self::Italic,
+        Self::BoldItalic,
+        Self::Codepoint,
+    ];
+
+    pub(super) fn id(self) -> &'static str {
+        match self {
+            Self::Regular => "font-family",
+            Self::Fallback => "font-fallbacks",
+            Self::Bold => "font-family-bold",
+            Self::Italic => "font-family-italic",
+            Self::BoldItalic => "font-family-bold-italic",
+            Self::Codepoint => "font-codepoint-map",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum PickerKind {
+    Font(FontSlot),
+    Terminal(&'static str),
+    Language,
+    Theme(bool),
+    AiProvider(crate::repository_actions::Action),
+    FileOpener,
+}
+
+impl PickerKind {
+    pub(super) fn id(self) -> &'static str {
+        match self {
+            Self::Font(slot) => slot.id(),
+            Self::Terminal(id) => id,
+            Self::Language => "voice-language",
+            Self::Theme(false) => "light-theme",
+            Self::Theme(true) => "dark-theme",
+            Self::AiProvider(action) => super::ai::provider_id(action),
+            Self::FileOpener => "file-opener",
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct PickerRequest {
+    pub(crate) kind: PickerKind,
+    pub(crate) anchor: PickerAnchor,
+}
+
+impl SettingsView {
+    pub(super) fn picker(
+        &self,
+        kind: PickerKind,
+        value: &str,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let anchor = self.picker_anchors[&kind].clone();
+        let recorder = anchor.clone();
+        div()
+            .flex()
+            .min_w(px(0.0))
+            .debug_selector(move || format!("settings-picker-{}", kind.id()))
+            .child(controls::picker_trigger(
+                self.style(),
+                kind.id(),
+                value,
+                (!self.compact).then_some(
+                    if matches!(kind, PickerKind::Terminal(id) if id.starts_with("adjust-")) {
+                        100.0
+                    } else {
+                        controls::CONTROL_WIDTH
+                    },
+                ),
+                false,
+                cx.listener(move |pane, _, _, cx| {
+                    pane.recording = None;
+                    cx.emit(SettingsEvent::Picker(kind, anchor.clone()));
+                }),
+            ))
+            .on_children_prepainted(move |bounds, window, _| {
+                recorder.set(
+                    bounds
+                        .first()
+                        .copied()
+                        .filter(|bounds| window.content_mask().bounds.intersects(bounds)),
+                );
+            })
+            .into_any_element()
+    }
+}
+
+pub(crate) fn dropdown(
+    picker: gpui::AnyElement,
+    source: PickerRequest,
+    cx: &mut Context<super::window::SettingsWindow>,
+) -> gpui::AnyElement {
+    let model = cx.weak_entity();
+    codesh_ui::popover::anchored_popover(
+        source.anchor,
+        div()
+            .debug_selector(|| "settings-dropdown".into())
+            .child(picker)
+            .into_any_element(),
+        move |window, cx| {
+            let _ = model.update(cx, |model, cx| {
+                if model
+                    .overlay
+                    .as_ref()
+                    .map(super::window::SettingsOverlay::source)
+                    .is_some_and(|current| current.kind == source.kind)
+                {
+                    model.dismiss_overlay(window, cx);
+                }
+            });
+        },
+    )
+}

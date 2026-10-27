@@ -1,0 +1,17 @@
+# Optional Ubuntu 24.04 integration for WebKitGTK's user-namespace sandbox.
+# Install as /etc/apparmor.d/codesh-desktop, then reload with apparmor_parser -r.
+# Adapt the attachment path if XDG_DATA_HOME has been customized.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile codesh-desktop @{HOME}/.local/share/codesh-desktop{,-beta}/versions/*/codesh-app flags=(unconfined) {
+    userns,
+}
+
+profile codesh-desktop-package /usr/lib/codesh-desktop{,-beta}/codesh-app flags=(unconfined) {
+    userns,
+}
+
+profile codesh-desktop-appimage @{HOME}/.local/share/codesh-appimage/*/usr/bin/codesh-app flags=(unconfined) {
+    userns,
+}

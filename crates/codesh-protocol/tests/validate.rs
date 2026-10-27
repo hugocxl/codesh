@@ -1,0 +1,780 @@
+use std::collections::BTreeSet;
+use std::num::NonZeroU64;
+
+use codesh_protocol::{
+    AttachSnapshot, CONTROL, ChannelId, ChannelKind, Cursor, ErrorCode, Message, MetadataEvent,
+    Modes, ReplyBody, RequestBody, RequestId, Row, Run, ServerPath, SessionId, Size, Style, Topic,
+};
+
+#[test]
+fn every_request_with_a_size_validates_it() {
+    for (size, expected) in [
+        (Size { cols: 1, rows: 1 }, Ok(())),
+        (
+            Size {
+                cols: 4096,
+                rows: 1024,
+            },
+            Ok(()),
+        ),
+        (Size { cols: 0, rows: 1 }, Err(ErrorCode::BadSize)),
+        (
+            Size {
+                cols: 1,
+                rows: 1025,
+            },
+            Err(ErrorCode::BadSize),
+        ),
+    ] {
+        for body in [
+            RequestBody::CreateSession {
+                project: codesh_protocol::ProjectId::from_u128(1),
+                operation: codesh_protocol::OperationId::from_u128(2),
+                directory: directory(),
+                size,
+                environment: std::collections::BTreeMap::new(),
+            },
+            RequestBody::Attach {
+                session: session_id(),
+                size,
+            },
+            RequestBody::Resize {
+                channel: ChannelId(1),
+                size,
+            },
+        ] {
+            assert_eq!(request(body).validate(), expected);
+        }
+    }
+}
+
+#[test]
+fn new_sessions_refuse_environment_a_process_cannot_hold() {
+    let create = |environment: &[(&str, &str)]| {
+        request(RequestBody::CreateSession {
+            project: codesh_protocol::ProjectId::from_u128(1),
+            operation: codesh_protocol::OperationId::from_u128(2),
+            directory: directory(),
+            size: Size { cols: 80, rows: 24 },
+            environment: environment
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+                .collect(),
+        })
+        .validate()
+    };
+    assert_eq!(create(&[]), Ok(()));
+    assert_eq!(create(&[("http_proxy", "http://proxy:8080")]), Ok(()));
+    for environment in [[("", "value")], [("A=B", "value")], [("NAME", "nul\0")]] {
+        assert_eq!(create(&environment), Err(ErrorCode::BadRequest));
+    }
+    let large = "x".repeat(64 * 1024);
+    assert_eq!(create(&[("LARGE", &large)]), Err(ErrorCode::BadRequest));
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn samples_cover_every_message_variant_once_and_use_the_right_channel() {
+    use codesh_protocol::{FilesAction, FilesReply, GitAction, GitPullRequestAction, GitReply};
+
+    let mut seen = BTreeSet::new();
+    for message in Message::samples() {
+        let (name, channel) = match &message {
+            Message::Changed { topic, .. } => (
+                match topic {
+                    Topic::Catalog => "CatalogChanged",
+                    Topic::Sessions => "SessionsChanged",
+                    Topic::Activity => "ActivityChanged",
+                    Topic::RemoteAccess => "RemoteAccessChanged",
+                    Topic::Unrecognized(_) => "UnrecognizedChanged",
+                },
+                ChannelKind::Control,
+            ),
+            Message::UnsupportedRequest { .. } | Message::UnreadableReply { .. } => {
+                panic!("samples are messages a peer sends, not decoding outcomes")
+            }
+            Message::Request {
+                body: RequestBody::IdentifyClient(codesh_protocol::ClientKind::Mobile),
+                ..
+            } => ("IdentifyMobile", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::Authenticate(_),
+                ..
+            } => ("Authenticate", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::Pair(_),
+                ..
+            } => ("Pair", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ReadRemoteAccess,
+                ..
+            } => ("ReadRemoteAccess", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::WriteRemoteAccess(_),
+                ..
+            } => ("WriteRemoteAccess", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::StartPairing,
+                ..
+            } => ("StartPairing", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::StartPairingWithHosts(_),
+                ..
+            } => ("StartPairingWithHosts", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::CancelPairing,
+                ..
+            } => ("CancelPairing", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ListFolders(_),
+                ..
+            } => ("ListFolders", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::Upload(_),
+                ..
+            } => ("Upload", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::RevokeDevice(_),
+                ..
+            } => ("RevokeDevice", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Authenticated,
+                ..
+            } => ("Authenticated", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Paired(_),
+                ..
+            } => ("Paired", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::RemoteAccess(_),
+                ..
+            } => ("RemoteAccess", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Pairing(_),
+                ..
+            } => ("Pairing", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Error(error),
+                ..
+            } if error.code == ErrorCode::Unauthorized => ("Unauthorized", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::Exec(_),
+                ..
+            } => ("Exec", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::CancelExec(_),
+                ..
+            } => ("CancelExec", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Exec(_),
+                ..
+            } => ("ExecResult", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ExecCancelled,
+                ..
+            } => ("ExecCancelled", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ReadActivity,
+                ..
+            } => ("ReadActivity", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::AcknowledgeActivity(_),
+                ..
+            } => ("AcknowledgeActivity", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ClaimActivity(_),
+                ..
+            } => ("ClaimActivity", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Activity(_),
+                ..
+            } => ("Activity", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ActivityAcknowledged,
+                ..
+            } => ("ActivityAcknowledged", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ActivityClaimed(_),
+                ..
+            } => ("ActivityClaimed", ChannelKind::Control),
+            Message::SessionMetadata { .. } => ("SessionMetadata", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::IdentifyClient(_),
+                ..
+            } => ("IdentifyClient", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ClientIdentified(_),
+                ..
+            } => ("ClientIdentified", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ReadCatalog { .. },
+                ..
+            } => ("ReadCatalog", ChannelKind::Control),
+            Message::Request {
+                body:
+                    RequestBody::MutateProject(codesh_protocol::ProjectIntent {
+                        mutation: codesh_protocol::ProjectMutation::PruneWorktree(_),
+                        ..
+                    }),
+                ..
+            } => ("PruneWorktree", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::MutateProject(_),
+                ..
+            } => ("MutateProject", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ListProjectSessions { .. },
+                ..
+            } => ("ListProjectSessions", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::CancelCreation(_),
+                ..
+            } => ("CancelCreation", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Catalog(_),
+                ..
+            } => ("Catalog", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ProjectMutated { .. },
+                ..
+            } => ("ProjectMutated", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ProjectSessions(_),
+                ..
+            } => ("ProjectSessions", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::CreationCancelled,
+                ..
+            } => ("CreationCancelled", ChannelKind::Control),
+
+            Message::FilesChanged { .. } => ("FilesChanged", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::Files(request),
+                ..
+            } => (
+                match request.action {
+                    FilesAction::ReadBytes(_) => "FilesReadBytes",
+                    FilesAction::WriteBytes { .. } => "FilesWriteBytes",
+                    _ => "FilesRequest",
+                },
+                ChannelKind::Control,
+            ),
+            Message::Reply {
+                body: ReplyBody::Files(reply),
+                ..
+            } => (
+                match reply {
+                    FilesReply::Bytes(_) => "FilesBytesReply",
+                    _ => "FilesReply",
+                },
+                ChannelKind::Control,
+            ),
+            Message::GitChanged { .. } => ("GitChanged", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::SyncSessionReferences { .. },
+                ..
+            } => ("SyncSessionReferences", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::CloseSession { .. },
+                ..
+            } => ("CloseSession", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::SessionReferencesSynced,
+                ..
+            } => ("SessionReferencesSynced", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::SessionClosed,
+                ..
+            } => ("SessionClosed", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::StopServerIfIdle,
+                ..
+            } => ("StopServerIfIdle", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ServerBusy,
+                ..
+            } => ("ServerBusy", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ReadServerSettings,
+                ..
+            } => ("ReadServerSettings", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::WriteServerSettings(_),
+                ..
+            } => ("WriteServerSettings", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::StopServer,
+                ..
+            } => ("StopServer", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ServerSettings(_),
+                ..
+            } => ("ServerSettings", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ServerSettingsWritten,
+                ..
+            } => ("ServerSettingsWritten", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ServerStopping,
+                ..
+            } => ("ServerStopping", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::SetTerminalColors(_),
+                ..
+            } => ("TerminalColorsRequest", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::TerminalColorsSet,
+                ..
+            } => ("TerminalColorsReply", ChannelKind::Control),
+            Message::Request {
+                body:
+                    RequestBody::Search {
+                        source: codesh_protocol::SearchSource::Live(_),
+                        ..
+                    },
+                ..
+            } => ("SearchRequest", ChannelKind::Control),
+            Message::Request {
+                body:
+                    RequestBody::Search {
+                        source: codesh_protocol::SearchSource::Saved(_),
+                        ..
+                    },
+                ..
+            } => ("SavedSearchRequest", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::SearchPage(_),
+                ..
+            } => ("SearchReply", ChannelKind::Control),
+            Message::ServerRestarting => ("ServerRestarting", ChannelKind::Control),
+            Message::Hello { .. } => ("Hello", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::HistoryPage { .. },
+                ..
+            } => ("HistoryRequest", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::SavedHistoryPage { .. },
+                ..
+            } => ("SavedHistoryRequest", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::Git(request),
+                ..
+            } => (
+                match &request.action {
+                    GitAction::BranchDiff { .. } => "GitBranchDiff",
+                    GitAction::ChangesPreview { .. } => "GitChangesPreview",
+                    GitAction::CommitAll { .. } => "GitCommitAll",
+                    GitAction::StagedPreview { .. } => "GitStagedPreview",
+                    GitAction::CommitStaged { .. } => "GitCommitStaged",
+                    GitAction::PublishBranch { .. } => "GitPublishBranch",
+                    GitAction::SwitchToBase(_) => "GitSwitchToBase",
+                    GitAction::PullRequest(GitPullRequestAction::UpdateBranch { .. }) => {
+                        "GitUpdatePrBranch"
+                    }
+                    _ => "GitRequest",
+                },
+                ChannelKind::Control,
+            ),
+            Message::Request {
+                body: RequestBody::WriteInput { .. },
+                ..
+            } => ("WriteInput", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::AttachWithoutResize(_),
+                ..
+            } => ("AttachWithoutResize", ChannelKind::Control),
+            Message::Request {
+                body: RequestBody::ClearScreen(_),
+                ..
+            } => ("ClearScreen", ChannelKind::Control),
+            Message::Request { .. } => ("Request", ChannelKind::Control),
+            Message::FrameAck { .. } => ("FrameAck", ChannelKind::Control),
+            Message::HelloReply { .. } => ("HelloReply", ChannelKind::Control),
+            Message::VersionUnsupported => ("VersionUnsupported", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::HistoryPage(_),
+                ..
+            } => ("HistoryReply", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Attached { snapshot, .. },
+                ..
+            } if !snapshot.history.is_empty() => ("HistoryAttach", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Git(reply),
+                ..
+            } => (
+                match reply {
+                    GitReply::ChangesPreview(_) => "GitChangesPreviewReply",
+                    GitReply::BaseSwitch(_) => "GitBaseSwitchReply",
+                    GitReply::Diff(_) => "GitDiffReply",
+                    _ => "GitReply",
+                },
+                ChannelKind::Control,
+            ),
+            Message::Reply {
+                body: ReplyBody::InputWritten,
+                ..
+            } => ("InputWritten", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::ScreenCleared,
+                ..
+            } => ("ScreenCleared", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Folders(_),
+                ..
+            } => ("Folders", ChannelKind::Control),
+            Message::Reply {
+                body: ReplyBody::Uploaded(_),
+                ..
+            } => ("Uploaded", ChannelKind::Control),
+            Message::Reply { .. } => ("Reply", ChannelKind::Control),
+            Message::SessionEnded { .. } => ("SessionEnded", ChannelKind::Control),
+            Message::Fatal(_) => ("Fatal", ChannelKind::Control),
+            Message::Input(_) => ("Input", ChannelKind::Session),
+            Message::TerminalInput(input) => (
+                match input {
+                    codesh_protocol::TerminalInput::Key(_) => "KeyInput",
+                    codesh_protocol::TerminalInput::Paste(_) => "PasteInput",
+                    codesh_protocol::TerminalInput::Focus(_) => "FocusInput",
+                    codesh_protocol::TerminalInput::ClearScreen => "ClearInput",
+                },
+                ChannelKind::Session,
+            ),
+            Message::Mouse(_) => ("Mouse", ChannelKind::Session),
+            Message::Frame(_) => ("Frame", ChannelKind::Session),
+            Message::Metadata(MetadataEvent::History { .. }) => {
+                ("HistoryMetadata", ChannelKind::Session)
+            }
+            Message::Metadata(MetadataEvent::ScreenPrompts { .. }) => {
+                ("ScreenPrompts", ChannelKind::Session)
+            }
+            Message::Metadata(MetadataEvent::Links { .. }) => ("Links", ChannelKind::Session),
+            Message::Metadata(MetadataEvent::InputModes(_)) => ("InputModes", ChannelKind::Session),
+            Message::Metadata(MetadataEvent::CursorBlinking(_)) => {
+                ("CursorBlinking", ChannelKind::Session)
+            }
+            Message::Metadata(MetadataEvent::ClipboardWrite(_)) => {
+                ("ClipboardWrite", ChannelKind::Session)
+            }
+            Message::Progress { .. } => ("Progress", ChannelKind::Control),
+            Message::Metadata(_) => ("Metadata", ChannelKind::Session),
+            Message::CellSize(_) => ("CellSize", ChannelKind::Session),
+        };
+        assert!(seen.insert(name), "duplicate sample: {name}");
+        assert_eq!(message.channel_kind(), channel, "{name}");
+        assert_eq!(message.validate(), Ok(()), "{name}");
+    }
+    assert_eq!(
+        seen,
+        BTreeSet::from([
+            "Exec",
+            "CancelExec",
+            "ExecResult",
+            "ExecCancelled",
+            "SessionMetadata",
+            "ActivityChanged",
+            "ReadActivity",
+            "AcknowledgeActivity",
+            "ClaimActivity",
+            "Activity",
+            "ActivityAcknowledged",
+            "ActivityClaimed",
+            "FilesChanged",
+            "FilesRequest",
+            "FilesReply",
+            "FilesReadBytes",
+            "FilesWriteBytes",
+            "FilesBytesReply",
+            "GitChanged",
+            "GitRequest",
+            "GitReply",
+            "GitDiffReply",
+            "GitBranchDiff",
+            "GitChangesPreview",
+            "GitChangesPreviewReply",
+            "GitCommitAll",
+            "GitStagedPreview",
+            "GitCommitStaged",
+            "GitPublishBranch",
+            "GitSwitchToBase",
+            "GitBaseSwitchReply",
+            "GitUpdatePrBranch",
+            "CatalogChanged",
+            "SessionsChanged",
+            "IdentifyClient",
+            "ClientIdentified",
+            "SyncSessionReferences",
+            "CloseSession",
+            "SessionReferencesSynced",
+            "SessionClosed",
+            "ReadCatalog",
+            "MutateProject",
+            "PruneWorktree",
+            "ListProjectSessions",
+            "CancelCreation",
+            "Catalog",
+            "ProjectMutated",
+            "ProjectSessions",
+            "CreationCancelled",
+            "CellSize",
+            "ReadServerSettings",
+            "WriteServerSettings",
+            "AttachWithoutResize",
+            "WriteInput",
+            "InputWritten",
+            "ClearScreen",
+            "ScreenCleared",
+            "StopServer",
+            "StopServerIfIdle",
+            "ServerBusy",
+            "ServerSettings",
+            "ServerSettingsWritten",
+            "ServerStopping",
+            "Hello",
+            "ServerRestarting",
+            "Request",
+            "SearchRequest",
+            "SavedSearchRequest",
+            "SearchReply",
+            "TerminalColorsRequest",
+            "TerminalColorsReply",
+            "HistoryRequest",
+            "SavedHistoryRequest",
+            "HistoryReply",
+            "HistoryAttach",
+            "HistoryMetadata",
+            "ScreenPrompts",
+            "Links",
+            "FrameAck",
+            "HelloReply",
+            "VersionUnsupported",
+            "Reply",
+            "SessionEnded",
+            "Fatal",
+            "Input",
+            "KeyInput",
+            "PasteInput",
+            "FocusInput",
+            "ClearInput",
+            "Mouse",
+            "InputModes",
+            "CursorBlinking",
+            "ClipboardWrite",
+            "Progress",
+            "Frame",
+            "Metadata",
+            "RemoteAccessChanged",
+            "IdentifyMobile",
+            "Authenticate",
+            "Pair",
+            "ReadRemoteAccess",
+            "WriteRemoteAccess",
+            "StartPairing",
+            "StartPairingWithHosts",
+            "ListFolders",
+            "Folders",
+            "Upload",
+            "Uploaded",
+            "CancelPairing",
+            "RevokeDevice",
+            "Authenticated",
+            "Paired",
+            "RemoteAccess",
+            "Pairing",
+            "Unauthorized",
+        ])
+    );
+}
+
+fn session_id() -> SessionId {
+    SessionId::from(NonZeroU64::MIN)
+}
+
+fn directory() -> ServerPath {
+    ServerPath(b"/tmp".to_vec())
+}
+
+fn request(body: RequestBody) -> Message {
+    Message::Request {
+        id: RequestId(1),
+        body,
+    }
+}
+
+fn reply(body: ReplyBody) -> Message {
+    Message::Reply {
+        id: RequestId(1),
+        body,
+    }
+}
+
+fn snapshot() -> AttachSnapshot {
+    AttachSnapshot {
+        graphics: codesh_protocol::Graphics::default(),
+        prompts: Vec::new(),
+        channel: ChannelId(1),
+        size: Size { cols: 1, rows: 1 },
+        rows: vec![Row {
+            index: 0,
+            runs: vec![Run {
+                text: " ".to_owned(),
+                width: 1,
+                style: Style::default(),
+            }],
+        }],
+        cursor: Cursor {
+            shape: codesh_protocol::CursorShape::default(),
+            row: 0,
+            col: 0,
+            visible: true,
+        },
+        modes: Modes::default(),
+        title: String::new(),
+        directory: directory(),
+        history: vec![],
+        history_cursor: None,
+        history_total: 0,
+    }
+}
+
+#[test]
+fn history_limits_and_page_shape_are_validated() {
+    use codesh_protocol::{HistoryCursor, HistoryPage};
+    for max_rows in [0, 1, 200, 500, 501, u16::MAX] {
+        let expected = if (1..=500).contains(&max_rows) {
+            Ok(())
+        } else {
+            Err(ErrorCode::BadRequest)
+        };
+        for body in [
+            RequestBody::HistoryPage {
+                channel: ChannelId(1),
+                before: HistoryCursor(0),
+                max_rows,
+            },
+            RequestBody::SavedHistoryPage {
+                session: session_id(),
+                before: HistoryCursor(12),
+                max_rows,
+            },
+        ] {
+            assert_eq!(request(body).validate(), expected);
+        }
+    }
+    assert_eq!(
+        request(RequestBody::HistoryPage {
+            channel: CONTROL,
+            before: HistoryCursor(0),
+            max_rows: 500
+        })
+        .validate(),
+        Err(ErrorCode::UnknownChannel)
+    );
+    let valid = HistoryPage {
+        prompts: Vec::new(),
+        rows: snapshot().rows,
+        next: Some(HistoryCursor(3)),
+        total_rows: 5,
+        screen: None,
+    };
+    assert_eq!(
+        reply(ReplyBody::HistoryPage(valid.clone())).validate(),
+        Ok(())
+    );
+    for page in [
+        HistoryPage {
+            next: Some(HistoryCursor(0)),
+            ..valid.clone()
+        },
+        HistoryPage {
+            total_rows: 0,
+            ..valid.clone()
+        },
+        HistoryPage {
+            prompts: Vec::new(),
+            rows: vec![],
+            ..valid.clone()
+        },
+        HistoryPage {
+            prompts: Vec::new(),
+            rows: vec![Row {
+                index: 1,
+                runs: vec![],
+            }],
+            ..valid.clone()
+        },
+        HistoryPage {
+            prompts: Vec::new(),
+            rows: vec![Row {
+                index: 0,
+                runs: vec![Run {
+                    text: "x".into(),
+                    width: 0,
+                    style: Style::default(),
+                }],
+            }],
+            ..valid
+        },
+    ] {
+        assert_eq!(
+            reply(ReplyBody::HistoryPage(page)).validate(),
+            Err(ErrorCode::BadRequest)
+        );
+    }
+}
+
+#[test]
+fn clipboard_writes_require_nonempty_bounded_text() {
+    for (text, expected) in [
+        ("copied text".into(), Ok(())),
+        ("x".repeat(codesh_protocol::MAX_CLIPBOARD_TEXT), Ok(())),
+        (String::new(), Err(ErrorCode::BadRequest)),
+        (
+            "x".repeat(codesh_protocol::MAX_CLIPBOARD_TEXT + 1),
+            Err(ErrorCode::BadRequest),
+        ),
+    ] {
+        assert_eq!(
+            Message::Metadata(MetadataEvent::ClipboardWrite(text)).validate(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn graphics_reject_overflow_truncation_missing_images_and_invalid_crops() {
+    use codesh_protocol::{GraphicImage, GraphicPlacement, Graphics};
+    let mut graphics = Graphics {
+        images: vec![GraphicImage {
+            id: 1,
+            generation: 1,
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4].into(),
+        }],
+        placements: vec![GraphicPlacement {
+            image: 1,
+            id: 1,
+            column: 0,
+            row: -1,
+            offset: [0, 0],
+            size: [8, 16],
+            source: [0, 0, 1, 1],
+            z: -1,
+        }],
+        ..Graphics::default()
+    };
+    assert!(graphics.validate().is_ok());
+    graphics.images[0].width = u32::MAX;
+    graphics.images[0].height = u32::MAX;
+    assert!(graphics.validate().is_err());
+    graphics.images[0].width = 2;
+    graphics.images[0].height = 1;
+    assert!(graphics.validate().is_err());
+    graphics.images[0].width = 1;
+    graphics.placements[0].source[0] = u32::MAX;
+    assert!(graphics.validate().is_err());
+    graphics.placements[0].source[0] = 0;
+    graphics.placements[0].image = 2;
+    assert!(graphics.validate().is_err());
+}

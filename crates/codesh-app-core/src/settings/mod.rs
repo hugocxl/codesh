@@ -1,0 +1,43 @@
+//! Client configuration and keymap schema and storage.
+//!
+//! Server-owned settings and presentation code stay with their owners.
+
+mod appearance;
+mod browser;
+mod chord;
+mod commands;
+mod config;
+mod error;
+mod ghostty;
+mod keymap;
+mod proxy;
+mod servers;
+mod worktrees;
+
+pub use worktrees::{
+    DEFAULT_WORKTREE_FOLDER, SUGGESTED_WORKTREE_TEMPLATE, WorktreeLocation, WorktreeSettings,
+    sanitized_component,
+};
+
+pub use appearance::{
+    AgentSessionsPosition, AgentsPanelDock, AgentsPanelGrouping, AppLayout, Appearance,
+    ProjectOrder, SidePanel, SidebarCollapsedStyle, SidebarHost,
+};
+pub use browser::BrowserSettings;
+pub use chord::KeyChord;
+pub use commands::CustomCommand;
+pub use config::{
+    CODESH_EDITOR, ClipboardSettings, CloseBehavior, CommitChoices, NewPaneDirectory,
+    OpenerSettings, PaneSettings, ProjectSettings, Settings, WindowSettings,
+};
+pub use error::{Error, Result};
+pub use ghostty::{
+    CellHeight, FontMap, FontOptions, OptionAsAlt, PaddingColor, TerminalAction, TerminalBindings,
+    TerminalColor, TerminalEdit, TerminalOptions, TerminalSettings,
+};
+pub use keymap::Keymap;
+pub use proxy::{DEFAULT_PROXY_BYPASS, ProxyKind, ProxySettings};
+pub use servers::ServerEntry;
+
+mod voice;
+pub use voice::VoiceSettings;

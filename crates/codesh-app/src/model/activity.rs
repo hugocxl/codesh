@@ -1,0 +1,497 @@
+use std::collections::HashSet;
+
+use codesh_app_core::{PaneId, ServerId, TabId};
+use codesh_client::ClientError;
+use codesh_core::capability::Feature;
+use codesh_protocol::{ActivitySnapshot, AgentActivity, SessionId};
+use codesh_ui::tr;
+use gpui::Context;
+
+use super::{AppModel, Work};
+
+#[derive(Default)]
+pub(crate) struct ActivityView {
+    pub(crate) snapshot: ActivitySnapshot,
+    pub(crate) dirty: u64,
+    pub(crate) pending: bool,
+    pub(crate) loaded: bool,
+    pub(super) navigation: Option<u64>,
+    pub(super) pane_sessions: Vec<SessionId>,
+    acknowledging: HashSet<u64>,
+    ended_during_read: HashSet<SessionId>,
+    ack_failed: bool,
+}
+
+/// Each server numbers its own events, so another computer's carry its server.
+fn notification_id(server: ServerId, id: u64) -> String {
+    if server.is_local() {
+        id.to_string()
+    } else {
+        format!("{server}:{id}")
+    }
+}
+
+fn activity_description(kind: codesh_protocol::ActivityKind) -> gpui::SharedString {
+    use codesh_protocol::ActivityKind;
+    match kind {
+        ActivityKind::Attention => tr!("Needs your attention"),
+        ActivityKind::Completed => tr!("Finished working"),
+        ActivityKind::Unrecognized(_) => tr!("Has an update"),
+    }
+}
+
+fn notification_event(identifier: &str) -> Option<(ServerId, u64)> {
+    match identifier.split_once(':') {
+        Some((server, id)) => Some((server.parse().ok()?, id.parse().ok()?)),
+        None => Some((ServerId::local(), identifier.parse().ok()?)),
+    }
+}
+
+impl AppModel {
+    pub(crate) fn activity(&self, server: ServerId) -> Option<&ActivityView> {
+        self.servers.get(server).map(|runtime| &runtime.activity)
+    }
+
+    fn activity_mut(&mut self, server: ServerId) -> Option<&mut ActivityView> {
+        self.servers
+            .get_mut(server)
+            .map(|runtime| &mut runtime.activity)
+    }
+
+    /// The agent the pane's server reports for the pane's session.
+    pub(crate) fn pane_agent(&self, pane: PaneId) -> Option<&AgentActivity> {
+        let server = self.state.pane_server(pane)?;
+        let session = self.pane_session(pane)?;
+        self.activity(server)?
+            .snapshot
+            .agents
+            .iter()
+            .find(|agent| agent.session == session)
+    }
+
+    pub(crate) fn agent_tab_pane<'a>(
+        &'a self,
+        tab: &'a codesh_app_core::Tab,
+    ) -> Option<(&'a codesh_app_core::Pane, &'a AgentActivity)> {
+        tab.panes
+            .iter()
+            .filter_map(|pane| Some((pane, self.pane_agent(pane.id)?)))
+            .min_by_key(|(pane, _)| Some(pane.id) != self.state.window().active_pane)
+    }
+
+    /// The first pane of `server`'s projects that shows `session`.
+    pub(super) fn session_pane(
+        &self,
+        server: ServerId,
+        session: SessionId,
+    ) -> Option<(&codesh_app_core::Project, TabId, PaneId)> {
+        self.state
+            .projects()
+            .iter()
+            .filter(|project| project.server_id == server)
+            .find_map(|project| {
+                project.tabs.iter().find_map(|tab| {
+                    tab.panes
+                        .iter()
+                        .find(|pane| {
+                            matches!(pane.content,
+                                codesh_app_core::PaneContent::Terminal { session: Some(id) } if id == session)
+                        })
+                        .map(|pane| (project, tab.id, pane.id))
+                })
+            })
+    }
+
+    pub(crate) fn refresh_activity(&mut self, server: ServerId, cx: &mut Context<Self>) {
+        if !self.ready(server)
+            || self
+                .activity(server)
+                .is_none_or(|activity| activity.pending)
+        {
+            return;
+        }
+        if self.send(server, Work::ReadActivity, cx)
+            && let Some(activity) = self.activity_mut(server)
+        {
+            activity.pending = true;
+        }
+    }
+
+    fn has_activity_pane(&self, server: ServerId, session: SessionId) -> bool {
+        self.state.session_references(server).contains(&session)
+    }
+
+    pub(super) fn sync_activity_panes(&mut self, server: ServerId, sessions: Vec<SessionId>) {
+        let Some(activity) = self.activity(server) else {
+            return;
+        };
+        if activity.pane_sessions == sessions {
+            return;
+        }
+        let removed: Vec<_> = activity
+            .snapshot
+            .events
+            .iter()
+            .filter(|event| {
+                activity.pane_sessions.contains(&event.session)
+                    && !sessions.contains(&event.session)
+            })
+            .map(|event| event.id)
+            .collect();
+        if !removed.is_empty() {
+            self.notifications.clear(
+                &removed
+                    .iter()
+                    .map(|id| notification_id(server, *id))
+                    .collect::<Vec<_>>(),
+            );
+        }
+        if let Some(activity) = self.activity_mut(server) {
+            if activity.navigation.is_some_and(|id| removed.contains(&id)) {
+                activity.navigation = None;
+            }
+            activity.pane_sessions = sessions;
+        }
+    }
+
+    fn activity_notification_events<'a>(
+        &'a self,
+        server: ServerId,
+        ids: &'a [u64],
+    ) -> impl Iterator<Item = &'a codesh_protocol::ActivityEvent> {
+        let focused = self.focused_activity_session();
+        self.activity(server)
+            .into_iter()
+            .flat_map(|activity| &activity.snapshot.events)
+            .filter(move |event| {
+                ids.contains(&event.id)
+                    && !event.read
+                    && self.has_activity_pane(server, event.session)
+                    && Some((server, event.session)) != focused
+            })
+    }
+
+    fn focused_activity_session(&self) -> Option<(ServerId, SessionId)> {
+        if !self.window_active || self.overlay.is_some() || self.close_prompt.is_some() {
+            return None;
+        }
+        let pane = self.active_pane()?;
+        Some((self.state.pane_server(pane)?, self.pane_session(pane)?))
+    }
+
+    pub(super) fn receive_activity(
+        &mut self,
+        server: ServerId,
+        result: Result<ActivitySnapshot, ClientError>,
+        cx: &mut Context<Self>,
+    ) {
+        let focused = self
+            .focused_activity_session()
+            .filter(|(owner, _)| *owner == server)
+            .map(|(_, session)| session);
+        let Some(activity) = self.activity_mut(server) else {
+            return;
+        };
+        activity.pending = false;
+        match result {
+            Ok(mut snapshot) => {
+                snapshot
+                    .agents
+                    .retain(|agent| !activity.ended_during_read.contains(&agent.session));
+                snapshot.events.retain(|event| {
+                    !event.read && !activity.ended_during_read.contains(&event.session)
+                });
+                activity.ended_during_read.clear();
+                let removed: Vec<_> = {
+                    let retained: HashSet<_> =
+                        snapshot.events.iter().map(|event| event.id).collect();
+                    activity
+                        .snapshot
+                        .events
+                        .iter()
+                        .filter(|event| !retained.contains(&event.id))
+                        .map(|event| notification_id(server, event.id))
+                        .collect()
+                };
+                let ids = codesh_app_core::activity::new_notifications(
+                    activity.loaded.then_some(&activity.snapshot),
+                    &snapshot,
+                    focused,
+                );
+                activity.snapshot = snapshot;
+                self.notifications.clear(&removed);
+                self.sync_activity_panes(server, self.state.session_references(server));
+                let ids: Vec<_> = self
+                    .activity_notification_events(server, &ids)
+                    .map(|event| event.id)
+                    .collect();
+                let agent_panes: Vec<_> = self
+                    .state
+                    .projects()
+                    .iter()
+                    .filter(|project| project.server_id == server)
+                    .flat_map(|project| &project.tabs)
+                    .flat_map(|tab| &tab.panes)
+                    .filter_map(|pane| self.pane_agent(pane.id).map(|_| pane.id))
+                    .collect();
+                for pane in agent_panes {
+                    self.completions.remove(&pane);
+                }
+                let Some(activity) = self.activity_mut(server) else {
+                    return;
+                };
+                activity.loaded = true;
+                activity.ack_failed = false;
+                self.resume_activity_navigation(server, cx);
+                self.acknowledge_focused_activity(cx);
+                if !ids.is_empty() && self.supports(Feature::Notifications) {
+                    self.send(server, Work::ClaimActivity(ids), cx);
+                }
+                if self
+                    .activity(server)
+                    .is_some_and(|activity| activity.dirty > activity.snapshot.revision)
+                {
+                    self.refresh_activity(server, cx);
+                }
+            }
+            Err(error) => {
+                self.server_problem(
+                    server,
+                    tr!("Could not read activity: %@", error.to_string()).to_string(),
+                    cx,
+                );
+            }
+        }
+        cx.notify();
+    }
+
+    pub(super) fn forget_session_activity(
+        &mut self,
+        server: ServerId,
+        session: SessionId,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(activity) = self.activity_mut(server) else {
+            return;
+        };
+        if activity.pending {
+            activity.ended_during_read.insert(session);
+        }
+        let ids: Vec<_> = activity
+            .snapshot
+            .events
+            .iter()
+            .filter(|event| event.session == session)
+            .map(|event| event.id)
+            .collect();
+        activity
+            .snapshot
+            .agents
+            .retain(|agent| agent.session != session);
+        activity
+            .snapshot
+            .events
+            .retain(|event| event.session != session);
+        activity.acknowledging.retain(|id| !ids.contains(id));
+        if activity.navigation.is_some_and(|id| ids.contains(&id)) {
+            activity.navigation = None;
+        }
+        self.notifications.clear(
+            &ids.iter()
+                .map(|id| notification_id(server, *id))
+                .collect::<Vec<_>>(),
+        );
+        cx.notify();
+    }
+
+    pub(crate) fn acknowledge_focused_activity(&mut self, cx: &mut Context<Self>) {
+        let Some((server, session)) = self.focused_activity_session() else {
+            return;
+        };
+        let Some(activity) = self
+            .activity(server)
+            .filter(|activity| !activity.ack_failed)
+        else {
+            return;
+        };
+        let ids = activity
+            .snapshot
+            .events
+            .iter()
+            .filter(|event| event.session == session && !event.read)
+            .map(|event| event.id)
+            .collect();
+        self.acknowledge_activity(server, ids, cx);
+    }
+
+    pub(crate) fn acknowledge_activity(
+        &mut self,
+        server: ServerId,
+        ids: Vec<u64>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.ready(server) {
+            return;
+        }
+        let Some(activity) = self.activity(server) else {
+            return;
+        };
+        let ids: Vec<_> = ids
+            .into_iter()
+            .filter(|id| !activity.acknowledging.contains(id))
+            .collect();
+        if !ids.is_empty()
+            && self.send(server, Work::AcknowledgeActivity(ids.clone()), cx)
+            && let Some(activity) = self.activity_mut(server)
+        {
+            activity.acknowledging.extend(ids);
+        }
+    }
+
+    pub(super) fn activity_acknowledged(
+        &mut self,
+        server: ServerId,
+        ids: &[u64],
+        result: Result<(), ClientError>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(activity) = self.activity_mut(server) else {
+            return;
+        };
+        for id in ids {
+            activity.acknowledging.remove(id);
+        }
+        match result {
+            Ok(()) => {
+                activity
+                    .snapshot
+                    .events
+                    .retain(|event| !ids.contains(&event.id));
+                self.notifications.clear(
+                    &ids.iter()
+                        .map(|id| notification_id(server, *id))
+                        .collect::<Vec<_>>(),
+                );
+                self.refresh_activity(server, cx);
+            }
+            Err(error) => {
+                activity.ack_failed = true;
+                self.fail(
+                    tr!("Could not mark activity read: %@", error.to_string()).to_string(),
+                    cx,
+                );
+            }
+        }
+        cx.notify();
+    }
+
+    pub(super) fn deliver_activity(&self, server: ServerId, result: Result<Vec<u64>, ClientError>) {
+        let Ok(ids) = result else {
+            return;
+        };
+        for event in self.activity_notification_events(server, &ids) {
+            let project = self
+                .state
+                .project(event.project)
+                .map_or("Codesh", |project| project.name.as_str());
+            let title = match self.server_name(server) {
+                Some(name) if !server.is_local() => {
+                    format!("{} · {project} · {name}", event.provider.name())
+                }
+                _ => format!("{} · {project}", event.provider.name()),
+            };
+            self.notifications.deliver(
+                &notification_id(server, event.id),
+                &title,
+                &activity_description(event.kind),
+            );
+        }
+    }
+
+    pub(crate) fn navigate_activity(&mut self, server: ServerId, id: u64, cx: &mut Context<Self>) {
+        let waiting = !self.ready(server)
+            || self.servers.get(server).is_none_or(|runtime| {
+                !runtime.activity.loaded
+                    || runtime.catalog.restore.is_some()
+                    || runtime.catalog.pending
+            });
+        if waiting {
+            if let Some(activity) = self.activity_mut(server) {
+                activity.navigation = Some(id);
+            }
+            return;
+        }
+        let Some(event) = self.activity(server).and_then(|activity| {
+            activity
+                .snapshot
+                .events
+                .iter()
+                .find(|event| event.id == id)
+                .cloned()
+        }) else {
+            return;
+        };
+        if !self.has_activity_pane(server, event.session) {
+            return;
+        }
+        self.acknowledge_activity(server, vec![id], cx);
+        if let Some((project, tab, pane)) = self
+            .session_pane(server, event.session)
+            .map(|(project, tab, pane)| (project.id, tab, pane))
+        {
+            self.select_project(project, cx);
+            self.select_tab(tab, cx);
+            self.focus_pane(pane, cx);
+            self.dismiss_overlay(cx);
+            self.focus_requested = true;
+            self.raise_window(cx);
+        }
+    }
+
+    pub(super) fn resume_activity_navigation(&mut self, server: ServerId, cx: &mut Context<Self>) {
+        if let Some(id) = self
+            .activity_mut(server)
+            .and_then(|activity| activity.navigation.take())
+        {
+            self.navigate_activity(server, id, cx);
+        }
+    }
+
+    /// Navigates to the activity behind each notification the user opens,
+    /// and keeps up with whether notifications can still be shown.
+    pub(super) fn follow_notifications(
+        events: async_channel::Receiver<codesh_ui::notifications::Event>,
+        cx: &mut Context<Self>,
+    ) {
+        use codesh_ui::notifications::Event;
+        cx.spawn(async move |this, cx| {
+            while let Ok(event) = events.recv().await {
+                let followed = this.update(cx, |model, cx| match event {
+                    Event::Opened(identifier) => {
+                        if let Some((server, id)) = notification_event(&identifier) {
+                            cx.activate(true);
+                            model.navigate_activity(server, id, cx);
+                        }
+                    }
+                    Event::Capability(capability) => {
+                        model.capabilities.set(Feature::Notifications, capability);
+                        cx.notify();
+                    }
+                });
+                if followed.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Brings the main window to the front, as far as the desktop lets an
+    /// app do that.
+    pub(crate) fn raise_window(&self, cx: &mut Context<Self>) {
+        let window = self.window;
+        cx.defer(move |cx| {
+            let _ = window.update(cx, |_, window, _| window.activate_window());
+        });
+    }
+}

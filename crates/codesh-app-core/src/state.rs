@@ -1,0 +1,1050 @@
+use std::collections::{BTreeMap, HashSet};
+use std::os::unix::ffi::OsStringExt;
+use std::path::PathBuf;
+
+use codesh_protocol::SessionId;
+use serde::{Deserialize, Serialize};
+
+use crate::servers::ServerState;
+use crate::{
+    AppError, Branch, Color, Direction, Pane, PaneContent, PaneId, Project, ProjectId,
+    ProjectStatus, ServerId, Tab, TabId, WindowBounds, WindowState, Workspace,
+};
+
+/// The desktop layout format this build writes.
+pub(crate) const VERSION: u32 = 3;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "StoredState")]
+pub struct AppState {
+    pub(crate) servers: BTreeMap<ServerId, ServerState>,
+    pub(crate) starting_directories: BTreeMap<PaneId, codesh_protocol::ServerPath>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) startup_commands: BTreeMap<PaneId, String>,
+    pub(crate) version: u32,
+    pub(crate) projects: Vec<Project>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) workspaces: Vec<Workspace>,
+    pub(crate) window: WindowState,
+}
+
+#[derive(Deserialize)]
+struct StoredState {
+    #[serde(default)]
+    servers: BTreeMap<ServerId, ServerState>,
+    #[serde(default)]
+    starting_directories: BTreeMap<PaneId, codesh_protocol::ServerPath>,
+    #[serde(default)]
+    startup_commands: BTreeMap<PaneId, String>,
+    version: u32,
+    projects: Vec<Project>,
+    #[serde(default)]
+    workspaces: Vec<Workspace>,
+    window: WindowState,
+}
+
+impl TryFrom<StoredState> for AppState {
+    type Error = AppError;
+
+    fn try_from(stored: StoredState) -> Result<Self, Self::Error> {
+        if stored.version != VERSION {
+            return Err(AppError::UnsupportedVersion(stored.version));
+        }
+        let mut state = Self {
+            servers: stored.servers,
+            starting_directories: stored.starting_directories,
+            startup_commands: stored.startup_commands,
+            version: VERSION,
+            projects: stored.projects,
+            workspaces: stored.workspaces,
+            window: stored.window,
+        };
+        let previous_project = state.window.current_project;
+        let previous_tab = state.window.selected_tab.get(&previous_project).copied();
+        state.ensure_home()?;
+        state.retain_workspace_members();
+        if state.window.current_project != previous_project
+            || state
+                .window
+                .selected_tab
+                .get(&state.window.current_project)
+                .copied()
+                != previous_tab
+        {
+            state.window.active_pane = None;
+        }
+        let selected = state
+            .window
+            .selected_tab
+            .get(&state.window.current_project)
+            .copied();
+        for tab in state
+            .projects
+            .iter_mut()
+            .flat_map(|project| &mut project.tabs)
+        {
+            if state.window.active_pane.is_none() && Some(tab.id) == selected {
+                state.window.active_pane = tab.layout.leaves().first().copied();
+            }
+        }
+        let panes: HashSet<_> = state
+            .projects
+            .iter()
+            .flat_map(|project| &project.tabs)
+            .flat_map(|tab| &tab.panes)
+            .map(|pane| pane.id)
+            .collect();
+        state
+            .window
+            .focus_history
+            .retain(|pane| panes.contains(pane));
+        state.validate()?;
+        state.normalize_projects();
+        // Also closes retired extension panes; see `store::load`.
+        let legacy_settings: Vec<_> = state
+            .projects
+            .iter()
+            .flat_map(|project| &project.tabs)
+            .flat_map(|tab| &tab.panes)
+            .filter(|pane| pane.content == PaneContent::Settings)
+            .map(|pane| pane.id)
+            .collect();
+        let restore_focus = state
+            .window
+            .active_pane
+            .is_some_and(|pane| legacy_settings.contains(&pane));
+        if restore_focus {
+            state.window.active_pane = None;
+        }
+        for pane in legacy_settings {
+            state.remove_pane(pane)?;
+        }
+        if restore_focus {
+            state.focus_selected_tab();
+        }
+        state.validate()?;
+        Ok(state)
+    }
+}
+
+impl AppState {
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    pub fn projects(&self) -> &[Project] {
+        &self.projects
+    }
+
+    pub fn window(&self) -> &WindowState {
+        &self.window
+    }
+
+    pub fn project(&self, id: ProjectId) -> Option<&Project> {
+        self.projects.iter().find(|project| project.id == id)
+    }
+
+    pub fn home(&self) -> &Project {
+        &self.projects[0]
+    }
+
+    pub fn current_project(&self) -> &Project {
+        self.project(self.window.current_project)
+            .unwrap_or_else(|| self.home())
+    }
+
+    pub fn refresh_project_statuses(&mut self) {
+        for project in &mut self.projects {
+            project.refresh_status();
+        }
+    }
+
+    /// Another computer's server says whether the project's folder is there.
+    /// This computer's projects are checked on disk instead.
+    pub fn set_remote_project_status(
+        &mut self,
+        project: ProjectId,
+        status: ProjectStatus,
+    ) -> Result<(), AppError> {
+        let project = self.project_mut(project)?;
+        if project.server_id.is_local() {
+            return Err(AppError::InvalidState(
+                "this computer's projects are checked on disk".into(),
+            ));
+        }
+        project.status = status;
+        Ok(())
+    }
+
+    /// An offline server's projects are available: nothing says otherwise.
+    pub fn forget_remote_statuses(&mut self, server: ServerId) {
+        for project in &mut self.projects {
+            if project.server_id == server && !server.is_local() {
+                project.status = ProjectStatus::Available;
+            }
+        }
+    }
+
+    pub fn select_project(&mut self, id: ProjectId) -> Result<(), AppError> {
+        self.project_mut(id)?.require_available()?;
+        self.window.current_project = id;
+        self.focus_selected_tab();
+        Ok(())
+    }
+
+    /// A remote server checks the folder itself when it creates the project.
+    pub fn add_project(
+        &mut self,
+        server: ServerId,
+        directory: PathBuf,
+    ) -> Result<ProjectId, AppError> {
+        if server.is_local() && !(directory.is_absolute() && directory.is_dir()) {
+            return Err(AppError::InvalidState(
+                "project path must be an existing absolute directory".into(),
+            ));
+        }
+        if !directory.is_absolute() {
+            return Err(AppError::InvalidState(
+                "project path must be absolute".into(),
+            ));
+        }
+        if self.server_home(server).is_none() {
+            return Err(AppError::InvalidState(
+                "connect to the server before adding projects to it".into(),
+            ));
+        }
+        let descriptor = codesh_protocol::ProjectDescriptor::new(
+            codesh_protocol::ServerPath(directory.into_os_string().into_vec()),
+            self.projects
+                .iter()
+                .filter(|project| project.server_id == server)
+                .map(|project| project.color.as_str()),
+        );
+        let project = Project::from_descriptor(server, &descriptor)?;
+        let id = project.id;
+        self.queue_project(server, codesh_protocol::ProjectMutation::Create(descriptor))?;
+        self.projects.push(project);
+        self.join_active_workspace(id);
+        self.window.current_project = id;
+        self.window.active_pane = None;
+        Ok(id)
+    }
+
+    pub fn rename_project(&mut self, id: ProjectId, name: &str) -> Result<(), AppError> {
+        let project = self.project_mut(id)?;
+        project.require_available()?;
+        if name.trim().is_empty() {
+            return Err(AppError::InvalidState(
+                "project name cannot be empty".into(),
+            ));
+        }
+        self.patch_project(id, codesh_protocol::ProjectPatch::Name(name.trim().into()))?;
+        name.trim().clone_into(&mut self.project_mut(id)?.name);
+        Ok(())
+    }
+
+    pub fn set_project_icon(
+        &mut self,
+        id: ProjectId,
+        icon: Option<String>,
+    ) -> Result<(), AppError> {
+        let project = self.project_mut(id)?;
+        project.require_available()?;
+        self.patch_project(id, codesh_protocol::ProjectPatch::Icon(icon.clone()))?;
+        self.project_mut(id)?.icon = icon;
+        Ok(())
+    }
+
+    pub fn set_project_logo(
+        &mut self,
+        id: ProjectId,
+        logo: Option<std::sync::Arc<[u8]>>,
+    ) -> Result<(), AppError> {
+        self.project_mut(id)?.require_available()?;
+        self.patch_project(id, codesh_protocol::ProjectPatch::Logo(logo.clone()))?;
+        self.project_mut(id)?.logo = logo;
+        Ok(())
+    }
+
+    pub fn set_project_color(&mut self, id: ProjectId, color: Color) -> Result<(), AppError> {
+        let project = self.project_mut(id)?;
+        project.require_available()?;
+        let patch = codesh_protocol::ProjectPatch::Color(color.to_string());
+        self.patch_project(id, patch)?;
+        self.project_mut(id)?.color = color;
+        Ok(())
+    }
+
+    pub fn move_project(&mut self, id: ProjectId, to: usize) -> Result<(), AppError> {
+        let project = self.project_mut(id)?;
+        project.require_available()?;
+        let (home, server) = (project.home, project.server_id);
+        let server_home = self
+            .projects
+            .iter()
+            .position(|candidate| candidate.home && candidate.server_id == server);
+        if home || to >= self.projects.len() || server_home.is_none_or(|index| to <= index) {
+            return Err(AppError::InvalidState(
+                "Home stays first; project destination must be in range".into(),
+            ));
+        }
+        let from = self
+            .projects
+            .iter()
+            .position(|project| project.id == id)
+            .ok_or(AppError::UnknownProject(id))?;
+        let project = self.projects.remove(from);
+        self.projects.insert(to, project);
+        Ok(())
+    }
+
+    pub fn remove_project(&mut self, id: ProjectId) -> Result<Vec<SessionId>, AppError> {
+        self.remove_project_with_mutation(id, codesh_protocol::ProjectMutation::Delete(id))
+    }
+
+    pub(crate) fn remove_project_with_mutation(
+        &mut self,
+        id: ProjectId,
+        mutation: codesh_protocol::ProjectMutation,
+    ) -> Result<Vec<SessionId>, AppError> {
+        let index = self
+            .projects
+            .iter()
+            .position(|project| project.id == id)
+            .ok_or(AppError::UnknownProject(id))?;
+        if self.projects[index].home {
+            return Err(AppError::InvalidState("Home cannot be removed".into()));
+        }
+        let server = self.projects[index].server_id;
+        self.queue_project(server, mutation)?;
+        let project = self.projects.remove(index);
+        self.retain_workspace_members();
+        self.window.selected_tab.remove(&id);
+        self.window
+            .focus_history
+            .retain(|pane| !project.tabs.iter().any(|tab| tab.layout.contains(*pane)));
+        if self.window.current_project == id {
+            self.window.current_project = self.home().id;
+            self.focus_selected_tab();
+        }
+        let mut sessions = Vec::new();
+        for pane in project.tabs.into_iter().flat_map(|tab| tab.panes) {
+            self.startup_commands.remove(&pane.id);
+            if let PaneContent::Terminal {
+                session: Some(session),
+            } = pane.content
+                && !sessions.contains(&session)
+            {
+                sessions.push(session);
+            }
+        }
+        Ok(sessions)
+    }
+
+    pub fn open_terminal_tab(&mut self, project: ProjectId) -> Result<TabId, AppError> {
+        let focused = self.window.selected_tab.get(&project).copied();
+        self.open_terminal_tab_near(project, focused)
+    }
+
+    /// Opens a terminal tab at the end of `project`, in `near`'s group.
+    fn open_terminal_tab_near(
+        &mut self,
+        project: ProjectId,
+        near: Option<TabId>,
+    ) -> Result<TabId, AppError> {
+        self.project_mut(project)?.require_available()?;
+        if crate::codesh::SINGLE_TAB {
+            let pane = Pane {
+                id: PaneId::new(),
+                title: "Terminal".into(),
+                content: PaneContent::Terminal { session: None },
+                proxy: false,
+            };
+            let (tab, pane) =
+                self.open_pane_in_container(project, pane, self.window.active_pane)?;
+            self.window.selected_tab.insert(project, tab);
+            self.window.current_project = project;
+            self.window.activate(Some(pane));
+            return Ok(tab);
+        }
+        let tab = Tab::terminal();
+        let id = tab.id;
+        self.window.activate(tab.layout.leaves().first().copied());
+        self.add_tab(project, tab, near)?;
+        self.window.selected_tab.insert(project, id);
+        self.window.current_project = project;
+        self.sync_groups(project);
+        Ok(id)
+    }
+
+    pub fn open_terminal_tab_adjacent(
+        &mut self,
+        project: ProjectId,
+        anchor: TabId,
+        side: crate::TabSide,
+    ) -> Result<TabId, AppError> {
+        let target = self
+            .project(project)
+            .ok_or(AppError::UnknownProject(project))?;
+        target.require_available()?;
+        let index =
+            target
+                .tabs
+                .iter()
+                .position(|tab| tab.id == anchor)
+                .ok_or(AppError::UnknownTab {
+                    project,
+                    tab: anchor,
+                })?;
+        if crate::codesh::SINGLE_TAB {
+            return self.open_terminal_tab_near(project, Some(anchor));
+        }
+        let boundary = target.tabs.iter().take_while(|tab| tab.pinned).count();
+        let index = (index + usize::from(side == crate::TabSide::Right)).max(boundary);
+        let id = self.open_terminal_tab_near(project, Some(anchor))?;
+        let tabs = &mut self.project_mut(project)?.tabs;
+        let tab = tabs
+            .pop()
+            .ok_or(AppError::UnknownTab { project, tab: id })?;
+        tabs.insert(index, tab);
+        self.sync_groups(project);
+        Ok(id)
+    }
+
+    pub fn set_tab_title(&mut self, tab: TabId, title: Option<String>) -> Result<(), AppError> {
+        let tab = self.tab_mut(tab)?;
+        tab.custom_title = title;
+        tab.sanitize_titles();
+        Ok(())
+    }
+
+    pub fn set_tab_color(&mut self, tab: TabId, color: Option<Color>) -> Result<(), AppError> {
+        self.tab_mut(tab)?.color = color;
+        Ok(())
+    }
+
+    pub fn toggle_tab_pin(&mut self, tab: TabId) -> Result<(), AppError> {
+        let target = self.tab_mut(tab)?;
+        target.pinned = !target.pinned;
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.tabs.iter().any(|item| item.id == tab))
+            .ok_or_else(|| AppError::InvalidState("unknown tab".into()))?;
+        let index =
+            project
+                .tabs
+                .iter()
+                .position(|item| item.id == tab)
+                .ok_or(AppError::UnknownTab {
+                    project: project.id,
+                    tab,
+                })?;
+        let tab = project.tabs.remove(index);
+        let boundary = project.tabs.iter().take_while(|tab| tab.pinned).count();
+        project.tabs.insert(boundary, tab);
+        let project = project.id;
+        self.sync_groups(project);
+        Ok(())
+    }
+
+    pub fn close_tab(&mut self, project: ProjectId, tab: TabId) -> Result<(), AppError> {
+        let panes: Vec<_> = self
+            .project(project)
+            .ok_or(AppError::UnknownProject(project))?
+            .tabs
+            .iter()
+            .find(|candidate| candidate.id == tab)
+            .ok_or(AppError::UnknownTab { project, tab })?
+            .panes
+            .iter()
+            .map(|pane| pane.id)
+            .collect();
+        for pane in panes {
+            self.cancel_pending_creation(pane);
+        }
+        let active = self.window.active_pane;
+        let history = self.window.focus_history.clone();
+        let target = self.project_mut(project)?;
+        let next = target.tab_after_close(tab);
+        let grouped = target.groups.is_some();
+        let tabs = &mut target.tabs;
+        let index = tabs
+            .iter()
+            .position(|candidate| candidate.id == tab)
+            .ok_or(AppError::UnknownTab { project, tab })?;
+        let removed_active = active.is_some_and(|pane| tabs[index].layout.contains(pane));
+        let removed = tabs.remove(index);
+        let next = next.and_then(|next| tabs.iter_mut().find(|tab| tab.id == next));
+        let next_pane = next.as_ref().and_then(|next| {
+            let shown = |pane: &&PaneId| next.layout.contains(**pane);
+            let previous = history.iter().rev().find(shown);
+            grouped
+                .then(|| next.zoomed.or(previous.copied()))
+                .flatten()
+                .or_else(|| next.layout.leaves().first().copied())
+        });
+        let next = next.map(|next| {
+            if removed_active && !grouped {
+                next.zoomed = None;
+            }
+            next.id
+        });
+        if let Some(groups) = &mut target.groups {
+            groups.remove(tab);
+        }
+        self.window
+            .focus_history
+            .retain(|pane| !removed.layout.contains(*pane));
+        if self.window.selected_tab.get(&project) == Some(&tab) {
+            if let Some(next) = next {
+                self.window.selected_tab.insert(project, next);
+            } else {
+                self.window.selected_tab.remove(&project);
+            }
+        }
+        if removed_active {
+            self.window.activate(next_pane);
+        }
+        self.sync_groups(project);
+        Ok(())
+    }
+
+    pub fn close_pane(&mut self, pane: PaneId) -> Result<(), AppError> {
+        self.pane_tab_mut(pane)?;
+        self.remove_pane(pane)
+    }
+
+    pub fn detach_pane(&mut self, pane: PaneId) -> Result<(), AppError> {
+        self.pane_tab_mut(pane)?;
+        self.starting_directories.remove(&pane);
+        self.remove_pane(pane)
+    }
+
+    pub fn close_session_panes(
+        &mut self,
+        server: ServerId,
+        session: SessionId,
+    ) -> Result<(), AppError> {
+        let panes: Vec<_> = self.projects.iter().filter(|project| project.server_id == server)
+            .flat_map(|project| &project.tabs)
+            .flat_map(|tab| &tab.panes)
+            .filter(|pane| matches!(pane.content, PaneContent::Terminal { session: Some(id) } if id == session))
+            .map(|pane| pane.id).collect();
+        for pane in panes {
+            self.remove_pane(pane)?;
+        }
+        self.discard_unreferenced(server, session);
+        Ok(())
+    }
+
+    pub fn close_session_pane(&mut self, pane: PaneId) -> Result<(), AppError> {
+        let server = self.pane_server(pane).ok_or(AppError::UnknownPane(pane))?;
+        let content = self.pane_mut(pane)?.content.clone();
+        self.remove_pane(pane)?;
+        if let PaneContent::Terminal {
+            session: Some(session),
+        } = content
+        {
+            self.discard_unreferenced(server, session);
+        }
+        Ok(())
+    }
+
+    /// Closes `server`'s terminal panes.
+    pub fn clear_terminal_panes(&mut self, server: ServerId) -> Result<(), AppError> {
+        let terminals: Vec<_> = self
+            .projects
+            .iter()
+            .filter(|project| project.server_id == server)
+            .flat_map(|project| &project.tabs)
+            .flat_map(|tab| &tab.panes)
+            .filter(|pane| matches!(pane.content, PaneContent::Terminal { .. }))
+            .map(|pane| pane.id)
+            .collect();
+        for pane in terminals {
+            self.remove_pane(pane)?;
+        }
+        Ok(())
+    }
+
+    /// Internal cleanup also works for projects whose directories are unavailable.
+    pub(crate) fn remove_pane(&mut self, pane: PaneId) -> Result<(), AppError> {
+        let (project, tab) = self
+            .projects
+            .iter()
+            .find_map(|project| {
+                project.tabs.iter().find_map(|tab| {
+                    tab.panes
+                        .iter()
+                        .any(|candidate| candidate.id == pane)
+                        .then_some((project.id, tab.id))
+                })
+            })
+            .ok_or(AppError::UnknownPane(pane))?;
+        self.cancel_pending_creation(pane);
+        let target = self
+            .project_mut(project)?
+            .tabs
+            .iter_mut()
+            .find(|item| item.id == tab)
+            .ok_or(AppError::UnknownTab { project, tab })?;
+        if target.panes.len() == 1 {
+            return self.close_tab(project, tab);
+        }
+        let neighbor = [
+            Direction::Right,
+            Direction::Left,
+            Direction::Down,
+            Direction::Up,
+        ]
+        .into_iter()
+        .find_map(|direction| target.layout.neighbor(pane, direction));
+        target.layout.remove_equalized(pane);
+        target.panes.retain(|candidate| candidate.id != pane);
+        if target.zoomed == Some(pane) {
+            target.zoomed = None;
+        }
+        let fallback = neighbor.or_else(|| target.layout.leaves().first().copied());
+        self.window
+            .focus_history
+            .retain(|previous| *previous != pane);
+        if self.window.active_pane == Some(pane) {
+            self.window.activate(fallback);
+        }
+        Ok(())
+    }
+
+    pub fn split_pane(&mut self, pane: PaneId, edge: Direction) -> Result<PaneId, AppError> {
+        let new = Pane {
+            id: PaneId::new(),
+            title: "Terminal".into(),
+            content: PaneContent::Terminal { session: None },
+            proxy: false,
+        };
+        let id = self.insert_split_pane(pane, new, edge)?;
+        self.focus_pane(id)?;
+        Ok(id)
+    }
+
+    /// Shared typed-pane insertion, including split layout hooks.
+    pub(crate) fn insert_split_pane(
+        &mut self,
+        pane: PaneId,
+        new: Pane,
+        edge: Direction,
+    ) -> Result<PaneId, AppError> {
+        let tab = self.pane_tab_mut(pane)?;
+        tab.layout.split(pane, new.id, edge);
+        tab.layout.equalize_parent(new.id);
+        let id = new.id;
+        tab.zoomed = None;
+        tab.panes.push(new);
+        Ok(id)
+    }
+
+    /// Puts a new terminal where `pane` is, with its title, and returns it.
+    /// The old terminal's session is the caller's to end.
+    pub fn restart_terminal(&mut self, pane: PaneId) -> Result<PaneId, AppError> {
+        self.cancel_pending_creation(pane);
+        let tab = self.pane_tab_mut(pane)?;
+        let index = tab
+            .panes
+            .iter()
+            .position(|candidate| candidate.id == pane)
+            .ok_or(AppError::UnknownPane(pane))?;
+        if !matches!(tab.panes[index].content, PaneContent::Terminal { .. }) {
+            return Err(AppError::NotTerminal(pane));
+        }
+        let new = Pane {
+            id: PaneId::new(),
+            title: tab.panes[index].title.clone(),
+            content: PaneContent::Terminal { session: None },
+            proxy: false,
+        };
+        let id = new.id;
+        tab.layout.replace(pane, id);
+        tab.panes[index] = new;
+        if tab.zoomed == Some(pane) {
+            tab.zoomed = Some(id);
+        }
+        for previous in &mut self.window.focus_history {
+            if *previous == pane {
+                *previous = id;
+            }
+        }
+        if self.window.active_pane == Some(pane) {
+            self.window.active_pane = Some(id);
+        }
+        Ok(id)
+    }
+
+    pub fn set_pane_proxy(&mut self, pane: PaneId, proxy: bool) -> Result<(), AppError> {
+        self.pane_mut(pane)?.proxy = proxy;
+        Ok(())
+    }
+
+    pub fn move_pane(
+        &mut self,
+        pane: PaneId,
+        target: PaneId,
+        edge: Option<Direction>,
+    ) -> Result<(), AppError> {
+        let tab = self.pane_tab_mut(pane)?;
+        let layout = tab
+            .layout
+            .moved(pane, target, edge)
+            .ok_or_else(|| AppError::InvalidState("invalid pane drop".into()))?;
+        tab.layout = layout;
+        tab.zoomed = None;
+        self.focus_pane(pane)
+    }
+
+    pub fn dock_pane(
+        &mut self,
+        pane: PaneId,
+        anchor: PaneId,
+        edge: Direction,
+        level: usize,
+    ) -> Result<(), AppError> {
+        let tab = self.pane_tab_mut(pane)?;
+        let layout = tab
+            .layout
+            .docked(pane, anchor, edge, level)
+            .ok_or_else(|| AppError::InvalidState("invalid pane dock".into()))?;
+        tab.layout = layout;
+        tab.zoomed = None;
+        self.focus_pane(pane)
+    }
+
+    pub fn focus_pane(&mut self, pane: PaneId) -> Result<(), AppError> {
+        let tab = self.pane_tab_mut(pane)?;
+        if tab.zoomed.is_some() {
+            tab.zoomed = Some(pane);
+        }
+        let tab = tab.id;
+        let project = self
+            .projects
+            .iter()
+            .find(|project| project.tabs.iter().any(|item| item.id == tab))
+            .ok_or(AppError::UnknownPane(pane))?
+            .id;
+        self.window.current_project = project;
+        self.window.selected_tab.insert(project, tab);
+        self.window.activate(Some(pane));
+        self.sync_groups(project);
+        Ok(())
+    }
+
+    pub fn toggle_zoom(&mut self, pane: PaneId) -> Result<(), AppError> {
+        self.focus_pane(pane)?;
+        let tab = self.pane_tab_mut(pane)?;
+        tab.zoomed = if tab.zoomed == Some(pane) {
+            None
+        } else {
+            Some(pane)
+        };
+        Ok(())
+    }
+
+    pub fn neighbor(&self, pane: PaneId, direction: Direction) -> Option<PaneId> {
+        self.projects
+            .iter()
+            .flat_map(|project| &project.tabs)
+            .find(|tab| tab.layout.contains(pane))?
+            .layout
+            .neighbor(pane, direction)
+    }
+
+    pub fn set_ratio(&mut self, tab: TabId, path: &[Branch], ratio: f32) -> Result<(), AppError> {
+        self.tab_mut(tab)?.layout.set_ratio(path, ratio)
+    }
+
+    pub fn equalize_splits(&mut self, pane: PaneId) -> Result<(), AppError> {
+        let tab = self.pane_tab_mut(pane)?;
+        tab.layout = tab
+            .layout
+            .equalized()
+            .ok_or_else(|| AppError::InvalidState("layout has an empty split".into()))?;
+        Ok(())
+    }
+
+    fn tab_mut(&mut self, id: TabId) -> Result<&mut Tab, AppError> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.tabs.iter().any(|tab| tab.id == id))
+            .ok_or_else(|| AppError::InvalidState("unknown tab".into()))?;
+        project.require_available()?;
+        project
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.id == id)
+            .ok_or_else(|| AppError::InvalidState("unknown tab".into()))
+    }
+
+    pub(crate) fn pane_tab_mut(&mut self, id: PaneId) -> Result<&mut Tab, AppError> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.tabs.iter().any(|tab| tab.layout.contains(id)))
+            .ok_or(AppError::UnknownPane(id))?;
+        project.require_available()?;
+        project
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.layout.contains(id))
+            .ok_or(AppError::UnknownPane(id))
+    }
+
+    pub fn select_tab(&mut self, project: ProjectId, tab: TabId) -> Result<(), AppError> {
+        self.project_mut(project)?.require_available()?;
+        if !self
+            .project_mut(project)?
+            .tabs
+            .iter()
+            .any(|item| item.id == tab)
+        {
+            return Err(AppError::UnknownTab { project, tab });
+        }
+        self.window.selected_tab.insert(project, tab);
+        self.window.current_project = project;
+        self.focus_selected_tab();
+        self.sync_groups(project);
+        Ok(())
+    }
+
+    pub(crate) fn focus_selected_tab(&mut self) {
+        let selected = self.window.selected_tab.get(&self.window.current_project);
+        let tab = self
+            .current_project()
+            .tabs
+            .iter()
+            .find(|tab| Some(&tab.id) == selected);
+        let pane = tab.and_then(|tab| {
+            self.window
+                .active_pane
+                .filter(|pane| tab.layout.contains(*pane))
+                .or(tab.zoomed)
+                .or_else(|| {
+                    self.window
+                        .focus_history
+                        .iter()
+                        .rev()
+                        .copied()
+                        .find(|pane| tab.layout.contains(*pane))
+                })
+                .or_else(|| tab.layout.leaves().first().copied())
+        });
+        self.window.activate(pane);
+    }
+
+    /// The pane `tab` shows as its own: the active pane, or the one last
+    /// focused in it.
+    pub fn shown_pane(&self, tab: &Tab) -> Option<PaneId> {
+        self.window
+            .active_pane
+            .into_iter()
+            .chain(self.window.focus_history.iter().rev().copied())
+            .find(|pane| tab.layout.contains(*pane))
+    }
+
+    pub fn move_tab(&mut self, project: ProjectId, from: usize, to: usize) -> Result<(), AppError> {
+        self.project_mut(project)?.require_available()?;
+        let tabs = &mut self.project_mut(project)?.tabs;
+        for index in [from, to] {
+            if index >= tabs.len() {
+                return Err(AppError::InvalidTabIndex {
+                    index,
+                    len: tabs.len(),
+                });
+            }
+        }
+        let boundary = tabs.iter().take_while(|tab| tab.pinned).count();
+        let to = if tabs[from].pinned {
+            to.min(boundary.saturating_sub(1))
+        } else {
+            to.max(boundary)
+        };
+        let tab = tabs.remove(from);
+        tabs.insert(to, tab);
+        self.sync_groups(project);
+        Ok(())
+    }
+
+    pub fn move_visible_tab(
+        &mut self,
+        project: ProjectId,
+        from: TabId,
+        to: TabId,
+        visible: &[TabId],
+    ) -> Result<(), AppError> {
+        let id = project;
+        let project = self.project_mut(project)?;
+        project.require_available()?;
+        let tabs = &mut project.tabs;
+        let Some(pinned) = tabs.iter().find(|tab| tab.id == from).map(|tab| tab.pinned) else {
+            return Ok(());
+        };
+        let indices: Vec<_> = tabs
+            .iter()
+            .enumerate()
+            .filter(|(_, tab)| tab.pinned == pinned && visible.contains(&tab.id))
+            .map(|(index, _)| index)
+            .collect();
+        let positions = (
+            indices.iter().position(|index| tabs[*index].id == from),
+            indices.iter().position(|index| tabs[*index].id == to),
+        );
+        let (Some(from), Some(to)) = positions else {
+            return Ok(());
+        };
+        if from < to {
+            for pair in indices[from..=to].windows(2) {
+                tabs.swap(pair[0], pair[1]);
+            }
+        } else {
+            for pair in indices[to..=from].windows(2).rev() {
+                tabs.swap(pair[0], pair[1]);
+            }
+        }
+        self.sync_groups(id);
+        Ok(())
+    }
+
+    pub fn set_pane_session(
+        &mut self,
+        pane: PaneId,
+        session: Option<SessionId>,
+    ) -> Result<(), AppError> {
+        match &mut self.pane_mut(pane)?.content {
+            PaneContent::Terminal { session: current } => {
+                *current = session;
+                Ok(())
+            }
+            PaneContent::Settings
+            | PaneContent::Browser(_)
+            | PaneContent::Servers
+            | PaneContent::Editor { .. }
+            | PaneContent::Diff { .. } => Err(AppError::NotTerminal(pane)),
+        }
+    }
+
+    pub fn set_pane_title(
+        &mut self,
+        pane: PaneId,
+        title: impl Into<String>,
+    ) -> Result<(), AppError> {
+        let pane = self.pane_mut(pane)?;
+        let title = title.into();
+        pane.title = if matches!(pane.content, PaneContent::Terminal { .. }) {
+            crate::title::sanitize_or_default(&title)
+        } else {
+            title
+        };
+        Ok(())
+    }
+
+    pub fn set_window_bounds(&mut self, bounds: Option<WindowBounds>) -> Result<(), AppError> {
+        if let Some(bounds) = bounds {
+            bounds.validate()?;
+        }
+        self.window.bounds = bounds;
+        Ok(())
+    }
+
+    pub(crate) fn project_mut(&mut self, id: ProjectId) -> Result<&mut Project, AppError> {
+        self.projects
+            .iter_mut()
+            .find(|project| project.id == id)
+            .ok_or(AppError::UnknownProject(id))
+    }
+
+    pub(crate) fn pane_mut(&mut self, id: PaneId) -> Result<&mut Pane, AppError> {
+        self.projects
+            .iter_mut()
+            .flat_map(|project| &mut project.tabs)
+            .flat_map(|tab| &mut tab.panes)
+            .find(|pane| pane.id == id)
+            .ok_or(AppError::UnknownPane(id))
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), AppError> {
+        let home_first = || AppError::InvalidState("exactly one Home project must be first".into());
+        if self
+            .projects
+            .first()
+            .is_none_or(|project| !project.home || !project.server_id.is_local())
+        {
+            return Err(home_first());
+        }
+        let mut projects = HashSet::new();
+        let mut servers = HashSet::new();
+        for project in &self.projects {
+            if !projects.insert(project.id) {
+                return Err(AppError::InvalidState(format!(
+                    "duplicate project ID {}",
+                    project.id
+                )));
+            }
+            let first_of_its_server = servers.insert(project.server_id);
+            if first_of_its_server != project.home {
+                return Err(home_first());
+            }
+            project
+                .descriptor()
+                .validate()
+                .map_err(|_| AppError::InvalidState("invalid project metadata".into()))?;
+            if let Some(parent) = project.parent_id
+                && self.project(parent).is_none_or(|parent| {
+                    parent.home || parent.kind.is_some() || parent.parent_id.is_some()
+                })
+            {
+                return Err(AppError::InvalidState("invalid project parent".into()));
+            }
+        }
+        let mut tabs = HashSet::new();
+        let mut panes = HashSet::new();
+        for tab in self.projects.iter().flat_map(|project| &project.tabs) {
+            if !tabs.insert(tab.id) {
+                return Err(AppError::InvalidState(format!(
+                    "duplicate tab ID {}",
+                    tab.id
+                )));
+            }
+            tab.validate()?;
+            for pane in &tab.panes {
+                if !panes.insert(pane.id) {
+                    return Err(AppError::InvalidState(format!(
+                        "duplicate pane ID {}",
+                        pane.id
+                    )));
+                }
+            }
+        }
+
+        for project in &self.projects {
+            if let Some(groups) = &project.groups {
+                let order: Vec<_> = project.tabs.iter().map(|tab| tab.id).collect();
+                groups.validate(&order, self.window.selected_tab.get(&project.id).copied())?;
+            }
+        }
+        if let Some(active) = self.window.active_pane {
+            let selected = self.window.selected_tab.get(&self.window.current_project);
+            if !self
+                .current_project()
+                .tabs
+                .iter()
+                .any(|tab| Some(&tab.id) == selected && tab.layout.contains(active))
+            {
+                return Err(AppError::InvalidState(
+                    "window active pane must belong to the selected tab".into(),
+                ));
+            }
+        }
+        if let Some(bounds) = self.window.bounds {
+            bounds.validate()?;
+        }
+        Ok(())
+    }
+}

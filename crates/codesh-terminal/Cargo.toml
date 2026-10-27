@@ -1,0 +1,19 @@
+[package]
+name = "codesh-terminal"
+description = "Terminal core boundary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+codesh-protocol = { path = "../codesh-protocol" }
+portable-pty = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+libghostty-vt = "=0.2.1"

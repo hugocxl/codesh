@@ -1,0 +1,2881 @@
+use std::os::unix::ffi::OsStringExt;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use codesh_app_core::ServerId;
+use codesh_client::{Attachment, RunGrid};
+use codesh_protocol::{
+    ChannelId, ExitReason, ForegroundProcess, HistoryPage, InputModes, MetadataEvent, MouseAction,
+    MouseEvent, SavedScreen, ScreenFrame, ScrollDirection, ServerPath, Size,
+};
+use codesh_ui::tr;
+use gpui::{
+    Bounds, Context, EventEmitter, FocusHandle, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Render, Styled, Task, Window, div, prelude::FluentBuilder, px,
+};
+
+use super::{
+    clipboard,
+    colors::Palette,
+    element, find, input,
+    scroll::{HistoryRequest, Scroll, output_changed},
+    scrollbar::Scrollbar,
+    selection::{Point, SelectedRow, Selection},
+};
+
+pub(crate) enum PaneEvent {
+    Focused,
+    OpenLink(codesh_app_core::opener::Target),
+    /// A link on another computer, which only its server can look up.
+    ResolveLink(super::links::Candidate),
+    /// Files or an image for a terminal on another computer, which can't
+    /// reach this computer's.
+    Upload(crate::model::remote_files::Upload),
+    ContextMenu(gpui::Point<gpui::Pixels>),
+    SelectionCopied,
+    Viewport(Size),
+    Input(ChannelId, Vec<u8>),
+    TerminalInput(ChannelId, codesh_protocol::TerminalInput),
+    ClearScreen(ChannelId),
+    Mouse(ChannelId, MouseEvent),
+    CellSize(ChannelId, codesh_protocol::CellSize),
+    Title(String),
+    Bell,
+    History(HistoryRequest),
+    Search(find::SearchRequest),
+}
+
+gpui::actions!(terminal, [CloseFind]);
+
+pub(crate) fn register_shortcuts(registry: &mut codesh_ui::shortcuts::Registry<'_>) {
+    registry.register(
+        codesh_core::shortcuts::ShortcutId::TerminalCloseFind,
+        &CloseFind,
+    );
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PaneState {
+    Connecting,
+    Live,
+    Disconnected,
+    Exited {
+        reason: Option<ExitReason>,
+        unavailable: bool,
+    },
+}
+
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Visibility, focus restoration and bell activity are independent pane states"
+)]
+pub(crate) struct TerminalPane {
+    #[cfg(test)]
+    pub(crate) render_count: usize,
+    pub(crate) sent_cell_size: Option<(ChannelId, codesh_protocol::CellSize)>,
+    pub(crate) images: element::images::Textures,
+    pub(crate) rows: std::cell::RefCell<element::Rows>,
+    pub(crate) shades: element::shade::Textures,
+    pub(crate) grid: Option<RunGrid>,
+    pub(crate) copy_on_select: bool,
+    pub(crate) open_context: Option<codesh_app_core::opener::OpenContext>,
+    pub(crate) link_hover: super::links::Hover,
+    pub(crate) scroll: Scroll,
+    pub(crate) find: Option<find::Find>,
+    pub(crate) find_refresh: Option<Task<()>>,
+    pub(crate) find_focus_pending: bool,
+    pub(crate) selection: Option<Selection>,
+    selection_rows: Vec<Option<SelectedRow>>,
+    selecting: Option<(Selection, usize)>,
+    selection_pointer: Option<gpui::Point<gpui::Pixels>>,
+    selection_scroll: Option<Task<()>>,
+    pub(crate) input_modes: InputModes,
+    input_modes_reported: bool,
+    pub(crate) composition: super::ime::Composition,
+    pub(super) keyboard: input::Keyboard,
+    server_input: bool,
+    held_buttons: Vec<MouseButton>,
+    last_mouse: Option<MouseEvent>,
+    wheel_remainder: f32,
+    pub(crate) geometry: Option<(Bounds<gpui::Pixels>, gpui::Size<gpui::Pixels>)>,
+    pub(crate) cell_height: f32,
+    pub(crate) native_visible: bool,
+    #[cfg(target_os = "macos")]
+    pub(crate) native_scroll: Option<codesh_ui::native_scroll::NativeScrollView>,
+    #[cfg(target_os = "macos")]
+    native_sequence: u64,
+    pub(super) scrollbar: Scrollbar,
+    saved_history: Option<HistoryRequest>,
+    pub(crate) focus: FocusHandle,
+    pub(crate) focused: bool,
+    pub(crate) cursor_blink: super::cursor::CursorBlink,
+    pub(crate) focus_border: Option<gpui::Hsla>,
+    pub(crate) corner_radius: gpui::Pixels,
+    pub(crate) card_padding: bool,
+    /// The server that attached this pane, and its channel there.
+    attachment: Option<(ServerId, ChannelId)>,
+    viewport: Option<Size>,
+    pub(crate) palette: Palette,
+    pub(crate) background_opacity: f32,
+    pub(crate) native_vibrancy: bool,
+    pub(crate) terminal: codesh_app_core::settings::TerminalSettings,
+    pub(crate) state: PaneState,
+    pub(crate) process: Option<ForegroundProcess>,
+    title: String,
+    directory: ServerPath,
+    pub(crate) bell_flashing: bool,
+    bell_expiry: Option<Task<()>>,
+    _keybindings: gpui::Subscription,
+    pub(crate) configured_font_size: f32,
+}
+
+impl EventEmitter<PaneEvent> for TerminalPane {}
+
+impl TerminalPane {
+    pub(super) fn background_alpha(&self) -> f32 {
+        let tint = if self.native_vibrancy {
+            1.0 - f32::from(self.terminal.options.background_vibrancy.min(100)) / 100.0
+        } else {
+            1.0
+        };
+        self.background_opacity * self.terminal.options.background_opacity.unwrap_or(1.0) * tint
+    }
+
+    #[allow(
+        clippy::large_types_passed_by_value,
+        reason = "Each pane owns its palette snapshot"
+    )]
+    pub(crate) fn new(
+        palette: Palette,
+        terminal: codesh_app_core::settings::TerminalSettings,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        cx.on_release(|pane, cx| {
+            for image in pane.images.drain().chain(pane.shades.drain()) {
+                cx.drop_image(image, None);
+            }
+        })
+        .detach();
+        let weak = cx.entity().downgrade();
+        let keybindings = cx.intercept_keystrokes(move |event, window, cx| {
+            let _ = weak.update(cx, |pane, cx| {
+                if pane.focus.is_focused(window) {
+                    pane.keyboard.pending = None;
+                }
+                pane.key_binding(&event.keystroke, false, window, cx);
+            });
+        });
+        Self {
+            #[cfg(test)]
+            render_count: 0,
+            _keybindings: keybindings,
+            configured_font_size: terminal.font_size,
+            grid: None,
+            sent_cell_size: None,
+            images: element::images::Textures::default(),
+            rows: std::cell::RefCell::default(),
+            shades: element::shade::Textures::default(),
+            copy_on_select: false,
+            open_context: None,
+            link_hover: super::links::Hover::default(),
+            scroll: Scroll::default(),
+            find: None,
+            find_refresh: None,
+            find_focus_pending: false,
+            selection: None,
+            selection_rows: Vec::new(),
+            selecting: None,
+            selection_pointer: None,
+            selection_scroll: None,
+            input_modes: InputModes::default(),
+            input_modes_reported: false,
+            composition: super::ime::Composition::default(),
+            keyboard: input::Keyboard::default(),
+            server_input: false,
+            held_buttons: Vec::new(),
+            last_mouse: None,
+            wheel_remainder: 0.0,
+            geometry: None,
+            cell_height: 16.0,
+            native_visible: true,
+            #[cfg(target_os = "macos")]
+            native_scroll: None,
+            #[cfg(target_os = "macos")]
+            native_sequence: 0,
+            scrollbar: Scrollbar::new(cx.background_executor().now()),
+            saved_history: None,
+            focus: cx.focus_handle(),
+            focused: true,
+            cursor_blink: super::cursor::CursorBlink::default(),
+            focus_border: None,
+            corner_radius: px(0.0),
+            card_padding: false,
+            attachment: None,
+            viewport: None,
+            palette,
+            background_opacity: 1.0,
+            native_vibrancy: false,
+            terminal,
+            state: PaneState::Connecting,
+            process: None,
+            title: String::new(),
+            directory: ServerPath(Vec::new()),
+            bell_flashing: false,
+            bell_expiry: None,
+        }
+    }
+
+    pub(crate) fn directory(&self) -> Option<PathBuf> {
+        let path = PathBuf::from(std::ffi::OsString::from_vec(self.directory.0.clone()));
+        path.is_absolute().then_some(path)
+    }
+
+    pub(crate) fn channel(&self) -> Option<ChannelId> {
+        self.attachment.map(|(_, channel)| channel)
+    }
+
+    pub(crate) fn attachment(&self) -> Option<(ServerId, ChannelId)> {
+        self.attachment
+    }
+
+    pub(crate) fn viewport(&self) -> Option<Size> {
+        self.viewport
+    }
+
+    pub(crate) fn set_state(&mut self, state: PaneState, cx: &mut Context<Self>) {
+        self.attachment = None;
+        self.reset_input();
+        self.scroll.reset();
+        self.saved_history = None;
+        self.state = state;
+        self.cursor_blink.reset();
+        self.restart_find(cx);
+        self.validate_selection();
+        if state != PaneState::Live
+            && let Some(grid) = &mut self.grid
+        {
+            grid.cursor.visible = false;
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn restore(&mut self, screen: SavedScreen, cx: &mut Context<Self>) {
+        self.clear_selection();
+        self.cursor_blink.reset();
+        self.state = PaneState::Exited {
+            reason: screen.reason,
+            unavailable: false,
+        };
+        self.attachment = None;
+        self.reset_input();
+        self.scroll.reset();
+        self.saved_history = None;
+        self.grid = Some(RunGrid::from_saved(screen));
+        self.prepare_saved_history(cx);
+        self.restart_find(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn attach(
+        &mut self,
+        server: ServerId,
+        attachment: Attachment,
+        cx: &mut Context<Self>,
+    ) -> Option<Size> {
+        let resized = self.viewport.filter(|size| *size != attachment.grid.size);
+        self.reset_input();
+        self.clear_selection();
+        let history = if resized.is_none() && self.keeps_scroll(&attachment.grid) {
+            self.scroll
+                .reattached(usize::from(attachment.grid.size.rows))
+        } else {
+            self.scroll.reset();
+            None
+        };
+        self.saved_history = None;
+        self.sent_cell_size = None;
+        self.attachment = Some((server, attachment.channel));
+        self.server_input = attachment.server_input;
+        self.state = PaneState::Live;
+        self.cursor_blink = super::cursor::CursorBlink::default();
+        self.title = attachment.title;
+        self.directory = attachment.directory;
+        self.process = attachment.process;
+        self.emit_title(cx);
+        self.grid = Some(attachment.grid);
+        self.restart_find(cx);
+        if let Some(size) = resized
+            && let Some(grid) = &mut self.grid
+        {
+            grid.resize(size);
+        }
+        if let Some(request) = history {
+            self.request_history(request, cx);
+        }
+        cx.notify();
+        resized
+    }
+
+    fn keeps_scroll(&self, live: &RunGrid) -> bool {
+        let scrolls_on_output = || {
+            self.terminal.options.scroll_on_output
+                && self
+                    .grid
+                    .as_ref()
+                    .is_none_or(|grid| output_changed(grid, live))
+        };
+        self.scroll
+            .view
+            .as_ref()
+            .is_some_and(|view| view.size == live.size)
+            && !scrolls_on_output()
+    }
+
+    pub(crate) fn apply(&mut self, frame: &ScreenFrame, cx: &mut Context<Self>) {
+        let _span = crate::profiler::span(crate::profiler::Metric::FrameApply);
+        crate::profiler::count(crate::profiler::Metric::FrameRows, frame.rows.len());
+        if let Some(grid) = &mut self.grid {
+            if frame.reset {
+                self.scroll.reset();
+                self.saved_history = None;
+            }
+            if grid.cursor != frame.cursor {
+                self.cursor_blink.reset();
+            }
+            let output_changed = !frame.rows.is_empty() || grid.cursor != frame.cursor;
+            grid.apply(frame);
+            if output_changed && self.terminal.options.scroll_on_output {
+                self.scroll.bottom();
+            }
+            if self.scroll.view.is_none() {
+                if frame.reset {
+                    self.restart_find(cx);
+                } else {
+                    self.refresh_find(cx);
+                }
+            }
+            self.validate_selection();
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn scroll_rows(&mut self, delta: f32, cx: &mut Context<Self>) {
+        if matches!(self.state, PaneState::Connecting | PaneState::Disconnected) {
+            return;
+        }
+        if let Some(grid) = &self.grid {
+            let height = usize::from(self.viewport.unwrap_or(grid.size).rows);
+            let was_scrolled = self.scroll.view.is_some();
+            if let Some(request) = self.scroll.move_rows(delta, grid, height) {
+                self.request_history(request, cx);
+            }
+            self.scroll.revision = self.scroll.revision.wrapping_add(1);
+            if was_scrolled && self.scroll.view.is_none() {
+                self.restart_find(cx);
+            }
+            self.validate_selection();
+            self.reveal_scrollbar(cx);
+            cx.notify();
+        }
+    }
+
+    /// Moves the view to `rows` above the bottom.
+    pub(super) fn scroll_to(&mut self, rows: f64, cx: &mut Context<Self>) {
+        if let Some(grid) = &self.grid {
+            let height = usize::from(self.viewport.unwrap_or(grid.size).rows);
+            let was_scrolled = self.scroll.view.is_some();
+            if let Some(request) = self.scroll.move_to(rows, grid, height) {
+                self.request_history(request, cx);
+            }
+            if was_scrolled && self.scroll.view.is_none() {
+                self.restart_find(cx);
+            }
+            self.validate_selection();
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn request_history(&mut self, request: HistoryRequest, cx: &mut Context<Self>) {
+        if request.before.0 == 0
+            && let Some(saved) = self.saved_history
+        {
+            self.scroll.adopt_recent(saved);
+        } else {
+            cx.emit(PaneEvent::History(request));
+        }
+    }
+
+    pub(super) fn prepare_saved_history(&mut self, cx: &mut Context<Self>) {
+        if self.saved_history.is_none()
+            && matches!(
+                self.state,
+                PaneState::Exited {
+                    unavailable: false,
+                    ..
+                }
+            )
+            && self.grid.as_ref().is_some_and(|grid| !grid.history_fresh)
+        {
+            let request = HistoryRequest::recent();
+            self.saved_history = Some(request);
+            cx.emit(PaneEvent::History(request));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn setup_native_scroll(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if self.native_scroll.is_none() {
+            let weak = cx.entity().downgrade();
+            let app = cx.to_async();
+            self.native_scroll = codesh_ui::native_scroll::NativeScrollView::new(
+                &window.window_title(),
+                move |position| {
+                    let weak = weak.clone();
+                    app.spawn(async move |cx| {
+                        let _ = weak.update(cx, |pane, cx| pane.native_position(position, cx));
+                    })
+                    .detach();
+                },
+            );
+        }
+        if let Some(scroll) = &self.native_scroll {
+            scroll.set_visible(
+                self.native_visible
+                    && !self.reports_wheel()
+                    && self.grid.is_some()
+                    && !matches!(self.state, PaneState::Connecting | PaneState::Disconnected),
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn native_position(
+        &mut self,
+        position: codesh_ui::native_scroll::ScrollPosition,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.native_visible
+            || self.reports_wheel()
+            || matches!(self.state, PaneState::Connecting | PaneState::Disconnected)
+        {
+            return;
+        }
+        if position.revision != self.scroll.revision || position.sequence <= self.native_sequence {
+            return;
+        }
+        self.native_sequence = position.sequence;
+        self.scroll_to(position.from_bottom / f64::from(self.cell_height), cx);
+    }
+
+    pub(crate) fn receive_history(
+        &mut self,
+        request: HistoryRequest,
+        result: Result<HistoryPage, codesh_client::ClientError>,
+        cx: &mut Context<Self>,
+    ) {
+        let accepted = self.saved_history == Some(request) || self.scroll.expects(request);
+        let stale = accepted
+            && matches!(&result, Err(codesh_client::ClientError::Server(error)) if error.code == codesh_protocol::ErrorCode::StaleHistoryCursor);
+        let changed = accepted
+            && result.as_ref().is_ok_and(|page| {
+                self.find.as_ref().is_some_and(|find| {
+                    !find.results.matches.is_empty() && find.results.total_rows != page.total_rows
+                })
+            });
+        if stale || changed {
+            self.restart_find(cx);
+        }
+        let failed = accepted && result.is_err() && !stale;
+        if self.saved_history == Some(request) {
+            self.saved_history = None;
+            if let (Ok(page), Some(grid)) = (&result, &mut self.grid) {
+                grid.replace_history(page.clone());
+            }
+            if self.scroll.view.is_none() {
+                self.validate_selection();
+                cx.notify();
+                return;
+            }
+        }
+        let height = usize::from(
+            self.viewport
+                .or_else(|| self.grid.as_ref().map(|grid| grid.size))
+                .map_or(24, |size| size.rows),
+        );
+        if let Some(request) = self.scroll.receive(request, result, height) {
+            cx.emit(PaneEvent::History(request));
+        }
+        if failed {
+            if let Some(find) = &mut self.find {
+                find.results.loading_history = false;
+                find.results.error = Some(tr!("Could not load match").into());
+            }
+        } else if self
+            .find
+            .as_ref()
+            .is_some_and(|find| find.results.loading_history)
+        {
+            self.reveal_match(cx);
+        }
+        self.finish_command_selection(cx);
+        self.validate_selection();
+        if failed {
+            self.stop_selecting();
+        } else if accepted && let Some(position) = self.selection_pointer {
+            self.scroll.revision = self.scroll.revision.wrapping_add(1);
+            self.extend_selection(position, cx);
+            self.schedule_selection_scroll(cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn jump_prompt(&mut self, previous: bool, cx: &mut Context<Self>) {
+        let Some(grid) = self.displayed_grid() else {
+            return;
+        };
+        let anchor = self.visible_start(grid);
+        let operation = if previous {
+            super::scroll::PromptOperation::Previous
+        } else {
+            super::scroll::PromptOperation::Next
+        };
+        self.prompt_operation(operation, anchor, cx);
+        self.reveal_scrollbar(cx);
+    }
+
+    pub(crate) fn select_command_output(
+        &mut self,
+        position: Option<gpui::Point<gpui::Pixels>>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(grid) = self.displayed_grid() else {
+            return;
+        };
+        let anchor = position
+            .and_then(|position| self.point_at(position, false))
+            .and_then(|point| grid.history.len().checked_add_signed(point.row))
+            .unwrap_or(grid.history.len() + usize::from(grid.cursor.row));
+        self.prompt_operation(
+            super::scroll::PromptOperation::Select {
+                include_prompt: position.is_some(),
+            },
+            anchor,
+            cx,
+        );
+    }
+
+    fn prompt_operation(
+        &mut self,
+        operation: super::scroll::PromptOperation,
+        anchor: usize,
+        cx: &mut Context<Self>,
+    ) {
+        if self.state != PaneState::Live {
+            return;
+        }
+        let Some(grid) = &self.grid else {
+            return;
+        };
+        let height = usize::from(self.viewport.unwrap_or(grid.size).rows);
+        if let Some(request) = self.scroll.prompt(operation, anchor, grid, height) {
+            self.request_history(request, cx);
+        }
+        self.finish_command_selection(cx);
+        self.validate_selection();
+        cx.notify();
+    }
+
+    fn finish_command_selection(&mut self, cx: &mut Context<Self>) {
+        if let Some((start, end)) = self.scroll.take_command_output()
+            && let Some(grid) = self.displayed_grid()
+        {
+            self.select(
+                Selection {
+                    anchor: Point {
+                        row: start,
+                        column: 0,
+                    },
+                    head: Point {
+                        row: end,
+                        column: grid.size.cols,
+                    },
+                },
+                cx,
+            );
+        }
+    }
+
+    pub(crate) fn scroll_to_bottom(&mut self, cx: &mut Context<Self>) {
+        self.scroll.bottom();
+        self.cursor_blink.reset();
+        self.restart_find(cx);
+        self.validate_selection();
+        cx.notify();
+    }
+
+    pub(crate) fn metadata(&mut self, event: MetadataEvent, cx: &mut Context<Self>) {
+        match event {
+            MetadataEvent::ScreenPrompts { seq, rows } => {
+                if let Some(grid) = &mut self.grid {
+                    grid.screen_prompts(seq, rows);
+                }
+                cx.notify();
+                return;
+            }
+            MetadataEvent::Links { seq, rows } => {
+                if let Some(grid) = &mut self.grid {
+                    grid.links.replace(seq, rows);
+                }
+                cx.notify();
+                return;
+            }
+            MetadataEvent::CursorBlinking(enabled) => {
+                if self.state == PaneState::Live && self.cursor_blink.enabled != enabled {
+                    self.cursor_blink.enabled = enabled;
+                    self.cursor_blink.reset();
+                    cx.notify();
+                }
+                return;
+            }
+            MetadataEvent::InputModes(modes) => {
+                let first = !std::mem::replace(&mut self.input_modes_reported, true);
+                if self.state == PaneState::Live && self.input_modes != modes {
+                    let was_reporting = self.reports_wheel();
+                    if !modes.mouse_tracking {
+                        self.held_buttons.clear();
+                    }
+                    if self.held_buttons.is_empty() {
+                        self.last_mouse = None;
+                    }
+                    self.wheel_remainder = 0.0;
+                    self.input_modes = modes;
+                    if !first && !was_reporting && self.reports_wheel() {
+                        self.clear_selection();
+                        self.scroll.bottom();
+                    }
+                    cx.notify();
+                }
+                return;
+            }
+            MetadataEvent::History { total_rows } => {
+                if let Some(grid) = &mut self.grid {
+                    grid.history_total = total_rows;
+                    grid.history_fresh = false;
+                }
+                cx.notify();
+                return;
+            }
+            MetadataEvent::ClipboardWrite(text) => {
+                if self.state == PaneState::Live
+                    && !text.is_empty()
+                    && text.len() <= codesh_protocol::MAX_CLIPBOARD_TEXT
+                {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                }
+                return;
+            }
+            MetadataEvent::Title(title) => self.title = title,
+            MetadataEvent::Directory(directory) => {
+                self.directory = directory;
+                self.link_hover = super::links::Hover::default();
+            }
+            MetadataEvent::ForegroundProcess { name, is_shell } => {
+                self.process = Some(ForegroundProcess { name, is_shell });
+            }
+            MetadataEvent::Bell => {
+                self.bell_flashing = true;
+                self.bell_expiry = Some(cx.spawn(async move |pane, cx| {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(1250))
+                        .await;
+                    let _ = pane.update(cx, |pane, cx| {
+                        pane.bell_flashing = false;
+                        cx.emit(PaneEvent::Bell);
+                    });
+                }));
+                cx.emit(PaneEvent::Bell);
+                return;
+            }
+        }
+        self.emit_title(cx);
+    }
+
+    fn emit_title(&self, cx: &mut Context<Self>) {
+        cx.emit(PaneEvent::Title(codesh_app_core::title::derive(
+            &self.title,
+            self.process.as_ref(),
+            &self.directory,
+        )));
+    }
+
+    pub(crate) fn set_viewport(&mut self, size: Size, cx: &mut Context<Self>) {
+        if self.viewport == Some(size) {
+            return;
+        }
+        self.viewport = Some(size);
+        if self.attachment.is_some() {
+            self.scroll.reset();
+            self.saved_history = None;
+        } else {
+            self.scroll.resized(usize::from(size.rows));
+            self.saved_history = None;
+            self.prepare_saved_history(cx);
+        }
+        if self.attachment.is_some()
+            && let Some(grid) = &mut self.grid
+        {
+            grid.resize(size);
+        }
+        self.validate_selection();
+        cx.emit(PaneEvent::Viewport(size));
+        self.restart_find(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn displayed_grid(&self) -> Option<&RunGrid> {
+        self.scroll.view.as_ref().or(self.grid.as_ref())
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    pub(super) fn scrollable_rows(&self, viewport_rows: u16) -> f64 {
+        self.displayed_grid().map_or(0.0, |grid| {
+            if self.attachment.is_some() && self.scroll.view.is_none() {
+                grid.history_total as f64
+            } else {
+                (grid.history_total as f64 + grid.rows.len() as f64 - f64::from(viewport_rows))
+                    .max(0.0)
+            }
+        })
+    }
+
+    pub(crate) fn visible_start(&self, grid: &RunGrid) -> usize {
+        if self.scroll.view.is_some() || matches!(self.state, PaneState::Exited { .. }) {
+            self.scroll
+                .start(grid, usize::from(self.viewport.unwrap_or(grid.size).rows))
+        } else {
+            grid.history.len()
+        }
+    }
+
+    fn clear_selection(&mut self) {
+        self.selection = None;
+        self.selection_rows.clear();
+        self.stop_selecting();
+    }
+
+    fn stop_selecting(&mut self) {
+        self.scroll.cancel_selection_scroll();
+        self.selecting = None;
+        self.selection_pointer = None;
+        self.selection_scroll = None;
+    }
+
+    fn reset_input(&mut self) {
+        self.stop_selecting();
+        self.composition = super::ime::Composition::default();
+        self.keyboard = input::Keyboard::default();
+        self.server_input = false;
+        self.link_hover = super::links::Hover::default();
+        self.input_modes = InputModes::default();
+        self.input_modes_reported = false;
+        self.held_buttons.clear();
+        self.last_mouse = None;
+        self.wheel_remainder = 0.0;
+    }
+
+    fn reports_mouse(&self, shift: bool) -> bool {
+        self.state == PaneState::Live
+            && self.terminal.options.mouse_reporting
+            && self.input_modes.mouse_tracking
+            && !shift
+    }
+
+    pub(super) fn reports_wheel(&self) -> bool {
+        self.state == PaneState::Live
+            && self.terminal.options.mouse_reporting
+            && (self.input_modes.mouse_tracking || self.input_modes.alternate_scroll)
+    }
+
+    pub(crate) fn focus_changed(&mut self, active: bool, cx: &mut Context<Self>) {
+        if !active {
+            self.stop_selecting();
+        }
+        if self.state != PaneState::Live {
+            return;
+        }
+        if !active {
+            self.composition = super::ime::Composition::default();
+            if let Some(channel) = self.channel() {
+                for event in self.keyboard.release_all() {
+                    cx.emit(PaneEvent::TerminalInput(
+                        channel,
+                        codesh_protocol::TerminalInput::Key(event),
+                    ));
+                }
+            }
+            let buttons = std::mem::take(&mut self.held_buttons);
+            if let (Some(channel), Some(event)) = (self.channel(), self.last_mouse) {
+                for button in buttons {
+                    cx.emit(PaneEvent::Mouse(
+                        channel,
+                        MouseEvent {
+                            action: MouseAction::Release,
+                            button: Some(mouse_button(button)),
+                            scroll: None,
+                            ..event
+                        },
+                    ));
+                }
+            }
+            self.last_mouse = None;
+            self.wheel_remainder = 0.0;
+        }
+        if self.server_input
+            && let Some(channel) = self.channel()
+        {
+            cx.emit(PaneEvent::TerminalInput(
+                channel,
+                codesh_protocol::TerminalInput::Focus(active),
+            ));
+        } else if self.input_modes.focus_events
+            && let Some(channel) = self.channel()
+        {
+            cx.emit(PaneEvent::Input(
+                channel,
+                if active { b"\x1b[I" } else { b"\x1b[O" }.to_vec(),
+            ));
+        }
+    }
+
+    pub(crate) fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
+        if self.focused != focused {
+            self.focused = focused;
+            self.cursor_blink.reset();
+            self.focus_changed(focused, cx);
+            cx.notify();
+        }
+    }
+
+    pub(super) fn contains_mouse(&self, position: gpui::Point<gpui::Pixels>) -> bool {
+        self.geometry
+            .zip(self.grid.as_ref())
+            .is_some_and(|((bounds, cell), grid)| {
+                let size = self.viewport.unwrap_or(grid.size);
+                Bounds::new(
+                    bounds.origin,
+                    gpui::size(
+                        cell.width * f32::from(size.cols),
+                        cell.height * f32::from(size.rows),
+                    ),
+                )
+                .contains(&position)
+            })
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn send_mouse(
+        &mut self,
+        action: MouseAction,
+        button: Option<MouseButton>,
+        scroll: Option<ScrollDirection>,
+        position: gpui::Point<gpui::Pixels>,
+        modifiers: gpui::Modifiers,
+        cx: &mut Context<Self>,
+    ) {
+        if self.state != PaneState::Live {
+            return;
+        }
+        let (Some(channel), Some((bounds, cell)), Some(grid)) =
+            (self.channel(), self.geometry, &self.grid)
+        else {
+            return;
+        };
+        let size = self.viewport.unwrap_or(grid.size);
+        let event = MouseEvent {
+            action,
+            button: button.map(mouse_button),
+            column: ((position.x - bounds.origin.x) / cell.width)
+                .floor()
+                .clamp(0.0, f32::from(size.cols.saturating_sub(1))) as u16,
+            row: ((position.y - bounds.origin.y) / cell.height)
+                .floor()
+                .clamp(0.0, f32::from(size.rows.saturating_sub(1))) as u16,
+            scroll,
+            modifiers: codesh_protocol::Modifiers {
+                shift: modifiers.shift,
+                alt: modifiers.alt,
+                ctrl: modifiers.control,
+            },
+        };
+        if action == MouseAction::Motion && self.last_mouse == Some(event) {
+            return;
+        }
+        self.last_mouse = Some(event);
+        cx.emit(PaneEvent::Mouse(channel, event));
+    }
+
+    fn mouse_wheel(&mut self, event: &gpui::ScrollWheelEvent, cx: &mut Context<Self>) {
+        let (rows, multiplier) = match event.delta {
+            gpui::ScrollDelta::Pixels(delta) => (
+                f32::from(delta.y) / self.cell_height.max(1.0),
+                self.terminal.options.scroll_precision,
+            ),
+            gpui::ScrollDelta::Lines(delta) => (delta.y, self.terminal.options.scroll_discrete),
+        };
+        let delta = rows * multiplier;
+        if self.reports_wheel() && !event.modifiers.shift {
+            if delta.signum() != self.wheel_remainder.signum() {
+                self.wheel_remainder = 0.0;
+            }
+            self.wheel_remainder = (self.wheel_remainder + delta).clamp(-100.0, 100.0);
+            if self.wheel_remainder.abs() >= 1.0 {
+                self.scroll_to_bottom(cx);
+            }
+            while self.wheel_remainder.abs() >= 1.0 {
+                let direction = if self.wheel_remainder > 0.0 {
+                    ScrollDirection::Up
+                } else {
+                    ScrollDirection::Down
+                };
+                self.send_mouse(
+                    MouseAction::Scroll,
+                    None,
+                    Some(direction),
+                    event.position,
+                    event.modifiers,
+                    cx,
+                );
+                self.wheel_remainder -= self.wheel_remainder.signum();
+            }
+            cx.stop_propagation();
+            return;
+        }
+        self.wheel_remainder = 0.0;
+        self.prepare_saved_history(cx);
+        #[cfg(target_os = "macos")]
+        if !self.reports_wheel()
+            && multiplier.to_bits() == 1.0_f32.to_bits()
+            && let Some(position) = self
+                .native_scroll
+                .as_ref()
+                .and_then(codesh_ui::native_scroll::NativeScrollView::forward_wheel)
+        {
+            self.native_position(position, cx);
+            cx.stop_propagation();
+            return;
+        }
+        if delta != 0.0 {
+            self.scroll_rows(delta, cx);
+            cx.stop_propagation();
+        }
+    }
+
+    fn validate_selection(&mut self) {
+        if let Some(selection) = self.selection
+            && !self
+                .displayed_grid()
+                .is_some_and(|grid| selection.rows(grid) == self.selection_rows)
+        {
+            self.clear_selection();
+        }
+    }
+
+    fn select(&mut self, selection: Selection, cx: &mut Context<Self>) {
+        self.scroll.cancel_prompt();
+        self.selection = (!selection.normalized().is_empty()).then_some(selection);
+        self.selection_rows = self
+            .displayed_grid()
+            .map_or_else(Vec::new, |grid| selection.rows(grid));
+        cx.notify();
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub(super) fn point_at(
+        &self,
+        position: gpui::Point<gpui::Pixels>,
+        nearest: bool,
+    ) -> Option<Point> {
+        let (bounds, cell) = self.geometry?;
+        let grid = self.displayed_grid()?;
+        let x = (position.x - bounds.origin.x) / cell.width;
+        let column = if nearest { x.round() } else { x.floor() }
+            .clamp(0.0, f32::from(grid.size.cols)) as u16;
+        let remainder = self.scroll.pixel_remainder(f32::from(cell.height));
+        let y = (position.y - bounds.origin.y - px(remainder)) / cell.height;
+        let height = self.viewport.unwrap_or(grid.size).rows;
+        let last = height.saturating_sub(1) + u16::from(remainder < 0.0);
+        let visible = y.floor().clamp(0.0, f32::from(last)) as usize;
+        let index = self
+            .visible_start(grid)
+            .saturating_add(visible)
+            .min(grid.history.len() + grid.rows.len().saturating_sub(1));
+        Some(Point {
+            row: isize::try_from(index).ok()? - isize::try_from(grid.history.len()).ok()?,
+            column,
+        })
+    }
+
+    pub(crate) fn command_click(
+        &mut self,
+        position: gpui::Point<gpui::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.hover_link(position, true, cx);
+        if let Some(target) = self.link_hover.target.clone() {
+            self.stop_selecting();
+            cx.emit(PaneEvent::OpenLink(target));
+        }
+    }
+
+    fn mouse_down(
+        &mut self,
+        event: &gpui::MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.focus.focus(window);
+        cx.emit(PaneEvent::Focused);
+        if event.button == MouseButton::Left && self.press_scrollbar(event.position, cx) {
+            self.stop_selecting();
+            cx.stop_propagation();
+            return;
+        }
+        if event.button == MouseButton::Left && event.modifiers.secondary() {
+            self.hover_link(event.position, true, cx);
+            if let Some(target) = self.link_hover.target.clone() {
+                self.stop_selecting();
+                cx.emit(PaneEvent::OpenLink(target));
+                cx.stop_propagation();
+                return;
+            }
+        }
+        if self.reports_mouse(event.modifiers.shift) {
+            self.clear_selection();
+            self.scroll.bottom();
+            if !self.held_buttons.contains(&event.button) {
+                self.held_buttons.push(event.button);
+            }
+            self.send_mouse(
+                MouseAction::Press,
+                Some(event.button),
+                None,
+                event.position,
+                event.modifiers,
+                cx,
+            );
+            cx.notify();
+            return;
+        }
+        if event.button == MouseButton::Right {
+            self.stop_selecting();
+            cx.emit(PaneEvent::ContextMenu(event.position));
+            cx.stop_propagation();
+            return;
+        }
+        if event.button != MouseButton::Left {
+            return;
+        }
+        self.clear_selection();
+        let Some(point) = self.point_at(event.position, event.click_count < 2) else {
+            return;
+        };
+        let Some(grid) = self.displayed_grid() else {
+            return;
+        };
+        let selection = match event.click_count {
+            0 | 1 => Selection {
+                anchor: point,
+                head: point,
+            },
+            2 => Selection::word(point, grid),
+            _ => Selection::row(point, grid),
+        };
+        self.selecting = Some((selection, event.click_count));
+        self.select(selection, cx);
+    }
+
+    pub(crate) fn mouse_move(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
+        if !self.native_visible {
+            self.stop_selecting();
+            return;
+        }
+        if self.scrollbar_dragging() {
+            if event.pressed_button == Some(MouseButton::Left) {
+                self.drag_scrollbar(event.position, cx);
+            } else {
+                self.release_scrollbar(cx);
+            }
+            return;
+        }
+        self.hover_scrollbar(event.position, cx);
+        self.hover_link(
+            event.position,
+            event.modifiers.secondary() && event.pressed_button.is_none(),
+            cx,
+        );
+        if self.reports_mouse(event.modifiers.shift) && self.selecting.is_none() {
+            if !self.held_buttons.is_empty()
+                || (event.pressed_button.is_none() && self.contains_mouse(event.position))
+            {
+                self.send_mouse(
+                    MouseAction::Motion,
+                    self.held_buttons.last().copied(),
+                    None,
+                    event.position,
+                    event.modifiers,
+                    cx,
+                );
+            }
+            return;
+        }
+        if event.pressed_button != Some(MouseButton::Left) {
+            self.stop_selecting();
+            return;
+        }
+        self.extend_selection(event.position, cx);
+        self.selection_pointer = self.selecting.map(|_| event.position);
+        self.schedule_selection_scroll(cx);
+    }
+
+    fn extend_selection(&mut self, position: gpui::Point<gpui::Pixels>, cx: &mut Context<Self>) {
+        let Some((anchor, clicks)) = self.selecting else {
+            return;
+        };
+        let Some(point) = self.point_at(position, clicks < 2) else {
+            return;
+        };
+        let Some(grid) = self.displayed_grid() else {
+            return;
+        };
+        let target = match clicks {
+            0 | 1 => Selection {
+                anchor: point,
+                head: point,
+            },
+            2 => Selection::word(point, grid),
+            _ => Selection::row(point, grid),
+        };
+        let selection = if target.anchor < anchor.anchor {
+            Selection {
+                anchor: anchor.head,
+                head: target.anchor,
+            }
+        } else {
+            Selection {
+                anchor: anchor.anchor,
+                head: target.head,
+            }
+        };
+        self.select(selection, cx);
+    }
+
+    fn selection_scroll_delta(&self) -> Option<f32> {
+        self.selecting?;
+        if !self.native_visible
+            || !self.focused
+            || matches!(self.state, PaneState::Connecting | PaneState::Disconnected)
+        {
+            return None;
+        }
+        let position = self.selection_pointer?;
+        let (bounds, cell) = self.geometry?;
+        let grid = self.displayed_grid()?;
+        let height = cell.height * f32::from(self.viewport.unwrap_or(grid.size).rows);
+        let edge = cell.height.min(height / 2.0);
+        let y = position.y - bounds.origin.y;
+        if y < edge {
+            Some(((edge - y) / cell.height).ceil().clamp(1.0, 5.0))
+        } else if y > height - edge {
+            Some(-((y - height + edge) / cell.height).ceil().clamp(1.0, 5.0))
+        } else {
+            None
+        }
+    }
+
+    fn schedule_selection_scroll(&mut self, cx: &mut Context<Self>) {
+        if self.selection_scroll_delta().is_none() {
+            self.scroll.cancel_selection_scroll();
+            self.selection_scroll = None;
+            return;
+        }
+        if self.selection_scroll.is_some() {
+            return;
+        }
+        self.selection_scroll = Some(cx.spawn(async move |pane, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
+            let _ = pane.update(cx, |pane, cx| {
+                pane.selection_scroll = None;
+                if pane.scroll_selection(cx) {
+                    pane.schedule_selection_scroll(cx);
+                }
+            });
+        }));
+    }
+
+    fn scroll_selection(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(delta) = self.selection_scroll_delta() else {
+            self.stop_selecting();
+            return false;
+        };
+        let Some(grid) = &self.grid else {
+            return false;
+        };
+        let height = usize::from(self.viewport.unwrap_or(grid.size).rows);
+        let before = self.scroll.offset;
+        let was_scrolled = self.scroll.view.is_some();
+        if let Some(request) = self.scroll.move_selection(delta, grid, height) {
+            self.request_history(request, cx);
+        }
+        if was_scrolled && self.scroll.view.is_none() {
+            self.restart_find(cx);
+        }
+        self.validate_selection();
+        let changed = self.scroll.offset.to_bits() != before.to_bits()
+            || was_scrolled != self.scroll.view.is_some();
+        if changed {
+            self.scroll.revision = self.scroll.revision.wrapping_add(1);
+            if let Some(position) = self.selection_pointer {
+                self.extend_selection(position, cx);
+            }
+            cx.notify();
+        }
+        changed
+    }
+
+    fn mouse_up(&mut self, event: &gpui::MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if self.held_buttons.contains(&event.button) {
+            self.held_buttons.retain(|button| *button != event.button);
+            self.send_mouse(
+                MouseAction::Release,
+                Some(event.button),
+                None,
+                event.position,
+                event.modifiers,
+                cx,
+            );
+            return;
+        }
+        if event.button != MouseButton::Left || self.release_scrollbar(cx) {
+            return;
+        }
+        let completed_selection = self.selecting.is_some();
+        self.mouse_move(
+            &gpui::MouseMoveEvent {
+                position: event.position,
+                pressed_button: Some(MouseButton::Left),
+                modifiers: event.modifiers,
+            },
+            cx,
+        );
+        self.stop_selecting();
+        if completed_selection
+            && self
+                .terminal
+                .options
+                .copy_on_select
+                .unwrap_or(self.copy_on_select)
+            && self.copy_selection_text(cx)
+        {
+            cx.emit(PaneEvent::SelectionCopied);
+        }
+    }
+
+    pub(crate) fn copy_selection(&mut self, cx: &mut Context<Self>) {
+        self.copy_selection_text(cx);
+        if self.terminal.options.selection_clear_on_copy {
+            self.clear_selection();
+            cx.notify();
+        }
+    }
+
+    fn copy_selection_text(&self, cx: &mut Context<Self>) -> bool {
+        if let (Some(selection), Some(grid)) = (self.selection, self.displayed_grid()) {
+            let text = selection.text(grid);
+            if !text.is_empty() {
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                return true;
+            }
+        }
+        false
+    }
+
+    pub(crate) fn select_all(&mut self, cx: &mut Context<Self>) {
+        let Some(grid) = self.displayed_grid() else {
+            return;
+        };
+        let Some(history) = isize::try_from(grid.history.len()).ok() else {
+            return;
+        };
+        let Some(last) = grid
+            .rows
+            .len()
+            .checked_sub(1)
+            .and_then(|row| isize::try_from(row).ok())
+        else {
+            return;
+        };
+        self.select(
+            Selection {
+                anchor: Point {
+                    row: -history,
+                    column: 0,
+                },
+                head: Point {
+                    row: last,
+                    column: grid.size.cols,
+                },
+            },
+            cx,
+        );
+    }
+
+    fn copy(&mut self, _: &codesh_ui::text_input::Copy, _: &mut Window, cx: &mut Context<Self>) {
+        self.copy_selection(cx);
+        cx.stop_propagation();
+    }
+
+    /// Whether another computer's server runs this terminal.
+    pub(crate) fn remote(&self) -> bool {
+        self.attachment
+            .is_some_and(|(server, _)| !server.is_local())
+    }
+
+    pub(crate) fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
+        if let Some(item) = cx.read_from_clipboard() {
+            if self.remote()
+                && self.state == PaneState::Live
+                && let Some(upload) = crate::model::remote_files::clipboard_upload(&item, cx)
+            {
+                cx.emit(PaneEvent::Upload(upload));
+            } else if self.server_input
+                && let Some(text) = item.text()
+            {
+                self.send_clipboard(text.as_bytes(), cx);
+            } else if let Some(grid) = &self.grid
+                && let Some(bytes) = clipboard::contents(&item, grid.modes)
+            {
+                self.send_paste(&bytes, cx);
+            }
+        }
+    }
+
+    /// Pastes dropped files' paths; another computer gets the files first.
+    pub(crate) fn drop_paths(&mut self, paths: &[PathBuf], cx: &mut Context<Self>) {
+        if self.remote() {
+            if self.state == PaneState::Live {
+                cx.emit(PaneEvent::Upload(
+                    crate::model::remote_files::Upload::Files(paths.to_vec()),
+                ));
+            }
+        } else {
+            self.paste_paths(paths, cx);
+        }
+    }
+
+    /// Pastes paths quoted for a shell.
+    pub(crate) fn paste_paths(&mut self, paths: &[PathBuf], cx: &mut Context<Self>) {
+        if let Some(grid) = &self.grid
+            && let Some(bytes) = clipboard::paths(
+                paths,
+                if self.server_input {
+                    codesh_protocol::Modes::default()
+                } else {
+                    grid.modes
+                },
+            )
+        {
+            if self.server_input {
+                self.send_clipboard(&bytes, cx);
+            } else {
+                self.send_paste(&bytes, cx);
+            }
+        }
+    }
+
+    fn prepare_input(&mut self, cx: &mut Context<Self>) -> Option<ChannelId> {
+        if self.state != PaneState::Live {
+            return None;
+        }
+        let channel = self.channel()?;
+        if self.terminal.options.scroll_on_keystroke
+            && (self.scroll.view.is_some() || self.scroll.elastic != 0.0)
+        {
+            self.scroll_to_bottom(cx);
+        }
+        let redraw = !self.cursor_blink.visible
+            || (self.terminal.options.selection_clear_on_typing && self.selection.is_some());
+        if self.terminal.options.selection_clear_on_typing {
+            self.clear_selection();
+        }
+        self.restart_cursor_blink(cx);
+        if redraw {
+            cx.notify();
+        }
+        Some(channel)
+    }
+
+    pub(super) fn send_paste(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
+        if !bytes.is_empty()
+            && let Some(channel) = self.prepare_input(cx)
+        {
+            for chunk in bytes.chunks(codesh_protocol::MAX_INPUT) {
+                cx.emit(PaneEvent::Input(channel, chunk.to_vec()));
+            }
+        }
+    }
+
+    fn send_clipboard(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
+        if !bytes.is_empty()
+            && let Some(channel) = self.prepare_input(cx)
+        {
+            // Each bounded chunk is a complete paste, so disconnects cannot leave an open fence.
+            for chunk in input::paste_chunks(bytes) {
+                cx.emit(PaneEvent::TerminalInput(
+                    channel,
+                    codesh_protocol::TerminalInput::Paste(chunk.to_vec()),
+                ));
+            }
+        }
+    }
+
+    fn send_key(&mut self, event: codesh_protocol::KeyEvent, cx: &mut Context<Self>) {
+        if let Some(channel) = self.prepare_input(cx) {
+            self.keyboard.press(&event);
+            cx.emit(PaneEvent::TerminalInput(
+                channel,
+                codesh_protocol::TerminalInput::Key(event),
+            ));
+        }
+    }
+
+    pub(super) fn send_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.server_input
+            && let Some(mut event) = self.keyboard.pending.take()
+        {
+            event.text = text.into();
+            if !text.is_empty()
+                && codesh_protocol::TerminalInput::Key(event.clone())
+                    .validate()
+                    .is_ok()
+            {
+                self.send_key(event, cx);
+                return;
+            }
+        }
+        self.send_paste(text.as_bytes(), cx);
+    }
+
+    fn paste(&mut self, _: &codesh_ui::text_input::Paste, _: &mut Window, cx: &mut Context<Self>) {
+        self.paste_clipboard(cx);
+        cx.stop_propagation();
+    }
+}
+
+fn mouse_button(button: MouseButton) -> codesh_protocol::MouseButton {
+    match button {
+        MouseButton::Left => codesh_protocol::MouseButton::Left,
+        MouseButton::Middle => codesh_protocol::MouseButton::Middle,
+        MouseButton::Right => codesh_protocol::MouseButton::Right,
+        MouseButton::Navigate(gpui::NavigationDirection::Back) => {
+            codesh_protocol::MouseButton::Back
+        }
+        MouseButton::Navigate(gpui::NavigationDirection::Forward) => {
+            codesh_protocol::MouseButton::Forward
+        }
+    }
+}
+
+impl TerminalPane {
+    fn key_binding(
+        &mut self,
+        key: &gpui::Keystroke,
+        defaults: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        use codesh_app_core::settings::TerminalAction;
+        if !self.focus.is_focused(window) || !self.composition.text.is_empty() {
+            return false;
+        }
+        let Ok(chord) = key.unparse().parse::<codesh_app_core::settings::KeyChord>() else {
+            return false;
+        };
+        let bindings = &self.terminal.keybindings;
+        let action = if defaults {
+            bindings.action(&chord)
+        } else {
+            bindings.bindings.get(&chord)
+        };
+        let Some(action) = action.cloned() else {
+            return false;
+        };
+        match action {
+            TerminalAction::Text(bytes) => self.send_paste(&bytes, cx),
+            TerminalAction::Ignore => {}
+            TerminalAction::Unbind => {
+                if input::uses_text_input(key, self.option_as_alt()) {
+                    return false;
+                }
+                if self.server_input {
+                    self.send_key(
+                        input::key_event(
+                            key,
+                            self.keyboard.is_pressed(&key.key),
+                            self.option_as_alt(),
+                        ),
+                        cx,
+                    );
+                } else if let Some(grid) = &self.grid
+                    && let Some(bytes) =
+                        input::encode_with_bindings(key, grid.modes, self.option_as_alt(), false)
+                {
+                    self.send_paste(&bytes, cx);
+                }
+            }
+            TerminalAction::Copy => {
+                self.copy_selection(cx);
+            }
+            TerminalAction::Paste => self.paste_clipboard(cx),
+            TerminalAction::SelectAll => self.select_all(cx),
+            TerminalAction::Reload => {
+                window.dispatch_action(Box::new(crate::views::workspace::ReloadConfiguration), cx);
+            }
+            TerminalAction::ClearScreen => {
+                if self.state == PaneState::Live
+                    && let Some(channel) = self.channel()
+                {
+                    if self.server_input {
+                        cx.emit(PaneEvent::TerminalInput(
+                            channel,
+                            codesh_protocol::TerminalInput::ClearScreen,
+                        ));
+                    } else {
+                        cx.emit(PaneEvent::ClearScreen(channel));
+                    }
+                }
+            }
+            TerminalAction::ScrollTop => self.scroll_rows(f32::MAX, cx),
+            TerminalAction::ScrollBottom => self.scroll_to_bottom(cx),
+            TerminalAction::ScrollPageUp | TerminalAction::ScrollPageDown => {
+                if let Some(grid) = &self.grid {
+                    let rows = f32::from(self.viewport.unwrap_or(grid.size).rows);
+                    self.scroll_rows(
+                        if action == TerminalAction::ScrollPageUp {
+                            rows
+                        } else {
+                            -rows
+                        },
+                        cx,
+                    );
+                }
+            }
+            TerminalAction::IncreaseFontSize(amount) => self.terminal.zoom(amount),
+            TerminalAction::DecreaseFontSize(amount) => self.terminal.zoom(-amount),
+            TerminalAction::ResetFontSize => self.terminal.font_size = self.configured_font_size,
+        }
+        cx.notify();
+        cx.stop_propagation();
+        true
+    }
+
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(
+            clippy::unused_self,
+            reason = "Reads platform-specific terminal preferences"
+        )
+    )]
+    fn option_as_alt(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            let (left, right) = codesh_ui::keyboard::option_sides();
+            self.terminal.macos_option_as_alt.enabled(left, right)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            true
+        }
+    }
+
+    fn terminal_key_down(
+        &mut self,
+        event: &gpui::KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.focus.is_focused(window) || !self.composition.text.is_empty() {
+            return;
+        }
+        if self.key_binding(&event.keystroke, true, window, cx) {
+            return;
+        }
+        let option_as_alt = self.option_as_alt();
+        if !event.is_held && input::uses_text_input(&event.keystroke, option_as_alt) {
+            if self.server_input {
+                self.keyboard.pending =
+                    Some(input::key_event(&event.keystroke, false, option_as_alt));
+            }
+            return;
+        }
+        if self.server_input {
+            // Cocoa's selector callback drops GPUI's held flag for nonprinting keys.
+            let held = event.is_held || self.keyboard.is_pressed(&event.keystroke.key);
+            self.send_key(input::key_event(&event.keystroke, held, option_as_alt), cx);
+            cx.stop_propagation();
+            return;
+        }
+        if let Some(grid) = &self.grid
+            && let Some(bytes) = input::encode_with_bindings(
+                &event.keystroke,
+                grid.modes,
+                option_as_alt,
+                !self.terminal.keybindings.clear_defaults,
+            )
+        {
+            self.send_paste(&bytes, cx);
+            cx.stop_propagation();
+        }
+    }
+}
+
+impl TerminalPane {
+    fn terminal_key_up(
+        &mut self,
+        event: &gpui::KeyUpEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.server_input
+            && self.state == PaneState::Live
+            && let Some(channel) = self.channel()
+            && let Some(event) = self.keyboard.release(&event.keystroke)
+        {
+            cx.emit(PaneEvent::TerminalInput(
+                channel,
+                codesh_protocol::TerminalInput::Key(event),
+            ));
+            cx.stop_propagation();
+        }
+    }
+}
+
+impl Render for TerminalPane {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _span = crate::profiler::span(crate::profiler::Metric::TerminalRender);
+        #[cfg(test)]
+        {
+            self.render_count += 1;
+        }
+        if self.find_focus_pending {
+            self.find_focus_pending = false;
+            self.focus.focus(window);
+        }
+        #[cfg(target_os = "macos")]
+        self.setup_native_scroll(window, cx);
+        self.hover_link(window.mouse_position(), window.modifiers().secondary(), cx);
+        let palette = self.palette;
+        div()
+            .id("terminal-pane")
+            .debug_selector(|| "terminal-pane".to_owned())
+            .track_focus(&self.focus)
+            .size_full()
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .overflow_hidden()
+            .rounded(self.corner_radius)
+            // Workspace cards share the palette's opaque background.
+            .bg(gpui::Rgba {
+                a: if self.card_padding {
+                    1.0
+                } else if self.terminal.options.background_opacity_cells {
+                    0.0
+                } else {
+                    self.background_alpha()
+                },
+                ..gpui::rgb(palette.background)
+            })
+            .flex()
+            .flex_col()
+            .map(|mut pane| {
+                for button in MouseButton::all() {
+                    pane = pane
+                        .on_mouse_down(button, cx.listener(Self::mouse_down))
+                        .on_mouse_up(button, cx.listener(Self::mouse_up))
+                        .on_mouse_up_out(button, cx.listener(Self::mouse_up));
+                }
+                pane
+            })
+            .key_context(if self.find.is_some() {
+                "TerminalFindOpen"
+            } else {
+                "TerminalPane"
+            })
+            .on_action(cx.listener(|pane, _: &CloseFind, _, cx| {
+                pane.close_find(cx);
+                cx.stop_propagation();
+            }))
+            .when(self.link_hover.target.is_some(), |pane| {
+                pane.cursor_pointer()
+            })
+            .on_modifiers_changed(cx.listener(
+                |pane, event: &gpui::ModifiersChangedEvent, window, cx| {
+                    pane.hover_link(window.mouse_position(), event.modifiers.secondary(), cx);
+                },
+            ))
+            .when(self.state == PaneState::Live, |pane| {
+                pane.drag_over::<gpui::ExternalPaths>(move |style, _, _, _| {
+                    style.border_1().border_color(gpui::rgb(palette.cursor))
+                })
+                .on_drop(cx.listener(
+                    |pane, paths: &gpui::ExternalPaths, window, cx| {
+                        pane.focus.focus(window);
+                        cx.emit(PaneEvent::Focused);
+                        pane.drop_paths(paths.paths(), cx);
+                        cx.stop_propagation();
+                    },
+                ))
+            })
+            .on_action(
+                cx.listener(|pane, _: &codesh_ui::text_input::SelectAll, _, cx| {
+                    pane.select_all(cx);
+                    cx.stop_propagation();
+                }),
+            )
+            .on_action(cx.listener(Self::copy))
+            .on_action(cx.listener(Self::paste))
+            .on_scroll_wheel(cx.listener(|pane, event: &gpui::ScrollWheelEvent, _, cx| {
+                pane.mouse_wheel(event, cx);
+            }))
+            .on_action(
+                cx.listener(|pane, _: &crate::views::workspace::ScrollToBottom, _, cx| {
+                    pane.scroll_to_bottom(cx);
+                    cx.stop_propagation();
+                }),
+            )
+            .on_key_down(cx.listener(Self::terminal_key_down))
+            .on_key_up(cx.listener(Self::terminal_key_up))
+            .children(find::bar(self, cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h(px(0.0))
+                    .overflow_hidden()
+                    .child(element::terminal(cx.entity(), &palette)),
+            )
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    mod autoscroll;
+    mod bindings;
+    mod scrollbar;
+    mod server_input;
+
+    use super::*;
+    use codesh_protocol::{Cursor, Modes, Row, Run, Style};
+    use gpui::{AppContext, TestAppContext, point, size};
+
+    fn row(index: u16, text: &str) -> Row {
+        Row {
+            index,
+            runs: vec![Run {
+                text: text.into(),
+                width: u16::try_from(text.len()).unwrap(),
+                style: Style::default(),
+            }],
+        }
+    }
+
+    fn grid() -> RunGrid {
+        RunGrid {
+            graphics: codesh_protocol::Graphics::default(),
+            prompts: std::collections::BTreeSet::default(),
+            prompt_state: codesh_client::ScreenPrompts::default(),
+            links: codesh_client::ScreenLinks::default(),
+            size: Size { cols: 20, rows: 3 },
+            rows: ["alpha beta", "second row", "prompt"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, text)| row(u16::try_from(index).unwrap(), text).runs)
+                .collect(),
+            cursor: Cursor {
+                shape: codesh_protocol::CursorShape::default(),
+                row: 2,
+                col: 6,
+                visible: true,
+            },
+            modes: Modes::default(),
+            history: vec![row(0, "history row")].into(),
+            history_cursor: None,
+            history_total: 1,
+            history_fresh: true,
+        }
+    }
+
+    fn prepare_mouse(pane: &mut TerminalPane) {
+        pane.grid = Some(grid());
+        pane.state = PaneState::Live;
+        pane.attachment = Some((ServerId::local(), ChannelId(1)));
+        pane.viewport = Some(Size { cols: 20, rows: 3 });
+        pane.geometry = Some((
+            Bounds::new(point(px(0.0), px(0.0)), size(px(200.0), px(60.0))),
+            size(px(10.0), px(20.0)),
+        ));
+        pane.cell_height = 20.0;
+    }
+
+    #[gpui::test]
+    fn keyboard_dispatch_respects_option_settings_and_text_input(cx: &mut TestAppContext) {
+        let (pane, cx) = cx.add_window_view(|window, cx| {
+            let mut pane = TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            );
+            prepare_mouse(&mut pane);
+            pane.focus.focus(window);
+            pane
+        });
+        let input = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|_, cx| {
+            let input = input.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::Input(_, bytes) = event {
+                    input.borrow_mut().extend_from_slice(bytes);
+                }
+            })
+            .detach();
+        });
+        cx.simulate_keystrokes("a shift-b space ctrl-c ctrl-left alt-left alt-f5");
+        assert_eq!(
+            &*input.borrow(),
+            if cfg!(target_os = "macos") {
+                b"aB \x03\x1b[1;5D\x1bb\x1b[15;3~".as_slice()
+            } else {
+                b"aB \x03\x1b[1;5D\x1b[1;3D\x1b[15;3~".as_slice()
+            }
+        );
+        for (setting, expected) in [
+            (codesh_app_core::settings::OptionAsAlt::True, "\x1bb"),
+            (
+                codesh_app_core::settings::OptionAsAlt::False,
+                if cfg!(target_os = "macos") {
+                    "∫"
+                } else {
+                    "\x1bb"
+                },
+            ),
+        ] {
+            input.borrow_mut().clear();
+            cx.update(|window, cx| {
+                pane.update(cx, |pane, _| pane.terminal.macos_option_as_alt = setting);
+                window.dispatch_keystroke(
+                    gpui::Keystroke {
+                        key: "b".into(),
+                        key_char: Some("∫".into()),
+                        modifiers: gpui::Modifiers {
+                            alt: true,
+                            ..gpui::Modifiers::default()
+                        },
+                    },
+                    cx,
+                );
+            });
+            cx.run_until_parked();
+            assert_eq!(&*input.borrow(), expected.as_bytes());
+        }
+        input.borrow_mut().clear();
+        for (chord, text) in [("e", "e"), ("alt-b", "∫")] {
+            let mut keystroke = gpui::Keystroke::parse(chord).unwrap();
+            keystroke.key_char = Some(text.into());
+            cx.simulate_event(gpui::KeyDownEvent {
+                keystroke,
+                is_held: true,
+            });
+        }
+        cx.run_until_parked();
+        assert_eq!(
+            &*input.borrow(),
+            if cfg!(target_os = "macos") {
+                "e∫"
+            } else {
+                "e\x1bb"
+            }
+            .as_bytes()
+        );
+        input.borrow_mut().clear();
+        pane.update(cx, |pane, cx| pane.set_state(PaneState::Disconnected, cx));
+        cx.simulate_keystrokes("a ctrl-c alt-left enter");
+        assert!(input.borrow().is_empty());
+    }
+
+    #[gpui::test]
+    fn clipboard_images_reach_tuis_without_changing_the_clipboard(cx: &mut TestAppContext) {
+        let (pane, cx) = cx.add_window_view(|window, cx| {
+            let mut pane = TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            );
+            prepare_mouse(&mut pane);
+            pane.grid.as_mut().unwrap().modes.bracketed_paste = true;
+            pane.focus.focus(window);
+            pane
+        });
+        let input = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|_, cx| {
+            cx.bind_keys([gpui::KeyBinding::new(
+                "cmd-v",
+                codesh_ui::text_input::Paste,
+                Some("TerminalPane"),
+            )]);
+            let input = input.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::Input(_, bytes) = event {
+                    input.borrow_mut().extend_from_slice(bytes);
+                }
+            })
+            .detach();
+        });
+        let image = gpui::ClipboardItem::new_image(&gpui::Image::from_bytes(
+            gpui::ImageFormat::Png,
+            vec![1, 2, 3],
+        ));
+        cx.update(|_, cx| cx.write_to_clipboard(image.clone()));
+        cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+            "cmd-v cmd-shift-v ctrl-v ctrl-shift-v"
+        } else {
+            "cmd-v ctrl-shift-v ctrl-v ctrl-shift-v"
+        });
+        assert_eq!(&*input.borrow(), b"\x16\x16\x16\x16");
+        assert_eq!(cx.update(|_, cx| cx.read_from_clipboard()), Some(image));
+        input.borrow_mut().clear();
+        pane.update(cx, TerminalPane::paste_clipboard);
+        assert_eq!(&*input.borrow(), b"\x16");
+        input.borrow_mut().clear();
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string("one\ntwo".into()));
+        });
+        cx.simulate_keystrokes("cmd-v ctrl-v");
+        assert_eq!(&*input.borrow(), b"\x1b[200~one\rtwo\x1b[201~\x16");
+        input.borrow_mut().clear();
+        pane.update(cx, |pane, _| {
+            pane.terminal.keybindings.bindings.insert(
+                "alt-p".parse().unwrap(),
+                codesh_app_core::settings::TerminalAction::Paste,
+            );
+        });
+        cx.simulate_keystrokes("alt-p");
+        assert_eq!(&*input.borrow(), b"\x1b[200~one\rtwo\x1b[201~");
+        input.borrow_mut().clear();
+        pane.update(cx, |pane, cx| pane.set_state(PaneState::Disconnected, cx));
+        cx.simulate_keystrokes("cmd-v cmd-shift-v alt-p shift-enter");
+        assert!(input.borrow().is_empty());
+    }
+
+    #[gpui::test]
+    fn live_clipboard_metadata_writes_bounded_text_independent_of_copy_on_select(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, cx) = cx.add_window_view(|_, cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string("baseline".into()));
+            pane.update(cx, |pane, cx| {
+                pane.state = PaneState::Live;
+                pane.copy_on_select = false;
+                pane.metadata(MetadataEvent::ClipboardWrite("first".into()), cx);
+            });
+            assert_eq!(
+                cx.read_from_clipboard().and_then(|item| item.text()),
+                Some("first".into())
+            );
+            pane.update(cx, |pane, cx| {
+                pane.copy_on_select = true;
+                pane.metadata(MetadataEvent::ClipboardWrite("second".into()), cx);
+            });
+            assert_eq!(
+                cx.read_from_clipboard().and_then(|item| item.text()),
+                Some("second".into())
+            );
+            pane.update(cx, |pane, cx| {
+                pane.metadata(MetadataEvent::ClipboardWrite(String::new()), cx);
+                pane.metadata(
+                    MetadataEvent::ClipboardWrite(
+                        "x".repeat(codesh_protocol::MAX_CLIPBOARD_TEXT + 1),
+                    ),
+                    cx,
+                );
+                pane.state = PaneState::Disconnected;
+                pane.metadata(MetadataEvent::ClipboardWrite("disconnected".into()), cx);
+            });
+            assert_eq!(
+                cx.read_from_clipboard().and_then(|item| item.text()),
+                Some("second".into())
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn composition_preedit_stays_local_and_commit_sends_utf8_once(cx: &mut TestAppContext) {
+        use gpui::EntityInputHandler;
+        let (pane, cx) = cx.add_window_view(|window, cx| {
+            let mut pane = TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            );
+            prepare_mouse(&mut pane);
+            pane.focus.focus(window);
+            pane
+        });
+        let input = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|_, cx| {
+            let input = input.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::Input(_, bytes) = event {
+                    input.borrow_mut().push(bytes.clone());
+                }
+            })
+            .detach();
+        });
+        cx.update(|window, cx| {
+            pane.update(cx, |pane, cx| {
+                prepare_mouse(pane);
+                pane.replace_and_mark_text_in_range(None, "😀に", Some(2..3), window, cx);
+                assert_eq!(pane.marked_text_range(window, cx), Some(0..3));
+                assert_eq!(
+                    pane.selected_text_range(false, window, cx).unwrap().range,
+                    2..3
+                );
+                let mut actual = None;
+                assert_eq!(
+                    pane.text_for_range(0..2, &mut actual, window, cx)
+                        .as_deref(),
+                    Some("😀")
+                );
+                assert_eq!(actual, Some(0..2));
+                pane.replace_and_mark_text_in_range(Some(2..3), "日本", Some(1..1), window, cx);
+                assert_eq!(pane.composition.text, "😀日本");
+                assert_eq!(
+                    pane.selected_text_range(false, window, cx).unwrap().range,
+                    3..3
+                );
+                let bounds = pane
+                    .bounds_for_range(0..4, Bounds::default(), window, cx)
+                    .unwrap();
+                assert_eq!(bounds.origin, point(px(60.0), px(40.0)));
+                pane.terminal_key_down(
+                    &gpui::KeyDownEvent {
+                        keystroke: gpui::Keystroke::parse("enter").unwrap(),
+                        is_held: false,
+                    },
+                    window,
+                    cx,
+                );
+            });
+        });
+        cx.run_until_parked();
+        assert!(input.borrow().is_empty());
+        cx.update(|window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.replace_text_in_range(None, "😀日本", window, cx);
+                assert_eq!(pane.marked_text_range(window, cx), None);
+            });
+        });
+        cx.run_until_parked();
+        assert_eq!(&*input.borrow(), &["😀日本".as_bytes().to_vec()]);
+        input.borrow_mut().clear();
+        cx.update(|window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.replace_and_mark_text_in_range(None, "é", Some(1..1), window, cx);
+                pane.unmark_text(window, cx);
+                pane.unmark_text(window, cx);
+                assert!(pane.composition.text.is_empty());
+            });
+        });
+        cx.run_until_parked();
+        assert_eq!(&*input.borrow(), &["é".as_bytes().to_vec()]);
+        input.borrow_mut().clear();
+        cx.update(|window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.replace_and_mark_text_in_range(None, "cancelled", None, window, cx);
+                pane.replace_and_mark_text_in_range(None, "", None, window, cx);
+                pane.unmark_text(window, cx);
+                assert!(pane.composition.text.is_empty());
+                pane.set_state(PaneState::Disconnected, cx);
+                pane.replace_text_in_range(None, "lost", window, cx);
+                pane.replace_and_mark_text_in_range(None, "lost", None, window, cx);
+                assert!(pane.composition.text.is_empty());
+            });
+        });
+        cx.run_until_parked();
+        assert!(input.borrow().is_empty());
+    }
+
+    fn searchable_pane(window: &mut Window, cx: &mut Context<TerminalPane>) -> TerminalPane {
+        let mut pane = TerminalPane::new(
+            Palette::new(true),
+            codesh_app_core::settings::TerminalSettings::default(),
+            cx,
+        );
+        let mut grid = grid();
+        grid.history = (0..200).map(|index| row(index, "alpha")).collect();
+        grid.history_total = 200;
+        pane.grid = Some(grid);
+        pane.state = PaneState::Live;
+        pane.open_find(
+            &codesh_ui::theme::Theme::from_scheme(&codesh_ui::theme::ColorScheme::default()),
+            codesh_ui::theme::Metrics::new(1.0),
+            window,
+            cx,
+        );
+        pane
+    }
+
+    fn search_page(total_rows: u64) -> codesh_protocol::SearchPage {
+        codesh_protocol::SearchPage {
+            matches: vec![codesh_protocol::SearchMatch {
+                row: total_rows,
+                start: 0,
+                end: 5,
+            }],
+            next: None,
+            total_rows,
+            scanned_rows: 203,
+        }
+    }
+
+    #[gpui::test]
+    fn same_count_history_metadata_refreshes_cached_rows_without_a_frame(cx: &mut TestAppContext) {
+        let pane = cx.new(|cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let requests = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|cx| {
+            let requests = requests.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::History(request) = event {
+                    requests.borrow_mut().push(*request);
+                }
+            })
+            .detach();
+        });
+        pane.update(cx, |pane, cx| {
+            prepare_mouse(pane);
+            pane.metadata(MetadataEvent::History { total_rows: 1 }, cx);
+            assert!(!pane.grid.as_ref().unwrap().history_fresh);
+            pane.scroll_rows(1.0, cx);
+            assert!(pane.scroll.view.as_ref().unwrap().history.is_empty());
+        });
+        cx.run_until_parked();
+        assert_eq!(requests.borrow().len(), 1);
+        let request = requests.borrow()[0];
+        assert_eq!(request.before, codesh_protocol::HistoryCursor(0));
+        pane.update(cx, |pane, cx| {
+            pane.receive_history(
+                request,
+                Ok(HistoryPage {
+                    prompts: Vec::new(),
+                    rows: vec![row(0, "new history")],
+                    next: None,
+                    total_rows: 1,
+                    screen: None,
+                }),
+                cx,
+            );
+            let view = pane.scroll.view.as_ref().unwrap();
+            assert!(view.history_fresh);
+            assert_eq!(view.history.front(), Some(&row(0, "new history")));
+        });
+    }
+
+    #[gpui::test]
+    fn search_accepts_delayed_replies_during_continuous_frames(cx: &mut TestAppContext) {
+        let (pane, cx) = cx.add_window_view(searchable_pane);
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(300));
+        cx.run_until_parked();
+        let request = pane.update(cx, |pane, cx| {
+            let find = pane.find.as_mut().unwrap();
+            find.results.query = "alpha".into();
+            let request = find.results.restart().unwrap();
+            pane.apply(
+                &ScreenFrame {
+                    size: pane.grid.as_ref().unwrap().size,
+                    graphics: None,
+                    seq: 1,
+                    reset: false,
+                    rows: vec![row(0, "alpha")],
+                    cursor: pane.grid.as_ref().unwrap().cursor,
+                    modes: Modes::default(),
+                },
+                cx,
+            );
+            request
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(300));
+        cx.run_until_parked();
+        pane.update(cx, |pane, cx| {
+            pane.receive_search(&request, Ok(search_page(200)), cx);
+            let results = &pane.find.as_ref().unwrap().results;
+            assert_eq!(results.counter(), "1 of 1");
+            assert_eq!(
+                results.highlights(pane.grid.as_ref().unwrap(), 200).len(),
+                1
+            );
+        });
+        cx.executor().advance_clock(Duration::from_millis(300));
+        cx.run_until_parked();
+        pane.read_with(cx, |pane, _| {
+            assert_eq!(pane.find.as_ref().unwrap().results.counter(), "0 of 0…");
+        });
+    }
+
+    #[gpui::test]
+    fn reporting_tracks_buttons_clamps_positions_and_deduplicates_motion(cx: &mut TestAppContext) {
+        let (pane, cx) = cx.add_window_view(|_, cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let reported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|window, cx| {
+            let events = reported.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::Mouse(channel, event) = event {
+                    assert_eq!(*channel, ChannelId(1));
+                    events.borrow_mut().push(*event);
+                }
+            })
+            .detach();
+            pane.update(cx, |pane, cx| {
+                prepare_mouse(pane);
+                pane.input_modes.mouse_tracking = true;
+                pane.mouse_move(
+                    &gpui::MouseMoveEvent {
+                        position: point(px(250.0), px(5.0)),
+                        ..gpui::MouseMoveEvent::default()
+                    },
+                    cx,
+                );
+                for button in MouseButton::all() {
+                    pane.mouse_down(
+                        &gpui::MouseDownEvent {
+                            button,
+                            position: point(px(13.0), px(25.0)),
+                            ..gpui::MouseDownEvent::default()
+                        },
+                        window,
+                        cx,
+                    );
+                    let motion = gpui::MouseMoveEvent {
+                        position: point(px(45.0), px(25.0)),
+                        pressed_button: Some(button),
+                        ..gpui::MouseMoveEvent::default()
+                    };
+                    pane.mouse_move(&motion, cx);
+                    pane.mouse_move(&motion, cx);
+                    pane.mouse_up(
+                        &gpui::MouseUpEvent {
+                            button,
+                            position: point(px(500.0), px(500.0)),
+                            modifiers: gpui::Modifiers {
+                                shift: true,
+                                ..gpui::Modifiers::default()
+                            },
+                            ..gpui::MouseUpEvent::default()
+                        },
+                        window,
+                        cx,
+                    );
+                }
+                assert!(pane.selection.is_none());
+                assert!(pane.held_buttons.is_empty());
+            });
+        });
+        cx.run_until_parked();
+        let events = reported.borrow();
+        assert_eq!(events.len(), 15);
+        for (events, button) in events.chunks_exact(3).zip(MouseButton::all()) {
+            assert_eq!(
+                events.iter().map(|event| event.action).collect::<Vec<_>>(),
+                [
+                    MouseAction::Press,
+                    MouseAction::Motion,
+                    MouseAction::Release
+                ]
+            );
+            assert!(
+                events
+                    .iter()
+                    .all(|event| event.button == Some(mouse_button(button)))
+            );
+            assert_eq!((events[0].column, events[0].row), (1, 1));
+            assert_eq!((events[1].column, events[1].row), (4, 1));
+            assert_eq!((events[2].column, events[2].row), (19, 2));
+            assert!(events[2].modifiers.shift);
+        }
+    }
+
+    #[gpui::test]
+    fn shift_selection_stays_local_until_release_and_can_be_copied(cx: &mut TestAppContext) {
+        let (pane, cx) = cx.add_window_view(|_, cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let reported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|window, cx| {
+            let events = reported.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::Mouse(_, event) = event {
+                    events.borrow_mut().push(*event);
+                }
+            })
+            .detach();
+            pane.update(cx, |pane, cx| {
+                prepare_mouse(pane);
+                pane.input_modes.mouse_tracking = true;
+                pane.mouse_down(
+                    &gpui::MouseDownEvent {
+                        position: point(px(0.0), px(5.0)),
+                        click_count: 1,
+                        modifiers: gpui::Modifiers {
+                            shift: true,
+                            ..gpui::Modifiers::default()
+                        },
+                        ..gpui::MouseDownEvent::default()
+                    },
+                    window,
+                    cx,
+                );
+                pane.mouse_move(
+                    &gpui::MouseMoveEvent {
+                        position: point(px(50.0), px(5.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        ..gpui::MouseMoveEvent::default()
+                    },
+                    cx,
+                );
+                pane.mouse_up(
+                    &gpui::MouseUpEvent {
+                        position: point(px(50.0), px(5.0)),
+                        ..gpui::MouseUpEvent::default()
+                    },
+                    window,
+                    cx,
+                );
+                pane.copy(&codesh_ui::text_input::Copy, window, cx);
+                assert_eq!(
+                    cx.read_from_clipboard().unwrap().text().as_deref(),
+                    Some("alpha")
+                );
+                assert!(pane.held_buttons.is_empty());
+            });
+        });
+        cx.run_until_parked();
+        assert!(reported.borrow().is_empty());
+    }
+
+    #[gpui::test]
+    fn wheel_routes_by_modes_preserves_fractions_and_shift_uses_history(cx: &mut TestAppContext) {
+        let pane = cx.new(|cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let reported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let events = reported.clone();
+        cx.update(|cx| {
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::Mouse(_, event) = event {
+                    events.borrow_mut().push(*event);
+                }
+            })
+            .detach();
+        });
+        pane.update(cx, |pane, cx| {
+            prepare_mouse(pane);
+            let mut wheel = gpui::ScrollWheelEvent {
+                position: point(px(15.0), px(5.0)),
+                delta: gpui::ScrollDelta::Lines(point(0.0, 1.0)),
+                ..gpui::ScrollWheelEvent::default()
+            };
+            pane.mouse_wheel(&wheel, cx);
+            assert!(pane.scroll.view.is_some());
+            for modes in [
+                InputModes {
+                    mouse_tracking: true,
+                    ..InputModes::default()
+                },
+                InputModes {
+                    alternate_scroll: true,
+                    ..InputModes::default()
+                },
+            ] {
+                pane.metadata(MetadataEvent::InputModes(modes), cx);
+                pane.scroll_to_bottom(cx);
+                wheel.delta = gpui::ScrollDelta::Pixels(point(px(0.0), px(8.0)));
+                for _ in 0..3 {
+                    pane.mouse_wheel(&wheel, cx);
+                }
+                assert!(pane.scroll.view.is_none());
+                wheel.delta = gpui::ScrollDelta::Lines(point(0.0, -2.0));
+                pane.mouse_wheel(&wheel, cx);
+                wheel.modifiers.shift = true;
+                wheel.delta = gpui::ScrollDelta::Lines(point(0.0, 1.0));
+                pane.mouse_wheel(&wheel, cx);
+                assert!(pane.scroll.view.is_some());
+                wheel.modifiers.shift = false;
+                pane.mouse_wheel(&wheel, cx);
+                assert!(pane.scroll.view.is_none());
+            }
+        });
+        cx.run_until_parked();
+        let events = reported.borrow();
+        assert_eq!(events.len(), 8);
+        for chunk in events.chunks_exact(4) {
+            assert_eq!(
+                chunk.iter().map(|event| event.scroll).collect::<Vec<_>>(),
+                [
+                    Some(ScrollDirection::Up),
+                    Some(ScrollDirection::Down),
+                    Some(ScrollDirection::Down),
+                    Some(ScrollDirection::Up),
+                ]
+            );
+            assert!(chunk.iter().all(|event| event.action == MouseAction::Scroll
+                && event.button.is_none()
+                && event.column == 1
+                && event.row == 0));
+        }
+    }
+
+    #[gpui::test]
+    fn scaled_wheel_scrolling_stops_at_history_edges_and_moves_the_scroll_bar(
+        cx: &mut TestAppContext,
+    ) {
+        let pane = cx.new(|cx| {
+            let mut terminal = codesh_app_core::settings::TerminalSettings::default();
+            terminal.options.scroll_discrete = 4.0;
+            TerminalPane::new(Palette::new(true), terminal, cx)
+        });
+        pane.update(cx, |pane, cx| {
+            prepare_mouse(pane);
+            let mut wheel = gpui::ScrollWheelEvent {
+                position: point(px(15.0), px(5.0)),
+                delta: gpui::ScrollDelta::Lines(point(0.0, 1.0)),
+                ..gpui::ScrollWheelEvent::default()
+            };
+            let revision = pane.scroll.revision;
+            pane.mouse_wheel(&wheel, cx);
+            assert_eq!(pane.scroll.offset.to_bits(), 1.0_f64.to_bits());
+            assert_eq!(
+                pane.scroll.pixel_remainder(20.0).to_bits(),
+                0.0_f32.to_bits()
+            );
+            assert_ne!(pane.scroll.revision, revision);
+            assert_eq!(
+                pane.scroll.requested_pixels(20.0).to_bits(),
+                20.0_f64.to_bits()
+            );
+            wheel.delta = gpui::ScrollDelta::Lines(point(0.0, -1.0));
+            for _ in 0..2 {
+                pane.mouse_wheel(&wheel, cx);
+                assert!(pane.scroll.view.is_none());
+                assert_eq!(
+                    pane.scroll.pixel_remainder(20.0).to_bits(),
+                    0.0_f32.to_bits()
+                );
+            }
+        });
+    }
+
+    #[gpui::test]
+    fn attaching_again_keeps_a_scrolled_view_unless_the_terminal_moved_under_it(
+        cx: &mut TestAppContext,
+    ) {
+        let pane = cx.new(|cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let quiet: fn(&mut RunGrid) = |_| {};
+        let printed: fn(&mut RunGrid) = |grid| grid.rows[0] = row(0, "new output").runs;
+        let repeated: fn(&mut RunGrid) = |grid| grid.history_total += 1;
+        for (resized, scroll_on_output, output, kept) in [
+            (false, false, printed, true),
+            (false, true, quiet, true),
+            (false, true, printed, false),
+            (false, true, repeated, false),
+            (true, false, quiet, false),
+        ] {
+            pane.update(cx, |pane, cx| {
+                prepare_mouse(pane);
+                pane.terminal.options.scroll_on_output = scroll_on_output;
+                pane.scroll_rows(1.0, cx);
+                let mut live = grid();
+                output(&mut live);
+                if resized {
+                    live.size.cols += 1;
+                    pane.viewport = Some(live.size);
+                }
+                pane.attach(
+                    ServerId::local(),
+                    Attachment {
+                        channel: ChannelId(2),
+                        server_input: false,
+                        grid: live,
+                        title: String::new(),
+                        directory: ServerPath(Vec::new()),
+                        process: None,
+                    },
+                    cx,
+                );
+                let reporting = InputModes {
+                    alternate_scroll: true,
+                    ..InputModes::default()
+                };
+                pane.metadata(MetadataEvent::InputModes(reporting), cx);
+                assert_eq!(pane.scroll.view.is_some(), kept);
+                pane.metadata(MetadataEvent::InputModes(InputModes::default()), cx);
+                pane.metadata(MetadataEvent::InputModes(reporting), cx);
+                assert!(pane.scroll.view.is_none());
+            });
+        }
+    }
+
+    #[gpui::test]
+    fn focus_reports_require_the_mode_and_non_live_panes_drop_all_terminal_mouse_input(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, cx) = cx.add_window_view(|_, cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let reported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let input = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|window, cx| {
+            let events = reported.clone();
+            let bytes = input.clone();
+            cx.subscribe(&pane, move |_, event, _| match event {
+                PaneEvent::Mouse(_, event) => events.borrow_mut().push(*event),
+                PaneEvent::Input(_, input) => bytes.borrow_mut().push(input.clone()),
+                _ => {}
+            })
+            .detach();
+            pane.update(cx, |pane, cx| {
+                prepare_mouse(pane);
+                pane.focus_changed(true, cx);
+                pane.focus_changed(false, cx);
+                pane.input_modes.focus_events = true;
+                pane.focus_changed(true, cx);
+                pane.focus_changed(false, cx);
+                for state in [
+                    PaneState::Connecting,
+                    PaneState::Disconnected,
+                    PaneState::Exited {
+                        reason: None,
+                        unavailable: false,
+                    },
+                ] {
+                    pane.set_state(state, cx);
+                    pane.input_modes = InputModes {
+                        mouse_tracking: true,
+                        alternate_scroll: true,
+                        focus_events: true,
+                    };
+                    pane.focus_changed(true, cx);
+                    pane.focus_changed(false, cx);
+                    pane.mouse_down(&gpui::MouseDownEvent::default(), window, cx);
+                    pane.mouse_move(&gpui::MouseMoveEvent::default(), cx);
+                    pane.mouse_up(&gpui::MouseUpEvent::default(), window, cx);
+                    pane.mouse_wheel(
+                        &gpui::ScrollWheelEvent {
+                            delta: gpui::ScrollDelta::Lines(point(0.0, 1.0)),
+                            ..gpui::ScrollWheelEvent::default()
+                        },
+                        cx,
+                    );
+                }
+            });
+        });
+        cx.run_until_parked();
+        assert!(reported.borrow().is_empty());
+        assert_eq!(&*input.borrow(), &[b"\x1b[I".to_vec(), b"\x1b[O".to_vec()]);
+    }
+
+    #[gpui::test]
+    fn redraws_preserve_mouse_drag_and_completed_selection(cx: &mut TestAppContext) {
+        let (pane, cx) = cx.add_window_view(|_, cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        cx.update(|window, cx| {
+            pane.update(cx, |pane, cx| {
+                prepare_mouse(pane);
+                let mut terminal =
+                    codesh_terminal::Terminal::new(pane.viewport.unwrap(), 0).expect("terminal");
+                pane.mouse_down(
+                    &gpui::MouseDownEvent {
+                        position: point(px(0.0), px(5.0)),
+                        click_count: 1,
+                        ..Default::default()
+                    },
+                    window,
+                    cx,
+                );
+                pane.mouse_move(
+                    &gpui::MouseMoveEvent {
+                        position: point(px(50.0), px(5.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        ..Default::default()
+                    },
+                    cx,
+                );
+                let selection = pane.selection.expect("drag selection");
+                for (index, redraw) in [
+                    "\x1b[?2026h\x1b[H\x1b[2K\x1b[1;31malpha\x1b[0m updated\x1b[?2026l",
+                    "\x1b[?2026h\x1b[H\x1b[2K\x1b[34mal\x1b[2mpha\x1b[0m another footer\x1b[?2026l",
+                    "\x1b[Homega",
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    terminal.feed(redraw.as_bytes());
+                    pane.apply(
+                        &ScreenFrame {
+                            size: pane.grid.as_ref().unwrap().size,
+                            graphics: None,
+                            seq: index as u64 + 1,
+                            reset: false,
+                            rows: terminal.screen().expect("redrawn rows"),
+                            cursor: pane.grid.as_ref().unwrap().cursor,
+                            modes: Modes::default(),
+                        },
+                        cx,
+                    );
+                    if index == 2 {
+                        assert!(
+                            pane.selection.is_none(),
+                            "changed selected text clears selection"
+                        );
+                        continue;
+                    }
+                    assert_eq!(pane.selection, Some(selection));
+                    if index == 0 {
+                        assert!(pane.selecting.is_some(), "redraw keeps the drag active");
+                        pane.mouse_up(
+                            &gpui::MouseUpEvent {
+                                position: point(px(50.0), px(5.0)),
+                                ..Default::default()
+                            },
+                            window,
+                            cx,
+                        );
+                    }
+                    pane.copy_selection(cx);
+                    assert_eq!(
+                        cx.read_from_clipboard().unwrap().text().as_deref(),
+                        Some("alpha")
+                    );
+                }
+            });
+        });
+    }
+    #[gpui::test]
+    fn another_computers_terminal_gets_files_and_images_sent_and_asks_its_server_about_links(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::model::remote_files::Upload;
+        let (pane, cx) = cx.add_window_view(|_, cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|_, cx| {
+            let events = events.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                let seen = match event {
+                    PaneEvent::Input(_, bytes) => {
+                        format!("input {}", String::from_utf8_lossy(bytes))
+                    }
+                    PaneEvent::Upload(Upload::Files(paths)) => format!("files {paths:?}"),
+                    PaneEvent::Upload(Upload::Image(bytes, extension)) => {
+                        format!("image {} {extension}", bytes.len())
+                    }
+                    PaneEvent::ResolveLink(candidate) => format!("resolve {}", candidate.text),
+                    _ => return,
+                };
+                events.borrow_mut().push(seen);
+            })
+            .detach();
+        });
+        let remote = ServerId::new();
+        pane.update(cx, |pane, cx| {
+            prepare_mouse(pane);
+            pane.attachment = Some((remote, ChannelId(1)));
+            pane.open_context = Some(codesh_app_core::opener::OpenContext {
+                project: codesh_protocol::ProjectId::new(),
+                pane: codesh_app_core::PaneId::new(),
+                server: remote,
+                directory: "/home/dev".into(),
+                project_directory: "/home/dev".into(),
+            });
+            pane.drop_paths(&["/tmp/shot.png".into()], cx);
+            let image = gpui::Image::from_bytes(gpui::ImageFormat::Png, b"\x89PNG".to_vec());
+            cx.write_to_clipboard(gpui::ClipboardItem::new_image(&image));
+            pane.paste_clipboard(cx);
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string("text".into()));
+            pane.paste_clipboard(cx);
+            pane.hover_link(point(px(10.0), px(5.0)), true, cx);
+            assert!(pane.link_hover.target.is_none(), "its server answers later");
+            pane.metadata(
+                MetadataEvent::Links {
+                    seq: 0,
+                    rows: vec![codesh_protocol::LinkRow {
+                        row: 1,
+                        spans: vec![codesh_protocol::LinkSpan {
+                            start: 0,
+                            end: 6,
+                            uri: "https://example.com".into(),
+                        }],
+                    }],
+                },
+                cx,
+            );
+            pane.hover_link(point(px(10.0), px(25.0)), true, cx);
+            assert_eq!(
+                pane.link_hover.target,
+                Some(codesh_app_core::opener::Target::Url(
+                    "https://example.com".into()
+                )),
+                "web links open here, without asking"
+            );
+            pane.set_state(PaneState::Disconnected, cx);
+            pane.attachment = Some((remote, ChannelId(1)));
+            pane.drop_paths(&["/tmp/ignored".into()], cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            *events.borrow(),
+            [
+                "files [\"/tmp/shot.png\"]",
+                "image 4 png",
+                "input text",
+                "resolve alpha",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn command_click_on_rejected_candidates_preserves_selection_and_mouse_reporting(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, cx) = cx.add_window_view(|_, cx| {
+            TerminalPane::new(
+                Palette::new(true),
+                codesh_app_core::settings::TerminalSettings::default(),
+                cx,
+            )
+        });
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        cx.update(|window, cx| {
+            let links = opened.clone();
+            cx.subscribe(&pane, move |_, event, _| {
+                if let PaneEvent::OpenLink(target) = event {
+                    links.borrow_mut().push(target.clone());
+                }
+            })
+            .detach();
+            for uri in [
+                None,
+                Some("javascript:alert(1)"),
+                Some("file://remote/etc/hosts"),
+            ] {
+                for reporting in [false, true] {
+                    pane.update(cx, |pane, cx| {
+                        prepare_mouse(pane);
+                        let rows = uri
+                            .map(|uri| {
+                                vec![codesh_protocol::LinkRow {
+                                    row: 0,
+                                    spans: vec![codesh_protocol::LinkSpan {
+                                        start: 0,
+                                        end: 5,
+                                        uri: uri.into(),
+                                    }],
+                                }]
+                            })
+                            .unwrap_or_default();
+                        pane.metadata(MetadataEvent::Links { seq: 0, rows }, cx);
+                        pane.link_hover = super::super::links::Hover::default();
+                        pane.input_modes.mouse_tracking = reporting;
+                        pane.mouse_down(
+                            &gpui::MouseDownEvent {
+                                position: point(px(10.0), px(5.0)),
+                                click_count: 2,
+                                modifiers: gpui::Modifiers {
+                                    platform: true,
+                                    ..gpui::Modifiers::default()
+                                },
+                                ..gpui::MouseDownEvent::default()
+                            },
+                            window,
+                            cx,
+                        );
+                        assert!(pane.link_hover.target.is_none());
+                        assert_eq!(pane.selection.is_some(), !reporting);
+                        assert_eq!(!pane.held_buttons.is_empty(), reporting);
+                        pane.mouse_up(
+                            &gpui::MouseUpEvent {
+                                position: point(px(10.0), px(5.0)),
+                                modifiers: gpui::Modifiers {
+                                    platform: true,
+                                    ..gpui::Modifiers::default()
+                                },
+                                ..gpui::MouseUpEvent::default()
+                            },
+                            window,
+                            cx,
+                        );
+                    });
+                }
+            }
+        });
+        cx.run_until_parked();
+        assert!(opened.borrow().is_empty());
+    }
+}

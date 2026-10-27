@@ -1,0 +1,896 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+
+use codesh_protocol::{
+    AttachSnapshot, CONTROL, ChannelId, ErrorCode, ExitReason, ForegroundProcess, Message,
+    MetadataEvent, ReplyBody, RequestId, ScreenFrame, SessionId, SessionProgress, Size,
+    TerminalColors,
+};
+
+use crate::{AttachmentId, ServerError, SessionCommand, SessionHandle};
+
+use super::merge::merge;
+
+struct Attachment {
+    handle: SessionHandle,
+    id: AttachmentId,
+    waiting: Option<RequestId>,
+    resizes: VecDeque<RequestId>,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct References {
+    pub(crate) owner: Option<codesh_protocol::OperationId>,
+    pub(crate) revision: u64,
+    sessions: HashSet<SessionId>,
+    released: HashSet<SessionId>,
+}
+
+impl References {
+    pub(crate) fn update(
+        &mut self,
+        owner: Option<codesh_protocol::OperationId>,
+        revision: u64,
+        sessions: Vec<SessionId>,
+    ) {
+        let sessions: HashSet<_> = sessions.into_iter().collect();
+        self.released
+            .extend(self.sessions.difference(&sessions).copied());
+        self.released.retain(|session| !sessions.contains(session));
+        self.owner = owner;
+        self.revision = revision;
+        self.sessions = sessions;
+    }
+}
+
+/// Invalidations this connection asked for by reading the matching state.
+#[derive(Clone, Copy, Default)]
+struct Watches {
+    catalog: bool,
+    activity: bool,
+    remote_access: bool,
+}
+
+#[derive(Default)]
+struct State {
+    client: codesh_protocol::SessionClient,
+    /// The paired device on the other end of a network connection.
+    device: Option<codesh_protocol::DeviceId>,
+    positions: HashMap<SessionId, u64>,
+    open_sessions: HashSet<SessionId>,
+    created: HashSet<SessionId>,
+    changes: Arc<AtomicU64>,
+    references: References,
+    progress: HashMap<SessionId, SessionProgress>,
+    session_metadata: HashMap<SessionId, codesh_protocol::SessionMetadata>,
+    watches: Watches,
+    colors: Option<TerminalColors>,
+    control: VecDeque<Message>,
+    pending: HashMap<ChannelId, ScreenFrame>,
+    metadata: HashMap<ChannelId, Vec<MetadataEvent>>,
+    credit: HashMap<ChannelId, bool>,
+    sent: HashMap<ChannelId, u64>,
+    attachments: HashMap<ChannelId, Attachment>,
+    closed: bool,
+}
+
+pub(crate) struct Outbox {
+    state: Mutex<State>,
+    ready: Condvar,
+}
+
+impl Outbox {
+    pub(super) fn new(changes: Arc<AtomicU64>) -> Self {
+        Self {
+            state: Mutex::new(State {
+                changes,
+                ..State::default()
+            }),
+            ready: Condvar::default(),
+        }
+    }
+
+    pub(super) fn for_device(changes: Arc<AtomicU64>, device: codesh_protocol::DeviceId) -> Self {
+        let outbox = Self::new(changes);
+        {
+            let mut state = outbox.lock();
+            state.device = Some(device);
+            state.client.kind = codesh_protocol::ClientKind::Mobile;
+        }
+        outbox
+    }
+
+    pub(crate) fn device(&self) -> Option<codesh_protocol::DeviceId> {
+        self.lock().device
+    }
+
+    pub(crate) fn referenced_sessions(&self) -> Vec<SessionId> {
+        self.lock().references.sessions.iter().copied().collect()
+    }
+
+    pub(crate) fn reference_state(&self) -> Option<References> {
+        let state = self.lock();
+        (!state.closed).then(|| state.references.clone())
+    }
+
+    pub(crate) fn set_references(
+        &self,
+        references: References,
+        reported: Option<&[SessionId]>,
+        acknowledge_creation: bool,
+    ) {
+        let mut state = self.lock();
+        state
+            .created
+            .retain(|session| !acknowledge_creation && !references.sessions.contains(session));
+        if let Some(sessions) = reported {
+            state.open_sessions = sessions.iter().copied().collect();
+        }
+        state
+            .open_sessions
+            .retain(|session| references.sessions.contains(session));
+        state.control.retain(|message| !matches!(message, Message::Progress { session, .. } | Message::SessionMetadata { session, .. } if !references.sessions.contains(session)));
+        state
+            .progress
+            .retain(|session, _| references.sessions.contains(session));
+        state
+            .session_metadata
+            .retain(|session, _| references.sessions.contains(session));
+        state.references = references;
+        state.refresh_positions();
+    }
+
+    pub(crate) fn created_session(&self, session: SessionId) {
+        let mut state = self.lock();
+        if !state.closed && !state.positions.contains_key(&session) {
+            state.created.insert(session);
+            state.refresh_positions();
+        }
+    }
+
+    pub(super) fn watch_activity(&self) {
+        self.lock().watches.activity = true;
+    }
+    pub(super) fn watch_remote_access(&self) {
+        self.lock().watches.remote_access = true;
+    }
+    pub(super) fn remote_access_watched(&self) -> bool {
+        self.lock().watches.remote_access
+    }
+    pub(super) fn activity_watched(&self) -> bool {
+        self.lock().watches.activity
+    }
+
+    pub(crate) fn client(&self) -> codesh_protocol::SessionClient {
+        self.lock().client
+    }
+
+    pub(super) fn identify(
+        &self,
+        kind: codesh_protocol::ClientKind,
+    ) -> codesh_protocol::SessionClient {
+        let mut state = self.lock();
+        if state.client.kind != kind {
+            state.client.kind = kind;
+            state.changes.fetch_add(1, Ordering::AcqRel);
+        }
+        state.client
+    }
+
+    pub(crate) fn participation(
+        &self,
+        session: SessionId,
+    ) -> Option<(u64, codesh_protocol::SessionClient)> {
+        let state = self.lock();
+        if state.closed {
+            return None;
+        }
+        state
+            .positions
+            .get(&session)
+            .map(|position| (*position, state.client))
+    }
+
+    pub(crate) fn references(&self, session: SessionId, include_channels: bool) -> bool {
+        let state = self.lock();
+        !state.closed
+            && (state.references.sessions.contains(&session)
+                || (include_channels && state.created.contains(&session))
+                || (include_channels
+                    && !state.references.released.contains(&session)
+                    && state
+                        .attachments
+                        .values()
+                        .any(|attachment| attachment.handle.info().id == session)))
+    }
+
+    pub(crate) fn detach_session(&self, session: SessionId) {
+        let mut state = self.lock();
+        state.created.remove(&session);
+        let channels: Vec<_> = state
+            .attachments
+            .iter()
+            .filter(|(_, attachment)| attachment.handle.info().id == session)
+            .map(|(channel, _)| *channel)
+            .collect();
+        for channel in channels {
+            state.retire(
+                channel,
+                &ServerError::new(ErrorCode::UnknownChannel, "pane was closed"),
+            );
+        }
+        state.refresh_positions();
+        self.ready.notify_one();
+    }
+
+    pub(super) fn watch_catalog(&self) {
+        self.lock().watches.catalog = true;
+    }
+    pub(super) fn catalog_watched(&self) -> bool {
+        self.lock().watches.catalog
+    }
+
+    pub(super) fn colors(&self) -> Option<TerminalColors> {
+        self.lock().colors.clone()
+    }
+
+    pub(super) fn set_colors(&self, colors: TerminalColors) {
+        let mut state = self.lock();
+        for attachment in state.attachments.values() {
+            let _ = attachment
+                .handle
+                .send(SessionCommand::SetColors(colors.clone()));
+        }
+        state.colors = Some(colors);
+    }
+
+    pub(crate) fn push_control(&self, message: Message) {
+        let mut state = self.lock();
+        if !state.closed {
+            if let Message::Changed { topic, revision } = &message
+                && let Some(Message::Changed {
+                    revision: pending, ..
+                }) = state.control.iter_mut().find(
+                    |message| matches!(message, Message::Changed { topic: pending, .. } if pending == topic),
+                )
+            {
+                *pending = (*pending).max(*revision);
+                return;
+            }
+            if let Message::SessionMetadata { session, metadata } = &message {
+                if !state.references.sessions.contains(session)
+                    || state.session_metadata.get(session) == Some(metadata)
+                {
+                    return;
+                }
+                state.session_metadata.insert(*session, metadata.clone());
+                if let Some(pending) = state.control.iter_mut().find(|pending| matches!(pending, Message::SessionMetadata { session: id, .. } if id == session)) {
+                    *pending = message;
+                    return;
+                }
+            }
+            if let Message::Progress { session, progress } = &message {
+                if !state.references.sessions.contains(session)
+                    || *progress == state.progress.get(session).copied().unwrap_or_default()
+                {
+                    return;
+                }
+                state.progress.insert(*session, *progress);
+            }
+            if let Message::Progress { session, .. } = &message
+                && let Some(pending) = state.control.iter_mut().find(|pending| matches!(pending, Message::Progress { session: id, .. } if id == session)) {
+                *pending = message;
+                return;
+            }
+            if let Message::FilesChanged { project, changes } = &message
+                && let Some(Message::FilesChanged { changes: pending, .. }) = state.control.iter_mut().find(|pending| matches!(pending, Message::FilesChanged { project: id, .. } if id == project)) {
+                pending.merge(changes);
+                return;
+            }
+            if let Message::GitChanged { project } = &message
+                && state.control.iter().any(|pending| matches!(pending, Message::GitChanged { project: id } if id == project)) {
+                return;
+            }
+            state.control.push_back(message);
+            self.ready.notify_one();
+        }
+    }
+
+    pub(super) fn attach(
+        &self,
+        channel: ChannelId,
+        id: AttachmentId,
+        request: RequestId,
+        handle: SessionHandle,
+        command: SessionCommand,
+    ) -> Result<(), ServerError> {
+        let mut state = self.lock();
+        if state.closed {
+            return Err(ServerError::new(
+                ErrorCode::BadRequest,
+                "connection is closed",
+            ));
+        }
+        let session = handle.info().id;
+        if state.references.owner.is_some() && state.references.released.contains(&session) {
+            return Err(ServerError::unknown_session(session));
+        }
+        if let Some(colors) = &state.colors {
+            handle.send(SessionCommand::SetColors(colors.clone()))?;
+        }
+        if let Err(undelivered) = handle.try_send(command) {
+            // Its sink reports back to this outbox when dropped, which takes the lock.
+            drop(state);
+            drop(undelivered);
+            return Err(ServerError::unknown_session(session));
+        }
+        state.references.released.remove(&session);
+        state.attachments.insert(
+            channel,
+            Attachment {
+                handle,
+                id,
+                waiting: Some(request),
+                resizes: VecDeque::new(),
+            },
+        );
+        state.credit.insert(channel, true);
+        state.created.remove(&session);
+        state.refresh_positions();
+        Ok(())
+    }
+
+    pub(super) fn snapshot(
+        &self,
+        channel: ChannelId,
+        snapshot: AttachSnapshot,
+        process: Option<ForegroundProcess>,
+    ) -> bool {
+        let mut state = self.lock();
+        let Some(attachment) = state.attachments.get_mut(&channel) else {
+            return false;
+        };
+        if let Some(id) = attachment.waiting.take() {
+            state.control.push_back(Message::Reply {
+                id,
+                body: ReplyBody::Attached {
+                    snapshot: Box::new(snapshot),
+                    process,
+                },
+            });
+            self.ready.notify_one();
+        }
+        true
+    }
+
+    pub(super) fn attach_failed(&self, channel: ChannelId, error: &ServerError) {
+        let mut state = self.lock();
+        state.retire(channel, error);
+        self.ready.notify_one();
+    }
+
+    pub(super) fn handle(&self, channel: ChannelId) -> Option<SessionHandle> {
+        self.lock()
+            .attachments
+            .get(&channel)
+            .map(|attachment| attachment.handle.clone())
+    }
+
+    pub(super) fn resize(
+        &self,
+        channel: ChannelId,
+        request: RequestId,
+        size: Size,
+    ) -> Result<(), ServerError> {
+        let mut state = self.lock();
+        let attachment = state
+            .attachments
+            .get_mut(&channel)
+            .ok_or_else(|| ServerError::new(ErrorCode::UnknownChannel, "unknown channel"))?;
+        attachment.handle.send(SessionCommand::ResizeAttachment {
+            id: attachment.id,
+            size,
+        })?;
+        attachment.resizes.push_back(request);
+        Ok(())
+    }
+
+    pub(super) fn resized(&self, channel: ChannelId, frame: ScreenFrame) -> bool {
+        let mut state = self.lock();
+        let Some(attachment) = state.attachments.get_mut(&channel) else {
+            return false;
+        };
+        if let Some(id) = attachment.resizes.pop_front() {
+            state.pending.insert(channel, frame);
+            state.control.push_back(Message::Reply {
+                id,
+                body: ReplyBody::Resized,
+            });
+            self.ready.notify_one();
+        }
+        true
+    }
+
+    pub(super) fn detach(&self, channel: ChannelId) -> Result<(), ServerError> {
+        let mut state = self.lock();
+        if !state.attachments.contains_key(&channel) {
+            return Err(ServerError::new(
+                ErrorCode::UnknownChannel,
+                "unknown channel",
+            ));
+        }
+        state.retire(
+            channel,
+            &ServerError::new(ErrorCode::UnknownChannel, "channel detached"),
+        );
+        self.ready.notify_one();
+        Ok(())
+    }
+
+    pub(super) fn session_ended(&self, session: SessionId, reason: ExitReason) {
+        let mut state = self.lock();
+        if state.closed {
+            return;
+        }
+        state.created.remove(&session);
+        state.control.retain(
+            |message| !matches!(message, Message::Progress { session: id, .. } | Message::SessionMetadata { session: id, .. } if *id == session),
+        );
+        state.references.sessions.remove(&session);
+        state.progress.remove(&session);
+        state.session_metadata.remove(&session);
+        state.open_sessions.remove(&session);
+        let channels: Vec<_> = state
+            .attachments
+            .iter()
+            .filter_map(|(&channel, attachment)| {
+                (attachment.handle.id() == session).then_some(channel)
+            })
+            .collect();
+        let error = ServerError::unknown_session(session);
+        for channel in channels {
+            state.retire(channel, &error);
+        }
+        state.refresh_positions();
+        state
+            .control
+            .push_back(Message::SessionEnded { session, reason });
+        self.ready.notify_one();
+    }
+
+    pub(super) fn push_frame(&self, channel: ChannelId, frame: ScreenFrame) -> bool {
+        let mut state = self.lock();
+        if !state.credit.contains_key(&channel) || state.closed {
+            return false;
+        }
+        match state.pending.entry(channel) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => merge(entry.get_mut(), frame),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(frame);
+            }
+        }
+        self.ready.notify_one();
+        true
+    }
+
+    pub(super) fn push_metadata(&self, channel: ChannelId, event: MetadataEvent) -> bool {
+        let mut state = self.lock();
+        if !state.credit.contains_key(&channel) || state.closed {
+            return false;
+        }
+        let pending = state.metadata.entry(channel).or_default();
+        if let Some(previous) = pending
+            .iter_mut()
+            .find(|previous| std::mem::discriminant(*previous) == std::mem::discriminant(&event))
+        {
+            *previous = event;
+        } else {
+            pending.push(event);
+        }
+        self.ready.notify_one();
+        true
+    }
+
+    pub(super) fn ack(&self, channel: ChannelId, seq: u64) {
+        let mut state = self.lock();
+        if state.sent.get(&channel) == Some(&seq)
+            && let Some(credit) = state.credit.get_mut(&channel)
+        {
+            *credit = true;
+            self.ready.notify_one();
+        }
+    }
+
+    pub(super) fn next(&self) -> Option<(ChannelId, Message)> {
+        let mut state = self.lock();
+        loop {
+            if let Some(message) = state.control.pop_front() {
+                return Some((CONTROL, message));
+            }
+            if state.closed {
+                return None;
+            }
+            if let Some(channel) = state.metadata.keys().next().copied()
+                && let Some(pending) = state.metadata.get_mut(&channel)
+            {
+                let event = pending.remove(0);
+                if pending.is_empty() {
+                    state.metadata.remove(&channel);
+                }
+                return Some((channel, Message::Metadata(event)));
+            }
+            let channel = state
+                .pending
+                .keys()
+                .find(|channel| state.credit.get(channel) == Some(&true))
+                .copied();
+            if let Some(channel) = channel
+                && let Some(frame) = state.pending.remove(&channel)
+            {
+                state.credit.insert(channel, false);
+                state.sent.insert(channel, frame.seq);
+                return Some((channel, Message::Frame(frame)));
+            }
+            state = self
+                .ready
+                .wait(state)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        self.lock().closed
+    }
+
+    pub(super) fn close_with(&self, message: Message) {
+        let mut state = self.lock();
+        if !state.closed {
+            state.control.push_back(message);
+            state.close();
+            self.ready.notify_all();
+        }
+    }
+
+    pub(crate) fn close(&self) {
+        self.lock().close();
+        self.ready.notify_all();
+    }
+
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl State {
+    fn refresh_positions(&mut self) {
+        if self.closed {
+            return;
+        }
+        let mut sessions = self.open_sessions.clone();
+        sessions.extend(&self.created);
+        sessions.extend(
+            self.attachments
+                .values()
+                .map(|attachment| attachment.handle.id())
+                .filter(|session| !self.references.released.contains(session)),
+        );
+        let previous = self.positions.len();
+        self.positions
+            .retain(|session, _| sessions.contains(session));
+        if previous != self.positions.len() {
+            self.changes.fetch_add(1, Ordering::AcqRel);
+        }
+        for session in sessions {
+            self.positions
+                .entry(session)
+                .or_insert_with(|| self.changes.fetch_add(1, Ordering::AcqRel));
+        }
+    }
+
+    fn close(&mut self) {
+        if !self.positions.is_empty() {
+            self.positions.clear();
+            self.changes.fetch_add(1, Ordering::AcqRel);
+        }
+        self.closed = true;
+        for (_, attachment) in self.attachments.drain() {
+            let _ = attachment
+                .handle
+                .send(SessionCommand::Detach(attachment.id));
+        }
+        self.pending.clear();
+        self.progress.clear();
+        self.metadata.clear();
+        self.credit.clear();
+        self.sent.clear();
+    }
+
+    fn retire(&mut self, channel: ChannelId, error: &ServerError) {
+        self.pending.remove(&channel);
+        self.metadata.remove(&channel);
+        self.credit.remove(&channel);
+        self.sent.remove(&channel);
+        if let Some(attachment) = self.attachments.remove(&channel) {
+            let _ = attachment
+                .handle
+                .send(SessionCommand::Detach(attachment.id));
+            for id in attachment.waiting.into_iter().chain(attachment.resizes) {
+                self.control.push_back(Message::Reply {
+                    id,
+                    body: ReplyBody::Error(error.to_reply()),
+                });
+            }
+        }
+        self.refresh_positions();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, mpsc};
+    use std::thread;
+    use std::time::Duration;
+
+    use codesh_protocol::{Cursor, Modes, Row};
+
+    use super::*;
+
+    #[test]
+    fn file_changes_coalesce_and_rescan_for_slow_consumers() {
+        let outbox = Outbox::new(Arc::default());
+        let project = codesh_protocol::ProjectId::new();
+        for index in 0..1000 {
+            outbox.push_control(Message::FilesChanged {
+                project,
+                changes: codesh_protocol::FileChanges {
+                    paths: vec![codesh_protocol::ServerPath(index.to_string().into_bytes())],
+                    rescan: false,
+                },
+            });
+        }
+        assert_eq!(outbox.lock().control.len(), 1);
+        assert_eq!(
+            outbox.next(),
+            Some((
+                CONTROL,
+                Message::FilesChanged {
+                    project,
+                    changes: codesh_protocol::FileChanges {
+                        paths: Vec::new(),
+                        rescan: true
+                    }
+                }
+            ))
+        );
+    }
+
+    fn frame(seq: u64, index: u16) -> ScreenFrame {
+        ScreenFrame {
+            size: Size { cols: 80, rows: 24 },
+            graphics: None,
+            seq,
+            reset: false,
+            rows: vec![Row {
+                index,
+                runs: vec![],
+            }],
+            cursor: Cursor {
+                shape: codesh_protocol::CursorShape::default(),
+                row: 0,
+                col: 0,
+                visible: true,
+            },
+            modes: Modes::default(),
+        }
+    }
+
+    #[test]
+    fn title_updates_coalesce_and_resubscribe_without_screen_credit() {
+        let outbox = Outbox::new(Arc::default());
+        let session = SessionId::from(std::num::NonZeroU64::MIN);
+        let message = |title: String| Message::SessionMetadata {
+            session,
+            metadata: codesh_protocol::SessionMetadata {
+                title,
+                directory: codesh_protocol::ServerPath(b"/tmp".to_vec()),
+                process: None,
+            },
+        };
+        outbox.lock().references.sessions.insert(session);
+        for i in 0..1000 {
+            outbox.push_control(message(i.to_string()));
+        }
+        assert_eq!(outbox.lock().control.len(), 1);
+        assert_eq!(outbox.next(), Some((CONTROL, message("999".into()))));
+        outbox.push_control(message("999".into()));
+        assert!(outbox.lock().control.is_empty());
+        outbox.push_control(message("pending".into()));
+        outbox.set_references(References::default(), Some(&[]), false);
+        outbox.push_control(message("ignored".into()));
+        assert!(outbox.lock().control.is_empty());
+        outbox.lock().references.sessions.insert(session);
+        outbox.push_control(message("pending".into()));
+        assert_eq!(outbox.next(), Some((CONTROL, message("pending".into()))));
+    }
+
+    #[test]
+    fn progress_resubscription_restores_unchanged_state_between_polls() {
+        for delivered in [false, true] {
+            let outbox = Outbox::new(Arc::default());
+            let session = SessionId::from(std::num::NonZeroU64::MIN);
+            let message = Message::Progress {
+                session,
+                progress: SessionProgress {
+                    progress: Some(codesh_protocol::TerminalProgress {
+                        state: codesh_protocol::ProgressState::Indeterminate,
+                        percent: None,
+                    }),
+                    completed: 0,
+                },
+            };
+            let mut references = References::default();
+            references.update(None, 1, vec![session]);
+            outbox.set_references(references.clone(), Some(&[session]), false);
+            outbox.push_control(message.clone());
+            if delivered {
+                assert_eq!(outbox.next(), Some((CONTROL, message.clone())));
+            }
+            outbox.set_references(References::default(), Some(&[]), false);
+            outbox.push_control(message.clone());
+            assert!(outbox.lock().control.is_empty());
+            outbox.set_references(references.clone(), Some(&[session]), false);
+            outbox.push_control(message.clone());
+            assert_eq!(outbox.lock().control.len(), 1);
+            assert_eq!(outbox.next(), Some((CONTROL, message.clone())));
+            outbox.set_references(references, Some(&[session]), false);
+            outbox.push_control(message);
+            assert!(outbox.lock().control.is_empty());
+        }
+    }
+
+    #[test]
+    fn negotiated_development_protocol_preserves_every_control_message() {
+        for message in Message::samples()
+            .into_iter()
+            .filter(|message| message.channel_kind() == codesh_protocol::ChannelKind::Control)
+        {
+            let outbox = Outbox::new(Arc::default());
+            if let Message::Progress { session, .. } | Message::SessionMetadata { session, .. } =
+                &message
+            {
+                outbox.lock().references.sessions.insert(*session);
+            }
+            outbox.push_control(message.clone());
+            outbox.close();
+            assert_eq!(outbox.next(), Some((CONTROL, message)));
+            assert_eq!(outbox.next(), None);
+        }
+    }
+
+    #[test]
+    fn control_first_independent_credit_and_merged_pending_frames() {
+        let outbox = Outbox::new(Arc::default());
+        outbox
+            .lock()
+            .credit
+            .extend([(ChannelId(1), true), (ChannelId(2), true)]);
+        outbox.push_frame(ChannelId(1), frame(1, 0));
+        outbox.push_control(Message::HelloReply {
+            versions: codesh_protocol::SUPPORTED.to_vec(),
+            server: codesh_protocol::ServerInfo::current(),
+            features: Vec::new(),
+        });
+        assert!(matches!(
+            outbox.next(),
+            Some((CONTROL, Message::HelloReply { .. }))
+        ));
+        assert_eq!(
+            outbox.next(),
+            Some((ChannelId(1), Message::Frame(frame(1, 0))))
+        );
+        outbox.push_frame(ChannelId(1), frame(2, 1));
+        outbox.push_frame(ChannelId(1), frame(4, 2));
+        outbox.push_frame(ChannelId(2), frame(1, 0));
+        assert_eq!(
+            outbox.next(),
+            Some((ChannelId(2), Message::Frame(frame(1, 0))))
+        );
+        outbox.ack(ChannelId(1), 0);
+        outbox.ack(ChannelId(1), 5);
+        assert!(!outbox.lock().credit[&ChannelId(1)]);
+        assert_eq!(outbox.lock().pending.len(), 1);
+        outbox.ack(ChannelId(1), 1);
+        let mut merged = frame(4, 1);
+        merged.rows.push(Row {
+            index: 2,
+            runs: vec![],
+        });
+        assert_eq!(outbox.next(), Some((ChannelId(1), Message::Frame(merged))));
+        outbox.ack(ChannelId(1), 1);
+        assert!(!outbox.lock().credit[&ChannelId(1)]);
+    }
+
+    #[test]
+    fn metadata_coalesces_without_frame_credit_and_is_retired_with_its_channel() {
+        let outbox = Outbox::new(Arc::default());
+        let channel = ChannelId(1);
+        outbox.lock().credit.insert(channel, false);
+        for index in 0..1000 {
+            outbox.push_metadata(channel, MetadataEvent::Title(index.to_string()));
+            outbox.push_metadata(channel, MetadataEvent::Bell);
+        }
+        assert_eq!(outbox.lock().metadata[&channel].len(), 2);
+        outbox.push_control(Message::VersionUnsupported);
+        assert_eq!(outbox.next(), Some((CONTROL, Message::VersionUnsupported)));
+        assert_eq!(
+            outbox.next(),
+            Some((
+                channel,
+                Message::Metadata(MetadataEvent::Title("999".into()))
+            ))
+        );
+        assert_eq!(
+            outbox.next(),
+            Some((channel, Message::Metadata(MetadataEvent::Bell)))
+        );
+        outbox.push_metadata(channel, MetadataEvent::Bell);
+        outbox.lock().retire(
+            channel,
+            &ServerError::new(ErrorCode::UnknownChannel, "detached"),
+        );
+        outbox.push_metadata(channel, MetadataEvent::Bell);
+        assert!(outbox.lock().metadata.is_empty());
+        outbox.close();
+        assert_eq!(outbox.next(), None);
+    }
+
+    #[test]
+    fn clipboard_metadata_keeps_only_the_latest_write_and_is_retired() {
+        let outbox = Outbox::new(Arc::default());
+        let channel = ChannelId(1);
+        outbox.lock().credit.insert(channel, false);
+        outbox.push_metadata(channel, MetadataEvent::ClipboardWrite("first".into()));
+        outbox.push_metadata(channel, MetadataEvent::ClipboardWrite("last".into()));
+        assert_eq!(outbox.lock().metadata[&channel].len(), 1);
+        assert_eq!(
+            outbox.next(),
+            Some((
+                channel,
+                Message::Metadata(MetadataEvent::ClipboardWrite("last".into()))
+            ))
+        );
+        outbox.push_metadata(channel, MetadataEvent::ClipboardWrite("pending".into()));
+        outbox.lock().retire(
+            channel,
+            &ServerError::new(ErrorCode::UnknownChannel, "detached"),
+        );
+        assert!(outbox.lock().metadata.is_empty());
+    }
+
+    #[test]
+    fn closing_wakes_writer_and_discards_pending_but_drains_control()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let outbox = Arc::new(Outbox::new(Arc::default()));
+        outbox.lock().credit.insert(ChannelId(1), false);
+        outbox.push_frame(ChannelId(1), frame(1, 0));
+        let (sender, receiver) = mpsc::channel();
+        let waiting = Arc::clone(&outbox);
+        let writer = thread::spawn(move || {
+            let _ = sender.send(waiting.next());
+        });
+        assert!(receiver.recv_timeout(Duration::from_millis(50)).is_err());
+        outbox.push_control(Message::VersionUnsupported);
+        outbox.close();
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(2))?,
+            Some((CONTROL, Message::VersionUnsupported))
+        );
+        writer.join().map_err(|_| "writer panicked")?;
+        assert_eq!(outbox.next(), None);
+        outbox.push_frame(ChannelId(1), frame(2, 0));
+        outbox.push_control(Message::VersionUnsupported);
+        assert_eq!(outbox.next(), None);
+        Ok(())
+    }
+}

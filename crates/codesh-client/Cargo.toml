@@ -1,0 +1,25 @@
+[package]
+name = "codesh-client"
+description = "App-side server client boundary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json.workspace = true
+codesh-core = { path = "../codesh-core" }
+codesh-protocol = { path = "../codesh-protocol" }
+
+[dev-dependencies]
+codesh-server = { path = "../codesh-server" }
+tempfile = "3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
