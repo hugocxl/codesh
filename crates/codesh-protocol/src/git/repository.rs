@@ -62,6 +62,9 @@ pub struct GitDiffRequest {
     pub raw: bool,
     #[n(3)]
     pub line_limit: Option<u32>,
+    /// Lines of context around changes; `None` uses Git's default.
+    #[n(4)]
+    pub context: Option<u32>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Encode, Decode)]

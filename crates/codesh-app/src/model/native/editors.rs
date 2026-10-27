@@ -12,7 +12,7 @@ use crate::views::diff_pane::DiffView;
 use crate::views::editor::{EditorEvent, EditorView};
 
 /// Diffs longer than this many lines are cut short by the server.
-const DIFF_LINE_LIMIT: u32 = 20_000;
+const DIFF_LINE_LIMIT: u32 = 100_000;
 
 pub(crate) enum EditorContent {
     /// The file's text is on its way, or the server could not be reached yet.
@@ -443,6 +443,7 @@ impl AppModel {
             staged,
             raw: false,
             line_limit: Some(DIFF_LINE_LIMIT),
+            context: Some(1_000_000),
         };
         let sent = self.git_request(project, GitAction::Diff(request), cx);
         for diff in self.diffs.values_mut() {

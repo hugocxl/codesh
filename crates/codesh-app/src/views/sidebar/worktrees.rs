@@ -245,10 +245,19 @@ fn card_content(
                             .child(format!("#{number}")),
                     )
                 })
-                .child(row_glyph(project, model))
-                .when_some(activity.age, |line, age| {
-                    line.child(div().flex_none().child(age))
-                }),
+                .child(
+                    div()
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(m.icon_sm())
+                        .child(super::super::tab_activity::worktree_dot(
+                            project.id,
+                            activity.working,
+                            model,
+                        )),
+                ),
         )
 }
 
@@ -260,7 +269,6 @@ fn headline(
     model: &AppModel,
 ) -> AnyElement {
     use super::activity_card::Headline;
-    use codesh_protocol::AgentState;
     let m = model.metrics;
     let theme = &model.theme;
     let line = div()
@@ -308,26 +316,13 @@ fn headline(
             .child(chip(Icon::Globe, theme.fg))
             .child(text(page, theme.fg, FontWeight::SEMIBOLD))
             .into_any_element(),
-        Headline::Agent { state, task } => {
-            let (label, color) = match state {
-                AgentState::Working => (tr!("Working"), theme.accent),
-                AgentState::Blocked => (tr!("Needs input"), theme.warning),
-                _ => (tr!("Ready"), theme.fg_muted),
-            };
-            line.child(provider.map_or_else(
+        Headline::Agent { task } => line
+            .child(provider.map_or_else(
                 || chip(Icon::Terminal, theme.fg).into_any_element(),
                 |provider| {
                     super::super::tab_activity::provider_icon(provider, m.scaled(18.0), model)
                 },
             ))
-            .child(
-                div()
-                    .flex_none()
-                    .text_color(color)
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(label),
-            )
-            .child(div().flex_none().text_color(theme.fg_dim).child("·"))
             .child(match task {
                 Some(task) => text(task, theme.fg, FontWeight::MEDIUM),
                 None => text(
@@ -338,8 +333,7 @@ fn headline(
                     FontWeight::NORMAL,
                 ),
             })
-            .into_any_element()
-        }
+            .into_any_element(),
         Headline::Shell { shell, directory } => line
             .child(chip(Icon::Terminal, theme.diff_add))
             .child(div().flex_none().text_color(theme.fg_muted).child(shell))
@@ -356,28 +350,6 @@ fn headline(
             ))
             .into_any_element(),
     }
-}
-
-fn row_glyph(project: &Project, model: &AppModel) -> gpui::Div {
-    let id = project.id;
-    let m = model.metrics;
-    let activity = super::super::tab_activity::worktree_status(id, model);
-    div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .when(
-            activity != super::super::tab_activity::Status::None,
-            |glyph| {
-                glyph.child(super::super::tab_activity::status_glyph(
-                    format!("worktree-activity-{id}"),
-                    activity,
-                    m.icon_sm(),
-                    model,
-                ))
-            },
-        )
 }
 
 /// A worktree the server is still creating.

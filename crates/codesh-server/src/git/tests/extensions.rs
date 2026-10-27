@@ -2,6 +2,7 @@ use super::*;
 use codesh_protocol::{
     GitDiffKind, GitDiffRequest, GitMergeMethod, GitPullRequestAction as Pr, GitPullRequestFilter,
 };
+use std::fmt::Write as _;
 use std::os::unix::fs::PermissionsExt;
 
 pub(super) fn commit(repo: &Repo, message: &str) -> String {
@@ -285,6 +286,70 @@ fn diffs_and_status_separate_staged_worktree_untracked_and_binary_changes() {
             .is_err()
         );
     }
+}
+
+#[test]
+fn full_context_diff_preserves_every_line_and_reports_truncation() {
+    let repo = Repo::new(false);
+    let mut original = String::new();
+    for line in 1..=100 {
+        writeln!(original, "line {line}").unwrap();
+    }
+    let modified = original.replace("line 50\n", "changed\n");
+    std::fs::write(repo.path.join("file"), &original).unwrap();
+    commit(&repo, "initial");
+    std::fs::write(repo.path.join("file"), &modified).unwrap();
+    for staged in [false, true] {
+        if staged {
+            repo.git(GitAction::Stage(vec![ServerPath(b"file".to_vec())]))
+                .unwrap();
+        }
+        for line_limit in [None, Some(20)] {
+            let GitReply::Diff(diff) = repo
+                .git(GitAction::Diff(GitDiffRequest {
+                    path: Some(ServerPath(b"file".to_vec())),
+                    staged,
+                    context: Some(1_000_000),
+                    line_limit,
+                    ..GitDiffRequest::default()
+                }))
+                .unwrap()
+            else {
+                panic!()
+            };
+            assert_eq!(diff.truncated, line_limit.is_some());
+            if line_limit.is_some() {
+                continue;
+            }
+            let old: Vec<_> = diff
+                .rows
+                .iter()
+                .filter_map(|row| row.old_text.as_deref())
+                .collect();
+            let new: Vec<_> = diff
+                .rows
+                .iter()
+                .filter_map(|row| row.new_text.as_deref())
+                .collect();
+            assert_eq!(old, original.lines().collect::<Vec<_>>());
+            assert_eq!(new, modified.lines().collect::<Vec<_>>());
+            assert_eq!((diff.additions, diff.deletions), (1, 1));
+            assert_eq!(diff.rows.last().unwrap().new_line_number, Some(100));
+        }
+    }
+    std::fs::write(repo.path.join("untracked"), &original).unwrap();
+    let GitReply::Diff(diff) = repo
+        .git(GitAction::Diff(GitDiffRequest {
+            path: Some(ServerPath(b"untracked".to_vec())),
+            context: Some(1_000_000),
+            ..GitDiffRequest::default()
+        }))
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(diff.additions, 100);
+    assert!(!diff.truncated);
 }
 
 #[test]

@@ -100,6 +100,20 @@ fn samples() -> Vec<Message> {
             }),
         });
     }
+    for context in [None, Some(1_000_000)] {
+        samples.push(Message::Request {
+            id: codesh_protocol::RequestId(110),
+            body: codesh_protocol::RequestBody::Git(codesh_protocol::GitRequest {
+                project: codesh_protocol::ProjectId::from_u128(1),
+                action: codesh_protocol::GitAction::Diff(codesh_protocol::GitDiffRequest {
+                    path: Some(codesh_protocol::ServerPath(b"src/main.rs".to_vec())),
+                    line_limit: Some(100_000),
+                    context,
+                    ..codesh_protocol::GitDiffRequest::default()
+                }),
+            }),
+        });
+    }
     samples
 }
 

@@ -15,6 +15,9 @@ pub(super) fn read(repository: &Path, request: &GitDiffRequest) -> Result<GitRep
     .into_iter()
     .map(Into::into)
     .collect();
+    if let Some(context) = request.context {
+        args.push(format!("--unified={context}").into());
+    }
     let mut no_index = false;
     if let Some(relative) = &request.path {
         let absolute = safe_path(repository, relative)?;

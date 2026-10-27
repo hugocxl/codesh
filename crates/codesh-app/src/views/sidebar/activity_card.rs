@@ -1,9 +1,6 @@
 //! Card content is derived exclusively from model caches.
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use codesh_app_core::{PaneContent, Project};
 use codesh_protocol::{AgentProvider, AgentState};
-use codesh_ui::tr;
 
 use crate::model::AppModel;
 
@@ -15,9 +12,8 @@ pub(super) enum Headline {
     Browser(String),
     Editor(String),
     Diff(String),
-    /// An agent, with its state and what it is working on.
+    /// An agent and what it is working on.
     Agent {
-        state: AgentState,
         task: Option<String>,
     },
     /// An idle shell: its name and working directory.
@@ -33,7 +29,8 @@ pub(super) struct Data {
     pub headline: Headline,
     pub branch: Option<String>,
     pub pr: Option<u64>,
-    pub age: Option<String>,
+    /// An agent in the worktree is working.
+    pub working: bool,
     pub provider: Option<AgentProvider>,
 }
 
@@ -71,7 +68,6 @@ impl Data {
                     _ => 2,
                 })
         });
-        let latest = model.agent_sessions.latest.get(&project.id);
         let shown_pane = project
             .tabs
             .first()
@@ -90,10 +86,7 @@ impl Data {
                 // spinner glyph; until they do, the card names the agent. An older
                 // session's prompt would describe some other conversation.
                 let task = task_title(tab.title(Some(pane.id)), agent.provider.name());
-                Headline::Agent {
-                    state: agent.state,
-                    task,
-                }
+                Headline::Agent { task }
             } else {
                 match shown.filter(|title| !title.is_empty()) {
                     None => Headline::Empty,
@@ -108,23 +101,7 @@ impl Data {
                     },
                 }
             };
-        let timestamp = snapshot
-            .into_iter()
-            .flat_map(|snapshot| &snapshot.events)
-            .filter(|event| event.project == project.id)
-            .map(|event| event.timestamp)
-            .chain(
-                latest
-                    .and_then(|session| session.modified.duration_since(UNIX_EPOCH).ok())
-                    .map(|age| age.as_secs()),
-            )
-            .chain(summary.and_then(|summary| summary.commit_timestamp))
-            .max();
         let working = agent.is_some_and(|(agent, _, _)| agent.state == AgentState::Working);
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
         Self {
             headline,
             // A branch named like its worktree adds nothing to the card.
@@ -132,11 +109,7 @@ impl Data {
                 .and_then(|summary| summary.branch.clone())
                 .filter(|branch| *branch != project.name),
             pr: pr.map(|pr| pr.number),
-            age: if working {
-                Some(relative_age(0))
-            } else {
-                timestamp.map(|time| relative_age(now.saturating_sub(time)))
-            },
+            working,
             provider: agent.map(|(agent, _, _)| agent.provider),
         }
     }
@@ -185,15 +158,6 @@ fn shell_name() -> String {
         .and_then(|shell| shell.rsplit('/').next().map(str::to_owned))
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "shell".to_owned())
-}
-
-fn relative_age(seconds: u64) -> String {
-    match seconds {
-        0..60 => tr!("now").to_string(),
-        60..3600 => tr!("%lldm", seconds / 60).to_string(),
-        3600..86_400 => tr!("%lldh", seconds / 3600).to_string(),
-        _ => tr!("%lldd", seconds / 86_400).to_string(),
-    }
 }
 
 #[cfg(test)]

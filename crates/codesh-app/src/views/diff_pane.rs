@@ -17,6 +17,17 @@ struct SplitRow {
     right: Option<usize>,
 }
 
+fn hide_single_hunk(rows: &mut Vec<GitDiffRow>) {
+    if rows
+        .iter()
+        .filter(|row| row.kind == GitDiffKind::Hunk)
+        .count()
+        == 1
+    {
+        rows.retain(|row| row.kind != GitDiffKind::Hunk);
+    }
+}
+
 fn split_rows(rows: &[GitDiffRow]) -> Vec<SplitRow> {
     let mut layout = Vec::with_capacity(rows.len());
     let mut index = 0;
@@ -203,6 +214,7 @@ impl DiffView {
     }
 
     fn rebuild(&mut self) {
+        hide_single_hunk(&mut self.diff.rows);
         self.layout = split_rows(&self.diff.rows);
         self.number_columns = self
             .diff
@@ -501,6 +513,21 @@ mod tests {
                 new_text.unwrap()
             );
         }
+    }
+
+    #[test]
+    fn full_file_hides_hunk_header_and_preserves_lines_in_both_modes() {
+        use GitDiffKind::{Addition as A, Context as C, Deletion as D, Hunk as H};
+        let mut rows = rows(&[H, C, D, A, C]);
+        hide_single_hunk(&mut rows);
+        let kinds: Vec<_> = rows.iter().map(|row| row.kind).collect();
+        assert_eq!(kinds, vec![C, D, A, C]);
+        let layout = split_rows(&rows);
+        let pairs: Vec<_> = layout.iter().map(|row| (row.left, row.right)).collect();
+        assert_eq!(
+            pairs,
+            vec![(Some(0), Some(0)), (Some(1), Some(2)), (Some(3), Some(3))]
+        );
     }
 
     #[test]

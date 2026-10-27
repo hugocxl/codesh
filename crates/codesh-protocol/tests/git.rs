@@ -128,3 +128,26 @@ fn summaries_from_older_servers_decode_without_card_metadata()
     assert!(summary.commit_timestamp.is_none());
     Ok(())
 }
+
+#[test]
+fn diff_context_is_optional_on_the_wire() -> Result<(), Box<dyn std::error::Error>> {
+    let mut older = Vec::new();
+    minicbor::Encoder::new(&mut older)
+        .array(4)?
+        .null()?
+        .bool(false)?
+        .bool(true)?
+        .u32(100)?;
+    let request: GitDiffRequest = minicbor::decode(&older)?;
+    assert_eq!(request.context, None);
+    assert_eq!(minicbor::to_vec(&request)?, older);
+    let full = GitDiffRequest {
+        context: Some(1_000_000),
+        ..request
+    };
+    assert_eq!(
+        minicbor::decode::<GitDiffRequest>(&minicbor::to_vec(&full)?)?,
+        full
+    );
+    Ok(())
+}

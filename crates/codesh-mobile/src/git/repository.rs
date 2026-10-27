@@ -117,6 +117,7 @@ impl GitRepository {
             staged,
             raw: false,
             line_limit,
+            context: None,
         };
         match self.request(GitAction::Diff(request))? {
             GitReply::Diff(diff) => Ok(diff.into()),
@@ -137,6 +138,7 @@ impl GitRepository {
             staged,
             raw: true,
             line_limit,
+            context: None,
         };
         raw_diff(self.request(GitAction::Diff(request))?)
     }
