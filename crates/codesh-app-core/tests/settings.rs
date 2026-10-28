@@ -163,11 +163,6 @@ fn every_default_binding_round_trips_and_resolves_both_directions() -> Result {
             .to_string()
             .parse()?;
         assert_eq!(Some(&chord), keymap.chord(action));
-        // Find Previous shares its key with Source Control, scoped to the find field.
-        if action == ShortcutId::FindPrevious {
-            assert_eq!(keymap.chord(ShortcutId::ToggleSourceControl), Some(&chord));
-            continue;
-        }
         assert_eq!(keymap.action(&chord), Some(action));
     }
     assert_eq!(keymap.action(&"ctrl-alt-f24".parse()?), None);

@@ -589,7 +589,7 @@ pub const ALL: &[Shortcut] = &[
     },
     Shortcut {
         id: "toggle_source_control",
-        keys: platform_keys!(&["cmd-shift-g"], &["ctrl-shift-alt-g"]),
+        keys: platform_keys!(&["cmd-y"], &["ctrl-shift-y"]),
         contexts: &[Some("WorkspaceTabs")],
         key_contexts: &[&[Some("WorkspaceTabs")]],
     },

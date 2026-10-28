@@ -25,7 +25,7 @@ Each project has one workspace of split panes.
 | Action | Shortcut |
 | --- | --- |
 | Toggle Files | `Cmd+E` |
-| Toggle Source Control | `Cmd+Shift+G` |
+| Toggle Source Control | `Cmd+Y` |
 | Go to File | `Cmd+P` |
 | Find in Files | `Cmd+Shift+F` |
 | Commit (in the message field) | `Cmd+Return` |

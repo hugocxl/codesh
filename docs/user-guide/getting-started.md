@@ -186,7 +186,7 @@ with separate settings and session data.
    opens one in Home.
 3. **Split it.** `Cmd+D` splits right, `Cmd+Shift+D` splits down. Splits stay
    equal-sized.
-4. **Open files.** `Cmd+E` shows Files, `Cmd+Shift+G` Source Control, and
+4. **Open files.** `Cmd+E` shows Files, `Cmd+Y` Source Control, and
    `Cmd+P` Go to File.
 5. **Quit freely.** Terminals keep running in the background. Reopen Codesh and
    everything is where you left it.

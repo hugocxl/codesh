@@ -6,7 +6,7 @@ commits it. Git runs on the project's server, so it works for
 
 ## Source Control panel
 
-`Cmd+Shift+G` (or the Source Control button at the top of the sidebar) toggles
+`Cmd+Y` (or the Source Control button at the top of the sidebar) toggles
 the panel, pinned on the right of the current project. It shares that spot with
 the [Files panel](files.md).
 
