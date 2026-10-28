@@ -954,10 +954,15 @@ impl AppModel {
             && (self.focus_requested
                 || !(self.active_pane().is_some() || panel_focused || input_focused))
         {
-            match self.focus_return.take().and_then(|focus| focus.upgrade()) {
-                Some(focus) => focus.focus(window),
-                None => self.focus_active(window, cx),
-            }
+            // Focusing mid-draw reads the pane before its cached view renders, so
+            // that view stops tracking its own pane and later output never redraws.
+            let focus_return = self.focus_return.take();
+            cx.defer_in(window, move |model, window, cx| {
+                match focus_return.and_then(|focus| focus.upgrade()) {
+                    Some(focus) => focus.focus(window),
+                    None => model.focus_active(window, cx),
+                }
+            });
             self.focus_requested = false;
         }
         if self.overlay.is_some() || self.close_prompt.is_some() {
