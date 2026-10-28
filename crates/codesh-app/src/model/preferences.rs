@@ -37,6 +37,9 @@ pub(super) struct TerminalBackground {
     pub(super) available: bool,
     #[cfg(all(target_os = "macos", not(test)))]
     native: Option<codesh_ui::vibrancy::TerminalVibrancy>,
+    /// Whether the window was last made see-through.
+    #[cfg(all(target_os = "macos", not(test)))]
+    window_transparent: Option<bool>,
 }
 
 impl AppModel {
@@ -555,6 +558,36 @@ impl AppModel {
     #[cfg(all(target_os = "macos", not(test)))]
     pub(crate) fn sync_background_effects(&mut self, window: &Window, cx: &mut Context<Self>) {
         self.sync_sidebar_vibrancy(window);
+        self.sync_terminal_vibrancy(window, cx);
+        self.sync_window_transparency(window);
+    }
+
+    /// Keeps the window opaque unless something must show through it. Over a
+    /// transparent window without a native effect behind them, the window
+    /// buttons blend with the desktop and look blurred, most visibly in light
+    /// themes.
+    #[cfg(all(target_os = "macos", not(test)))]
+    fn sync_window_transparency(&mut self, window: &Window) {
+        let transparent = self.sidebar_vibrancy.is_some()
+            || self.terminal_background.native.is_some()
+            || self
+                .terminal
+                .options
+                .background_opacity
+                .is_some_and(|opacity| opacity < 1.0);
+        if self.terminal_background.window_transparent == Some(transparent) {
+            return;
+        }
+        self.terminal_background.window_transparent = Some(transparent);
+        window.set_background_appearance(if transparent {
+            gpui::WindowBackgroundAppearance::Transparent
+        } else {
+            gpui::WindowBackgroundAppearance::Opaque
+        });
+    }
+
+    #[cfg(all(target_os = "macos", not(test)))]
+    fn sync_terminal_vibrancy(&mut self, window: &Window, cx: &mut Context<Self>) {
         let options = &self.terminal.options;
         if options.background_vibrancy == 0 || !codesh_ui::accessibility::transparency_allowed() {
             self.terminal_background.native = None;

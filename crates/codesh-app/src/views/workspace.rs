@@ -1105,7 +1105,7 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::AnyElement {
     // The empty project sits in the same card frame as an open pane.
     let card = div()
         .size_full()
-        .rounded(px(super::codesh::style::RADIUS))
+        .rounded(m.scaled(super::codesh::style::RADIUS))
         .border_1()
         .border_color(super::codesh::style::border(theme))
         .bg(super::codesh::style::card(theme))
@@ -1170,7 +1170,6 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::AnyElement {
     div()
         .size_full()
         .p(px(super::codesh::style::GUTTER))
-        .bg(model.sidebar_background())
         .child(card)
         .into_any_element()
 }
