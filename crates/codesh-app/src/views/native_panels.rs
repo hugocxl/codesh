@@ -128,7 +128,6 @@ fn body(model: &AppModel, _cx: &mut Context<AppModel>) -> AnyElement {
                 .border_1()
                 .border_color(style::border(theme))
                 .bg(style::panel(theme))
-                .shadow(codesh_ui::theme::Elevation::Elevated.shadow(theme.bg))
                 .children(view),
         )
         .into_any_element()
