@@ -232,9 +232,8 @@ fn project_sort_date_added_keeps_undated_projects_stable_ahead_of_new_projects(
 }
 
 #[gpui::test]
-fn sidebar_host_and_name_filters_keep_matching_worktree_sections(cx: &mut TestAppContext) {
+fn sidebar_host_filter_keeps_matching_projects(cx: &mut TestAppContext) {
     use codesh_app_core::settings::SidebarHost;
-    use codesh_ui::text_input::InputEvent;
 
     let mut state = AppState::bootstrap().expect("state");
     let local = state
@@ -264,11 +263,9 @@ fn sidebar_host_and_name_filters_keep_matching_worktree_sections(cx: &mut TestAp
             servers::entry(other, "Other"),
         ],
     );
-    cx.update(|cx| cx.bind_keys(codesh_ui::text_input::key_bindings()));
     let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
     view.update(cx, |model, cx| {
         acknowledge_catalog(model, cx);
-        model.sidebar_filter = "TOOLS".to_lowercase();
         for (host, expected) in [
             (SidebarHost::All, vec![local, parent, other_project]),
             (SidebarHost::Local, vec![local]),
@@ -287,42 +284,5 @@ fn sidebar_host_and_name_filters_keep_matching_worktree_sections(cx: &mut TestAp
                 .sidebar_host,
             SidebarHost::Server(server)
         );
-        let input = model.sidebar_filter_input.clone();
-        input.update(cx, |input, cx| {
-            input.set_text("äBc", cx);
-            cx.emit(InputEvent::Changed);
-        });
-    });
-    cx.run_until_parked();
-    assert!(
-        cx.debug_bounds(format!("worktree-{child}").leak())
-            .is_some(),
-        "search reveals a matching worktree without expanding its section"
-    );
-    // GPUI 0.2.2 retains debug bounds across frames, so absence cannot be
-    // asserted for the primary card that was painted before filtering.
-    view.update_in(cx, |model, window, cx| {
-        assert_eq!(parent_ids(model), [parent]);
-        assert!(!model.sidebar_name_matches(model.state.project(parent).expect("parent")));
-        assert!(model.sidebar_name_matches(model.state.project(child).expect("child")));
-        model.sidebar_filter_input.focus_handle(cx).focus(window);
-    });
-    cx.simulate_keystrokes("escape");
-    cx.run_until_parked();
-    assert!(
-        cx.debug_bounds(format!("worktree-{child}").leak())
-            .is_some(),
-        "worktree cards remain visible with no search or saved expansion"
-    );
-    assert!(
-        cx.debug_bounds(format!("project-worktrees-toggle-{parent}").leak())
-            .is_none(),
-        "plain project headers have no disclosure control"
-    );
-    view.read_with(cx, |model, cx| {
-        assert!(model.sidebar_filter.is_empty());
-        assert!(model.sidebar_filter_input.read(cx).text().is_empty());
-        assert_eq!(parent_ids(model), [parent]);
-        assert!(!model.expanded_worktrees.contains(&parent));
     });
 }

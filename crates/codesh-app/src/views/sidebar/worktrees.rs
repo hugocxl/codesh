@@ -108,14 +108,8 @@ pub(super) fn group(
             .flex_col()
             .gap(model.metrics.scaled(2.0))
             .pb(model.metrics.spacing2())
-            .when(model.sidebar_name_matches(project), |rows| {
-                rows.child(row(project, true, model, cx))
-            });
-        for child in model
-            .worktree_children(project.id)
-            .into_iter()
-            .filter(|child| model.sidebar_name_matches(child))
-        {
+            .child(row(project, true, model, cx));
+        for child in model.worktree_children(project.id) {
             worktrees = worktrees.child(row(child, false, model, cx));
         }
         for (index, creation) in model.worktree_creations(project.id).enumerate() {

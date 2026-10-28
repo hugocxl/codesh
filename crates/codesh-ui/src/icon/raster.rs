@@ -30,6 +30,7 @@ struct MaskKey {
     point_size: u32,
     weight: u32,
     scale: u32,
+    fit: bool,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -55,6 +56,20 @@ pub fn tinted(icon: Icon, size: Pixels, color: Hsla, scale: f32) -> Option<Glyph
     tinted_symbol(&SharedString::from(icon.sf_symbol()), size, color, scale)
 }
 
+/// Like [`tinted`], but scaled so the longer side of the glyph is exactly
+/// `size`, which makes every icon measure the same.
+#[cfg(target_os = "macos")]
+pub fn tinted_fit(icon: Icon, size: Pixels, color: Hsla, scale: f32) -> Option<Glyph> {
+    tint_symbol(
+        &SharedString::from(icon.sf_symbol()),
+        size,
+        color,
+        scale,
+        SEMIBOLD,
+        true,
+    )
+}
+
 #[cfg(target_os = "macos")]
 pub fn tinted_symbol(
     symbol: &SharedString,
@@ -73,11 +88,24 @@ pub fn tinted_symbol_weight(
     scale: f32,
     weight: f32,
 ) -> Option<Glyph> {
+    tint_symbol(symbol, size, color, scale, weight, false)
+}
+
+#[cfg(target_os = "macos")]
+fn tint_symbol(
+    symbol: &SharedString,
+    size: Pixels,
+    color: Hsla,
+    scale: f32,
+    weight: f32,
+    fit: bool,
+) -> Option<Glyph> {
     let key = MaskKey {
         symbol: symbol.clone(),
         point_size: f32::from(size).to_bits(),
         weight: weight.to_bits(),
         scale: scale.to_bits(),
+        fit,
     };
     let tint = TintKey {
         mask: key.clone(),
@@ -91,12 +119,16 @@ pub fn tinted_symbol_weight(
             .borrow_mut()
             .entry(key.clone())
             .or_insert_with(|| {
-                sfsymbol::rasterize(
-                    &key.symbol,
-                    f32::from(size) * APPKIT_SYMBOL_CORRECTION,
-                    weight,
-                    scale,
-                )
+                if fit {
+                    sfsymbol::rasterize_fit(&key.symbol, f32::from(size), weight, scale)
+                } else {
+                    sfsymbol::rasterize(
+                        &key.symbol,
+                        f32::from(size) * APPKIT_SYMBOL_CORRECTION,
+                        weight,
+                        scale,
+                    )
+                }
                 .map(Arc::new)
             })
             .clone()
@@ -131,6 +163,7 @@ pub fn tinted_svg(
         point_size: f32::from(size).to_bits(),
         weight: u32::MAX,
         scale: scale.to_bits(),
+        fit: false,
     };
     let tint = TintKey {
         mask: key.clone(),

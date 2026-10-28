@@ -1,6 +1,5 @@
 use crate::views::menu::{Command, Item};
 use codesh_app_core::settings::SidebarHost;
-use codesh_ui::components::IconGlyph;
 use codesh_ui::icon::Icon;
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -45,7 +44,6 @@ pub(crate) fn top(
 
 pub(crate) fn bottom(model: &AppModel, _window: &Window, cx: &mut Context<AppModel>) -> AnyElement {
     let m = model.metrics;
-    let theme = &model.theme;
     let anchor = model.remote_anchor.clone();
     div()
         .flex()
@@ -58,7 +56,7 @@ pub(crate) fn bottom(model: &AppModel, _window: &Window, cx: &mut Context<AppMod
         .py(style::spacing())
         .gap(m.scaled(4.0))
         .child(
-            titlebar::icon_button("sidebar-host", Icon::Overlap, "Hosts", model)
+            titlebar::icon_button("sidebar-host", Icon::FilterCircle, "Hosts", model)
                 .mr(px(0.0))
                 .debug_selector(|| "sidebar-host".into())
                 .child(
@@ -91,28 +89,7 @@ pub(crate) fn bottom(model: &AppModel, _window: &Window, cx: &mut Context<AppMod
                 })),
         )
         .when(model.appearance.sidebar_expanded, |bar| {
-            bar.child(
-                div()
-                    .id("sidebar-name-filter")
-                    .debug_selector(|| "sidebar-name-filter".into())
-                    .flex()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .items_center()
-                    .h(m.scaled(28.0))
-                    .px(m.scaled(8.0))
-                    .gap(m.scaled(6.0))
-                    .rounded(m.scaled(14.0))
-                    .bg(theme.surface)
-                    .child(IconGlyph::new(Icon::Filter, m.scaled(16.0), theme.fg_muted))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(0.0))
-                            .overflow_hidden()
-                            .child(model.sidebar_filter_input.clone()),
-                    ),
-            )
+            bar.child(div().flex_1())
         })
         .child(
             titlebar::icon_button("codesh-add", Icon::Plus, "Add Project", model)

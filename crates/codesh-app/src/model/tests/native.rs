@@ -308,13 +308,6 @@ fn new_terminal_shortcut_leaves_editors_and_side_panels_for_local_home(cx: &mut 
             );
         });
     }
-    view.update_in(cx, |model, window, cx| {
-        model.select_project(project, cx);
-        model.sidebar_filter_input.focus_handle(cx).focus(window);
-        model.focus_requested = false;
-    });
-    cx.simulate_keystrokes(key);
-    view.read_with(cx, |model, _| assert_eq!(model.state.home().tabs.len(), 4));
 }
 
 #[gpui::test]

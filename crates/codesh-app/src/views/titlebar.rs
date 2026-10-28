@@ -133,11 +133,12 @@ pub(super) fn icon_button(
     tooltip: impl Into<SharedString>,
     model: &AppModel,
 ) -> Stateful<Div> {
-    action_button(id, tooltip, model).child(IconGlyph::new(
-        icon,
-        model.metrics.icon_md(),
-        model.theme.fg_muted,
-    ))
+    action_button(id, tooltip, model).child(chrome_glyph(icon, model.theme.fg_muted, model))
+}
+
+/// The glyph every chrome button draws, so icons measure the same everywhere.
+pub(crate) fn chrome_glyph(icon: Icon, color: gpui::Hsla, model: &AppModel) -> IconGlyph {
+    IconGlyph::new(icon, model.metrics.icon_md(), color).fit()
 }
 
 pub(crate) fn navigation(
@@ -149,33 +150,18 @@ pub(crate) fn navigation(
     super::codesh::sidebar_chrome::top(model, sidebar_width, window, cx)
 }
 
-pub(crate) fn sidebar_toggle(model: &AppModel, cx: &Context<AppModel>) -> Div {
-    let m = model.metrics;
-    let theme = &model.theme;
-    div()
-        .debug_selector(|| "sidebar-toggle".into())
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(
-            codesh_ui::components::IconButton::new(
-                "toggle-sidebar",
-                Icon::PanelLeft,
-                m.font_body(),
-                m.scaled(22.0),
-                theme.fg_muted,
-                theme.fg,
-            )
-            .tooltip(
-                tr!("Toggle Sidebar"),
-                theme.raised(),
-                theme.fg,
-                theme.border,
-                theme.bg,
-            )
-            .on_click(cx.listener(|model, _, window, cx| {
-                cx.stop_propagation();
-                model.toggle_sidebar(window, cx);
-            })),
-        )
+pub(crate) fn sidebar_toggle(model: &AppModel, cx: &Context<AppModel>) -> Stateful<Div> {
+    icon_button(
+        "toggle-sidebar",
+        Icon::PanelLeft,
+        tr!("Toggle Sidebar"),
+        model,
+    )
+    .debug_selector(|| "sidebar-toggle".into())
+    .on_click(cx.listener(|model, _, window, cx| {
+        cx.stop_propagation();
+        model.toggle_sidebar(window, cx);
+    }))
 }
 
 pub(super) fn navigation_width(model: &AppModel, _: &Window) -> f32 {

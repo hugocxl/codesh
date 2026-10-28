@@ -944,16 +944,12 @@ impl AppModel {
         let _span = crate::profiler::span(crate::profiler::Metric::WorkspacePrepare);
         let panel_focused = self.side_panel_focused(window, cx)
             || self.agents_panel.focus.contains_focused(window, cx);
-        let input_focused = self
-            .sidebar_filter_input
-            .focus_handle(cx)
-            .contains_focused(window, cx)
-            || (self.appearance.agent_sessions_visible
-                && self
-                    .agent_sessions
-                    .input
-                    .as_ref()
-                    .is_some_and(|input| input.focus_handle(cx).contains_focused(window, cx)));
+        let input_focused = self.appearance.agent_sessions_visible
+            && self
+                .agent_sessions
+                .input
+                .as_ref()
+                .is_some_and(|input| input.focus_handle(cx).contains_focused(window, cx));
         if self.overlay.is_none()
             && (self.focus_requested
                 || !(self.active_pane().is_some() || panel_focused || input_focused))

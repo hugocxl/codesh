@@ -48,6 +48,7 @@ pub struct IconGlyph {
     size: Pixels,
     color: Hsla,
     hover: Option<(SharedString, Hsla)>,
+    fit: bool,
 }
 
 impl IconGlyph {
@@ -57,7 +58,15 @@ impl IconGlyph {
             size,
             color,
             hover: None,
+            fit: false,
         }
+    }
+
+    /// Scales the glyph so its longer side is exactly `size`, centered in a
+    /// `size` square, so a row of different icons measures the same.
+    pub fn fit(mut self) -> Self {
+        self.fit = true;
+        self
     }
 
     pub fn hover_in_group(mut self, group: impl Into<SharedString>, color: Hsla) -> Self {
@@ -69,9 +78,14 @@ impl IconGlyph {
 impl RenderOnce for IconGlyph {
     fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let scale = window.scale_factor();
-        let (width, height) = natural_size(self.icon, self.size, scale);
+        let (width, height) = if self.fit {
+            (self.size, self.size)
+        } else {
+            natural_size(self.icon, self.size, scale)
+        };
+        let layer = |color| layer(self.icon, self.size, color, scale, self.fit);
         match self.hover {
-            None => layer(self.icon, self.size, self.color, scale).into_any_element(),
+            None => layer(self.color).into_any_element(),
             Some((group, hover_color)) => div()
                 .relative()
                 .flex()
@@ -79,12 +93,12 @@ impl RenderOnce for IconGlyph {
                 .w(width)
                 .h(height)
                 .child(
-                    layer(self.icon, self.size, self.color, scale)
+                    layer(self.color)
                         .absolute()
                         .group_hover(group.clone(), |style| style.opacity(0.0)),
                 )
                 .child(
-                    layer(self.icon, self.size, hover_color, scale)
+                    layer(hover_color)
                         .absolute()
                         .opacity(0.0)
                         .group_hover(group, |style| style.opacity(1.0)),
@@ -106,20 +120,37 @@ fn natural_size(_icon: Icon, size: Pixels, _scale: f32) -> (Pixels, Pixels) {
 }
 
 #[cfg(target_os = "macos")]
-fn layer(icon: Icon, size: Pixels, color: Hsla, scale: f32) -> gpui::Div {
-    let Some(glyph) = crate::icon::tinted(icon, size, color, scale) else {
+fn layer(icon: Icon, size: Pixels, color: Hsla, scale: f32, fit: bool) -> gpui::Div {
+    let glyph = if fit {
+        crate::icon::tinted_fit(icon, size, color, scale)
+    } else {
+        crate::icon::tinted(icon, size, color, scale)
+    };
+    let Some(glyph) = glyph else {
         return svg_layer(icon, size, color);
     };
-    div().flex_none().w(glyph.width).h(glyph.height).child(
-        gpui::img(glyph.image)
-            .w(glyph.width)
-            .h(glyph.height)
-            .flex_none(),
-    )
+    let image = gpui::img(glyph.image)
+        .w(glyph.width)
+        .h(glyph.height)
+        .flex_none();
+    if fit {
+        return div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(size)
+            .child(image);
+    }
+    div()
+        .flex_none()
+        .w(glyph.width)
+        .h(glyph.height)
+        .child(image)
 }
 
 #[cfg(not(target_os = "macos"))]
-fn layer(icon: Icon, size: Pixels, color: Hsla, _scale: f32) -> gpui::Div {
+fn layer(icon: Icon, size: Pixels, color: Hsla, _scale: f32, _fit: bool) -> gpui::Div {
     svg_layer(icon, size, color)
 }
 

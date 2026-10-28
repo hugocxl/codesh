@@ -5,7 +5,7 @@ mod sfsymbol;
 
 pub use raster::tinted_svg;
 #[cfg(target_os = "macos")]
-pub use raster::{tinted, tinted_symbol, tinted_symbol_weight};
+pub use raster::{tinted, tinted_fit, tinted_symbol, tinted_symbol_weight};
 
 use gpui::SharedString;
 
@@ -68,6 +68,7 @@ pub enum Icon {
     Dollar,
     ExternalLink,
     Filter,
+    FilterCircle,
     Gauge,
     History,
     Info,
@@ -158,6 +159,7 @@ impl Icon {
             Self::Dollar => "circle-dollar-sign",
             Self::ExternalLink => "square-arrow-out-up-right",
             Self::Filter => "list-filter",
+            Self::FilterCircle => "filter-circle",
             Self::Gauge => "gauge",
             Self::History => "history",
             Self::Info => "info",
@@ -245,6 +247,7 @@ impl Icon {
             "cylinder.split.1x2" => Self::Database,
             "dollarsign.circle" => Self::Dollar,
             "line.3.horizontal.decrease" => Self::Filter,
+            "line.3.horizontal.decrease.circle" => Self::FilterCircle,
             "gauge.with.dots.needle.33percent" => Self::Gauge,
             "clock.arrow.circlepath" => Self::History,
             "info.circle" => Self::Info,
@@ -340,6 +343,7 @@ impl Icon {
             Self::Dollar => "dollarsign.circle",
             Self::ExternalLink => "arrow.up.right.square",
             Self::Filter => "line.3.horizontal.decrease",
+            Self::FilterCircle => "line.3.horizontal.decrease.circle",
             Self::Gauge => "gauge.with.dots.needle.33percent",
             Self::History => "clock.arrow.circlepath",
             Self::Info => "info.circle",

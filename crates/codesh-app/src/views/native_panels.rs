@@ -3,7 +3,6 @@
 
 use codesh_app_core::settings::SidePanel;
 use codesh_app_core::{PaneContent, PaneId};
-use codesh_ui::components::IconGlyph;
 use codesh_ui::icon::Icon;
 use codesh_ui::panel::{
     PanelFrame, PanelId, PanelPosition, PanelSizeBounds, PanelSizing, PanelStyle,
@@ -127,10 +126,10 @@ pub(crate) fn sidebar_buttons(model: &AppModel, cx: &mut Context<AppModel>) -> A
                 cx.stop_propagation();
                 model.toggle_side_panel(panel, window, cx);
             }))
-            .child(IconGlyph::new(
+            .child(crate::views::titlebar::chrome_glyph(
                 icon,
-                model.metrics.icon_md(),
                 if active { theme.fg } else { theme.fg_muted },
+                model,
             ))
     };
     div()

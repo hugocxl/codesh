@@ -6,11 +6,31 @@ use objc2_foundation::NSString;
 use super::raster::Mask;
 use crate::bitmap;
 
+pub(super) fn rasterize(symbol: &str, point_size: f32, weight: f32, scale: f32) -> Option<Mask> {
+    rasterize_scaled(symbol, point_size, weight, scale, |width, height| {
+        (width, height)
+    })
+}
+
+/// Rasterizes a symbol scaled so its longer side is exactly `side` points.
+pub(super) fn rasterize_fit(symbol: &str, side: f32, weight: f32, scale: f32) -> Option<Mask> {
+    rasterize_scaled(symbol, side, weight, scale, |width, height| {
+        let fit = f64::from(side) / width.max(height);
+        (width * fit, height * fit)
+    })
+}
+
 #[allow(
     clippy::cast_possible_truncation,
     reason = "Validated AppKit dimensions are converted to GPUI f32 coordinates."
 )]
-pub(super) fn rasterize(symbol: &str, point_size: f32, weight: f32, scale: f32) -> Option<Mask> {
+fn rasterize_scaled(
+    symbol: &str,
+    point_size: f32,
+    weight: f32,
+    scale: f32,
+    size: impl Fn(f64, f64) -> (f64, f64),
+) -> Option<Mask> {
     let _main_thread = MainThreadMarker::new()?;
     if !point_size.is_finite()
         || point_size <= 0.0
@@ -34,8 +54,12 @@ pub(super) fn rasterize(symbol: &str, point_size: f32, weight: f32, scale: f32) 
         let image = image.imageWithSymbolConfiguration(&config)?;
 
         let natural = image.size();
-        let width = dimension(natural.width * f64::from(scale))?;
-        let height = dimension(natural.height * f64::from(scale))?;
+        if natural.width <= 0.0 || natural.height <= 0.0 {
+            return None;
+        }
+        let (logical_width, logical_height) = size(natural.width, natural.height);
+        let width = dimension(logical_width * f64::from(scale))?;
+        let height = dimension(logical_height * f64::from(scale))?;
 
         let alpha = bitmap::render_rgba(&image, width, height)?
             .chunks_exact(4)
@@ -44,8 +68,8 @@ pub(super) fn rasterize(symbol: &str, point_size: f32, weight: f32, scale: f32) 
         Some(Mask {
             width,
             height,
-            logical_width: natural.width as f32,
-            logical_height: natural.height as f32,
+            logical_width: logical_width as f32,
+            logical_height: logical_height as f32,
             alpha,
         })
     })

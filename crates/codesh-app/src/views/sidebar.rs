@@ -302,22 +302,8 @@ impl AppModel {
         }
     }
 
-    pub(crate) fn sidebar_name_matches(&self, project: &Project) -> bool {
-        self.sidebar_filter.is_empty() || project.name.to_lowercase().contains(&self.sidebar_filter)
-    }
-
     /// Top-level projects the workspace filter lists, in sidebar order.
     pub(crate) fn listed_parents(&self) -> Vec<&Project> {
-        let matching_parents: std::collections::HashSet<_> = if self.sidebar_filter.is_empty() {
-            std::collections::HashSet::new()
-        } else {
-            self.state
-                .projects()
-                .iter()
-                .filter(|project| self.sidebar_name_matches(project))
-                .map(|project| project.parent_id.unwrap_or(project.id))
-                .collect()
-        };
         let mut parents: Vec<_> = self
             .state
             .projects()
@@ -327,7 +313,6 @@ impl AppModel {
                     && self.state.is_listed(project)
                     && self.project_listed(project)
                     && self.appearance.sidebar_host.matches(project.server_id)
-                    && (self.sidebar_filter.is_empty() || matching_parents.contains(&project.id))
             })
             .collect();
         let server = |project: &Project| {
@@ -404,9 +389,6 @@ impl AppModel {
                     && self.worktrees_visible(parent.id)
                 {
                     self.worktree_children(parent.id)
-                        .into_iter()
-                        .filter(|child| self.sidebar_name_matches(child))
-                        .collect()
                 } else {
                     Vec::new()
                 };

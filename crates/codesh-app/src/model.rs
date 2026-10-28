@@ -109,10 +109,6 @@ struct CloseRequest {
 
 pub(crate) struct AppModel {
     pub(crate) side_clients: side_client::SideClients,
-    pub(crate) sidebar_filter_input: Entity<codesh_ui::text_input::TextInput>,
-    /// Lowercased once per edit, shared by all project comparisons.
-    pub(crate) sidebar_filter: String,
-    _sidebar_filter_subscription: Subscription,
     pub(crate) sidebar_view: Entity<crate::views::cached::CachedView<Self>>,
     pub(crate) webviews: native_surfaces::Webviews,
     pub(crate) browsers: browsers::Browsers,
@@ -239,12 +235,6 @@ impl AppModel {
         let previous_colors = self.palette.terminal_colors();
         let (theme, palette) = self.themes.resolve(&self.appearance, self.dark);
         self.theme = theme;
-        self.sidebar_filter_input.update(cx, |input, cx| {
-            input.set_style(
-                codesh_ui::text_input::InputStyle::compact(&self.theme, &self.metrics),
-                cx,
-            );
-        });
         self.palette = palette.with_options(&self.terminal.options);
         if previous_colors != self.palette.terminal_colors() {
             for server in self.servers.ids() {
@@ -492,33 +482,7 @@ impl AppModel {
             codesh_core::capability::Feature::Notifications,
             notifications.capability(),
         );
-        let sidebar_filter_input = cx.new(|cx| {
-            codesh_ui::text_input::TextInput::new(
-                codesh_ui::text_input::InputStyle::compact(&theme, &Metrics::new(1.0)),
-                cx,
-            )
-            .with_placeholder("Filter")
-        });
-        let sidebar_filter_subscription =
-            cx.subscribe(&sidebar_filter_input, |model, input, event, cx| {
-                use codesh_ui::text_input::InputEvent;
-                match event {
-                    InputEvent::Changed => {
-                        model.sidebar_filter = input.read(cx).text().to_lowercase();
-                        cx.notify();
-                    }
-                    InputEvent::Cancelled => {
-                        input.update(cx, |input, cx| input.set_text("", cx));
-                        model.sidebar_filter.clear();
-                        cx.notify();
-                    }
-                    InputEvent::Submitted => {}
-                }
-            });
         let mut model = Self {
-            sidebar_filter_input,
-            sidebar_filter: String::new(),
-            _sidebar_filter_subscription: sidebar_filter_subscription,
             side_clients: side_client::SideClients::default(),
             sidebar_view: crate::views::cached::CachedView::new(
                 |model, window, cx| crate::views::sidebar::sidebar(model, window, cx),

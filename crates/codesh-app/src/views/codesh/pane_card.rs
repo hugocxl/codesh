@@ -1,12 +1,9 @@
 use codesh_app_core::{Direction, PaneContent, PaneId};
-use codesh_ui::{
-    components::{IconButton, IconGlyph},
-    icon::Icon,
-};
+use codesh_ui::{components::IconGlyph, icon::Icon};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    SharedString, Styled, div, px,
+    SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 
 use super::style;
@@ -75,7 +72,7 @@ pub(crate) fn render(
         .flex()
         .flex_none()
         .items_center()
-        .gap(m.scaled(8.0))
+        .gap(m.scaled(4.0))
         .when(model.active_pane() != Some(id), |controls| {
             controls
                 .invisible()
@@ -97,33 +94,27 @@ pub(crate) fn render(
         ("close", Icon::X, "Close Pane", Action::Close),
     ] {
         controls = controls.child(
-            div()
-                .debug_selector(move || format!("pane-{id}-{name}"))
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .child(
-                    IconButton::new(
-                        SharedString::from(format!("pane-{id}-{name}")),
-                        icon,
-                        m.scaled(16.0),
-                        m.scaled(20.0),
-                        theme.fg_dim,
-                        theme.fg,
-                    )
-                    .tooltip(tooltip, theme.raised(), theme.fg, theme.border, theme.bg)
-                    .on_click(cx.listener(move |model, _, window, cx| {
-                        cx.stop_propagation();
-                        model.focus_pane(id, cx);
-                        if model.active_pane() == Some(id) {
-                            match action {
-                                Action::Right => model.split_pane(Direction::Right, cx),
-                                Action::Down => model.split_pane(Direction::Down, cx),
-                                Action::Zoom => model.toggle_zoom_pane(cx),
-                                Action::Close => model.close_pane(id, cx),
-                            }
-                        }
-                        model.focus_active(window, cx);
-                    })),
-                ),
+            crate::views::titlebar::icon_button(
+                SharedString::from(format!("pane-{id}-{name}")),
+                icon,
+                tooltip,
+                model,
+            )
+            .debug_selector(move || format!("pane-{id}-{name}"))
+            .mr(px(0.0))
+            .on_click(cx.listener(move |model, _, window, cx| {
+                cx.stop_propagation();
+                model.focus_pane(id, cx);
+                if model.active_pane() == Some(id) {
+                    match action {
+                        Action::Right => model.split_pane(Direction::Right, cx),
+                        Action::Down => model.split_pane(Direction::Down, cx),
+                        Action::Zoom => model.toggle_zoom_pane(cx),
+                        Action::Close => model.close_pane(id, cx),
+                    }
+                }
+                model.focus_active(window, cx);
+            })),
         );
     }
     div()
