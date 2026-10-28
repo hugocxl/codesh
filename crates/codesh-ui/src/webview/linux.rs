@@ -109,8 +109,6 @@ pub(super) struct NativeWebview {
 }
 
 impl NativeWebview {
-    /// Opens a page that renders off screen, whoever draws it.
-
     /// Runs `job` for this page on the GTK thread, if the page is still open.
     fn with(&self, job: impl FnOnce(&Rc<Runtime>, &page::Page) + Send + 'static) {
         let id = self.id;

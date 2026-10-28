@@ -3,6 +3,7 @@
 use super::super::*;
 use crate::browser::Options;
 use crate::webview::linux::browser::NativeBrowser;
+use crate::webview::linux::post;
 use gpui::Keystroke;
 use polybrowser::Profile;
 use std::time::Duration;

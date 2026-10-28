@@ -27,8 +27,6 @@ pub(super) const TRUE: gboolean = 1;
 pub(super) const PRIORITY_DEFAULT: c_int = 0;
 /// `G_TYPE_STRING`.
 pub(super) const TYPE_STRING: GType = 16 << 2;
-/// `G_IO_ERROR_NOT_FOUND`.
-
 pub(super) const EVENT_MOTION_NOTIFY: c_int = 3;
 pub(super) const EVENT_BUTTON_PRESS: c_int = 4;
 pub(super) const EVENT_BUTTON_RELEASE: c_int = 7;
@@ -72,8 +70,6 @@ pub(super) const HIT_EDITABLE: c_uint = 1 << 5;
 pub(super) const NETWORK_ERROR_CANCELLED: c_int = 302;
 /// `WEBKIT_POLICY_ERROR_FRAME_LOAD_INTERRUPTED_BY_POLICY_CHANGE`.
 pub(super) const POLICY_ERROR_INTERRUPTED: c_int = 102;
-/// `SOUP_MESSAGE_HEADERS_RESPONSE`.
-
 #[repr(C)]
 pub(super) struct GError {
     pub(super) domain: GQuark,

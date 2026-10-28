@@ -22,7 +22,7 @@ use super::ffi::{
     GdkEventCrossing, GdkEventFocus, GdkEventKey, GdkEventMotion, GdkEventScroll,
     GdkEventSelection, GdkKeymapKey, GdkRGBA, GdkRectangle, TRUE, gboolean, gpointer,
 };
-use super::{Events, Job, Shared, post};
+use super::{Events, Job, Shared};
 use crate::tr;
 use crate::webview::{Event, MenuOption, OptionMenu, Pointer, Snapshot};
 
@@ -190,10 +190,13 @@ impl Runtime {
                     return;
                 }
             };
-            let context = browser
-                .as_ref()
-                .map(browser::State::context)
-                .expect("browser context");
+            let Some(context) = browser.as_ref().map(browser::State::context) else {
+                setup.events.browser(polybrowser::BrowserEvent::LoadFailed {
+                    url: setup.url,
+                    error: unloadable(),
+                });
+                return;
+            };
             let (manager, view) = web_view(g, context, data, browser.is_some());
             let window = offscreen_window(g, view, setup.transparent, data);
             Rc::new(Page {
@@ -221,15 +224,15 @@ impl Runtime {
             })
         };
         self.pages.borrow_mut().insert(page.id, page.clone());
-        if page.browser.is_some() {
-            if let Err(failure) = page.install_browser(self) {
-                page.events.browser(polybrowser::BrowserEvent::LoadFailed {
-                    url: setup.url,
-                    error: failure.to_string(),
-                });
-                self.close(page.id);
-                return;
-            }
+        if page.browser.is_some()
+            && let Err(failure) = page.install_browser(self)
+        {
+            page.events.browser(polybrowser::BrowserEvent::LoadFailed {
+                url: setup.url,
+                error: failure.to_string(),
+            });
+            self.close(page.id);
+            return;
         }
         let url = cstring(&setup.url);
         // SAFETY: The view is live and the URL a valid string.
@@ -1394,8 +1397,8 @@ unsafe extern "C" fn on_context_menu(
 ) -> gboolean {
     if let Some((runtime, page)) = target(data)
         && page.visible.get()
-        && let Events::Browser(sender, _) = &page.events
     {
+        let Events::Browser(sender, _) = &page.events;
         if unsafe { runtime.g.webkit_context_menu_get_n_items(menu) } == 0 {
             return TRUE;
         }
