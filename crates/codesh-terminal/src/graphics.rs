@@ -25,7 +25,7 @@ pub(crate) fn configure(engine: &mut Terminal<'_, '_>) -> Result<()> {
     graphics::set_png_decoder(Some(Box::new(PngDecoder)))?;
     engine.set_kitty_image_storage_limit(MAX_GRAPHICS_BYTES as u64)?;
     engine.set_kitty_image_from_file_allowed(false)?;
-    engine.set_kitty_image_from_temp_file_allowed(false)?;
+    engine.set_kitty_image_temp_file_directory(None)?;
     engine.set_kitty_image_from_shared_mem_allowed(false)?;
     Ok(())
 }

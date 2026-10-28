@@ -50,7 +50,7 @@ also on the Releases page. See [Getting started](docs/user-guide/getting-started
 ### Build from source
 
 You need [Rust](https://rustup.rs) (`rustup` installs the toolchain pinned in
-`rust-toolchain.toml`) and [Zig](https://ziglang.org) **0.15.2**, which builds
+`rust-toolchain.toml`) and [Zig](https://ziglang.org) **0.17.0**, which builds
 the Ghostty terminal library. Use exactly that Zig version.
 
 ```bash

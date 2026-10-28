@@ -241,22 +241,12 @@ pub struct Options {
     pub cols: u16,
     /// Terminal height in cells. Must be greater than zero.
     pub rows: u16,
-    /// Maximum number of lines to keep in scrollback history.
+    /// Maximum bytes of scrollback history to keep.
     pub max_scrollback: usize,
 }
 
-impl From<Options> for ffi::TerminalOptions {
-    fn from(value: Options) -> Self {
-        Self {
-            cols: value.cols,
-            rows: value.rows,
-            max_scrollback: value.max_scrollback,
-        }
-    }
-}
-
 /// Default visual style used when the cursor style is reset.
-#[repr(u32)]
+#[repr(i32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, int_enum::IntEnum)]
 #[non_exhaustive]
 pub enum CursorStyle {
@@ -291,12 +281,15 @@ impl<'alloc: 'cb, 'cb> Terminal<'alloc, 'cb> {
 
     unsafe fn new_inner(alloc: *const ffi::Allocator, opts: Options) -> Result<Self> {
         let mut raw: ffi::Terminal = std::ptr::null_mut();
-        let result = unsafe { ffi::ghostty_terminal_new(alloc, &raw mut raw, opts.into()) };
+        let result =
+            unsafe { ffi::ghostty_terminal_new(alloc, &raw mut raw, opts.cols, opts.rows) };
         from_result(result)?;
-        Ok(Self {
+        let terminal = Self {
             inner: Object::new(raw)?,
             vtable: Box::new(VTable::default()),
-        })
+        };
+        terminal.set(Opt::SCROLLBACK_MAX_BYTES, &opts.max_scrollback)?;
+        Ok(terminal)
     }
 
     /// Write VT-encoded data to the terminal for processing.
@@ -455,19 +448,40 @@ impl<'alloc: 'cb, 'cb> Terminal<'alloc, 'cb> {
 
     /// Get the current value of a terminal mode.
     pub fn mode(&self, mode: Mode) -> Result<bool> {
-        let mut value = false;
+        let mut config = ffi::TerminalModeConfig {
+            mode: mode.into(),
+            value: false,
+        };
         let result = unsafe {
-            ffi::ghostty_terminal_mode_get(self.inner.as_raw(), mode.into(), &raw mut value)
+            ffi::ghostty_terminal_get(
+                self.inner.as_raw(),
+                ffi::TerminalData::MODE,
+                std::ptr::from_mut(&mut config).cast(),
+            )
         };
         from_result(result)?;
-        Ok(value)
+        Ok(config.value)
     }
 
     /// Set the value of a terminal mode.
     pub fn set_mode(&mut self, mode: Mode, value: bool) -> Result<&mut Self> {
-        let result =
-            unsafe { ffi::ghostty_terminal_mode_set(self.inner.as_raw(), mode.into(), value) };
-        from_result(result)?;
+        let config = ffi::TerminalModeConfig {
+            mode: mode.into(),
+            value,
+        };
+        self.set(Opt::MODE, &config)?;
+        Ok(self)
+    }
+
+    /// Set the value a terminal mode returns to on reset, and apply it now.
+    ///
+    /// Only modes libghostty allows configuring this way are accepted.
+    pub fn set_mode_default(&mut self, mode: Mode, value: bool) -> Result<&mut Self> {
+        let config = ffi::TerminalModeConfig {
+            mode: mode.into(),
+            value,
+        };
+        self.set(Opt::MODE_DEFAULT, &config)?;
         Ok(self)
     }
 
@@ -714,12 +728,6 @@ impl<'alloc: 'cb, 'cb> Terminal<'alloc, 'cb> {
     /// Passing `None` resets to libghostty's built-in non-blinking default.
     pub fn set_default_cursor_blink(&mut self, v: Option<bool>) -> Result<&mut Self> {
         self.set_optional(Opt::DEFAULT_CURSOR_BLINK, v.as_ref())?;
-        Ok(self)
-    }
-
-    #[doc(hidden)]
-    pub fn set_default_grapheme_cluster(&mut self, v: Option<bool>) -> Result<&mut Self> {
-        self.set_optional(Opt::DEFAULT_GRAPHEME_CLUSTER, v.as_ref())?;
         Ok(self)
     }
 
@@ -1174,7 +1182,7 @@ impl From<TertiaryDeviceAttributes> for ffi::DeviceAttributesTertiary {
 
 /// Color scheme reported in response to a CSI ? 996 n query.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 #[expect(missing_docs, reason = "self-explanatory")]
 pub enum ColorScheme {
     Light = ffi::ColorScheme::LIGHT,
@@ -1220,7 +1228,7 @@ impl From<ColorScheme> for ffi::ColorScheme::Type {
 
 /// Amount of compression work to perform before returning.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, int_enum::IntEnum)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum CompressionMode {
     /// Perform one bounded compression step suitable for idle scheduling.
     Incremental = ffi::TerminalCompressionMode::INCREMENTAL,
@@ -1230,7 +1238,7 @@ pub enum CompressionMode {
 
 /// Scheduling result from terminal compression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, int_enum::IntEnum)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum CompressionResult {
     /// Retained-mapping reclamation is unavailable on this target.
     Unsupported = ffi::TerminalCompressionResult::UNSUPPORTED,
@@ -1361,7 +1369,7 @@ impl<'t> ClipboardContent<'t> {
 /// Protocol-specific destination identifiers are normalized to these values
 /// before the clipboard write callback is invoked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, int_enum::IntEnum)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum ClipboardLocation {
     /// The standard system clipboard.
     Standard = ffi::ClipboardLocation::STANDARD,
@@ -1376,7 +1384,7 @@ pub enum ClipboardLocation {
 /// Protocols without write acknowledgements, including OSC 52 and iTerm2
 /// OSC 1337 Copy, ignore this result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, int_enum::IntEnum)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum ClipboardWriteError {
     /// The clipboard write was denied by policy or the user.
     Denied = ffi::ClipboardWriteResult::DENIED,

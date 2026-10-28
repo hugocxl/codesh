@@ -8,7 +8,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MACHINE="${CODESH_LINUX_MACHINE:-codesh-linux-x86}"
-ZIG_VERSION=0.15.2
+ZIG_VERSION=0.17.0
 OUTPUT="$ROOT/target/linux-dev"
 ARCHIVE="$OUTPUT/codesh-dev-linux-x86_64.tar.gz"
 

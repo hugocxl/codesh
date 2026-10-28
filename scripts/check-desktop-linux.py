@@ -27,7 +27,7 @@ def main():
     wrapper = ROOT / "scripts/zig"
     zig = os.environ.get("CODESH_ZIG") or shutil.which("zig")
     if not zig or Path(zig).resolve() == (wrapper / "zig").resolve():
-        raise ValueError("Install Zig 0.15.2 or set CODESH_ZIG to it before running the Linux desktop check")
+        raise ValueError("Install Zig 0.17.0 or set CODESH_ZIG to it before running the Linux desktop check")
     env = {
         **os.environ,
         "CODESH_ZIG": zig,

@@ -261,10 +261,17 @@ impl Terminal<'_, '_> {
     pub fn is_kitty_image_from_file_allowed(&self) -> Result<bool> {
         self.get(ffi::TerminalData::KITTY_IMAGE_MEDIUM_FILE)
     }
-    /// Whether the temporary file medium is enabled for Kitty image loading
-    /// on the active screen.
-    pub fn is_kitty_image_from_temp_file_allowed(&self) -> Result<bool> {
-        self.get(ffi::TerminalData::KITTY_IMAGE_MEDIUM_TEMP_FILE)
+    /// The directory allowed for Kitty image loading via the temporary file
+    /// medium on the active screen, or `None` when that medium is disabled.
+    pub fn kitty_image_temp_file_directory(&self) -> Result<Option<Vec<u8>>> {
+        let directory = self.get::<ffi::String>(ffi::TerminalData::KITTY_IMAGE_MEDIUM_TEMP_FILE)?;
+        if directory.len == 0 {
+            return Ok(None);
+        }
+        // SAFETY: libghostty returns a pointer to `len` bytes that it owns
+        // while the terminal is live, and the terminal is borrowed here.
+        let bytes = unsafe { std::slice::from_raw_parts(directory.ptr, directory.len) };
+        Ok(Some(bytes.to_vec()))
     }
     /// Whether the shared memory medium is enabled for Kitty image loading
     /// on the active screen.
@@ -287,11 +294,23 @@ impl Terminal<'_, '_> {
         self.set(ffi::TerminalOption::KITTY_IMAGE_MEDIUM_FILE, &allowed)?;
         Ok(self)
     }
-    /// Enable or disable Kitty image loading via the temporary file medium.
+    /// Allow Kitty image loading via the temporary file medium from files
+    /// inside `directory`, or disable that medium with `None`.
     ///
-    /// Has no effect when Kitty graphics are disabled at build time.
-    pub fn set_kitty_image_from_temp_file_allowed(&mut self, allowed: bool) -> Result<&mut Self> {
-        self.set(ffi::TerminalOption::KITTY_IMAGE_MEDIUM_TEMP_FILE, &allowed)?;
+    /// The directory is copied into the terminal. Has no effect when Kitty
+    /// graphics are disabled at build time.
+    pub fn set_kitty_image_temp_file_directory(
+        &mut self,
+        directory: Option<&[u8]>,
+    ) -> Result<&mut Self> {
+        let directory = directory.map(|directory| ffi::String {
+            ptr: directory.as_ptr(),
+            len: directory.len(),
+        });
+        self.set_optional(
+            ffi::TerminalOption::KITTY_IMAGE_MEDIUM_TEMP_FILE,
+            directory.as_ref(),
+        )?;
         Ok(self)
     }
     /// Enable or disable Kitty image loading via the shared memory medium.
@@ -771,7 +790,7 @@ pub struct SourceRect {
 
 /// Z-layer classification for kitty graphics placements.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, int_enum::IntEnum)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum Layer {
     /// Match all placements; apply no filtering (default behavior).
     #[default]
@@ -788,7 +807,7 @@ pub enum Layer {
 /// Pixel format of a Kitty graphics image.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, int_enum::IntEnum)]
 #[non_exhaustive]
-#[repr(u32)]
+#[repr(i32)]
 #[expect(missing_docs, reason = "missing upstream docs")]
 pub enum ImageFormat {
     #[default]
@@ -802,7 +821,7 @@ pub enum ImageFormat {
 /// Compression of a Kitty graphics image.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, int_enum::IntEnum)]
 #[non_exhaustive]
-#[repr(u32)]
+#[repr(i32)]
 #[expect(missing_docs, reason = "missing upstream docs")]
 pub enum Compression {
     #[default]

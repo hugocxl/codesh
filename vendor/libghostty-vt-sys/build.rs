@@ -6,7 +6,7 @@ use std::process::Command;
 
 /// Pinned ghostty commit. Update this to pull a newer version.
 const GHOSTTY_REPO: &str = "https://github.com/ghostty-org/ghostty.git";
-const GHOSTTY_COMMIT: &str = "a887df42c56f6de86c0fe6da9c4eeca37931e083";
+const GHOSTTY_COMMIT: &str = "6ba144158577d033ccb6ed4b574e4013957c9161";
 
 #[derive(Clone, Copy)]
 enum LinkMode {
@@ -83,7 +83,6 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=patch.rs");
     println!("cargo:rerun-if-changed=patches/clear-screen.patch");
-    println!("cargo:rerun-if-changed=patches/grapheme-cluster.patch");
 
     // An explicit source override should stay authoritative even when the
     // pkg-config feature is enabled, so local Ghostty checkouts remain easy to
@@ -252,10 +251,9 @@ fn try_pkg_config(link_mode: LinkMode) -> bool {
         lib.include_paths.iter().any(|path| {
             std::fs::read_to_string(path.join("ghostty/vt/terminal.h")).is_ok_and(|header| {
                 header.contains("ghostty_terminal_clear_screen(")
-                    && header.contains("GHOSTTY_TERMINAL_OPT_DEFAULT_GRAPHEME_CLUSTER")
             })
         }),
-        "Codesh requires libghostty-vt with patches/clear-screen.patch and patches/grapheme-cluster.patch applied"
+        "Codesh requires libghostty-vt with patches/clear-screen.patch applied"
     );
     if let LinkMode::Static = link_mode {
         emit_static_pkg_config_metadata(&lib);

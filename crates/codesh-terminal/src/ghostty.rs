@@ -72,7 +72,7 @@ impl Terminal {
         engine
             .set_default_cursor_blink(Some(true))
             .map_err(create)?
-            .set_default_grapheme_cluster(Some(true))
+            .set_mode_default(Mode::GRAPHEME_CLUSTER, true)
             .map_err(create)?;
         crate::graphics::configure(&mut engine).map_err(create)?;
         engine.resize(size.cols, size.rows, 8, 16).map_err(create)?;
