@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use codesh_app_core::{AppState, Color, PaneContent, ProjectId, ServerId};
+use codesh_app_core::{AppState, PaneContent, ProjectId, ServerId};
 use codesh_protocol::SessionId;
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -28,8 +28,6 @@ fn missing_projects_preserve_tabs_and_only_allow_removal() -> TestResult {
     assert!(state.select_project(project).is_err());
     assert!(state.select_tab(project, tab).is_err());
     assert!(state.rename_project(project, "Gone").is_err());
-    assert!(state.set_project_icon(project, None).is_err());
-    assert!(state.set_project_color(project, Color::default()).is_err());
     assert!(state.move_project(project, 1).is_err());
     let json = serde_json::to_value(&state)?;
     assert!(json["projects"][1].get("status").is_none());

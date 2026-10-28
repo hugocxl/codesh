@@ -71,7 +71,6 @@ id!(ServerIdentity);
 id!(DeviceId);
 
 use crate::{ErrorCode, ServerPath, SessionId, SessionInfo};
-use unicode_segmentation::UnicodeSegmentation;
 
 pub const CATALOG_PAGE_SIZE: usize = 128;
 pub const MAX_PROJECTS: usize = 4096;
@@ -94,69 +93,36 @@ pub struct ProjectDescriptor {
     pub directory: ServerPath,
     #[n(3)]
     pub name: String,
-    #[n(4)]
-    pub icon: Option<String>,
-    #[serde(default)]
-    #[n(5)]
-    #[cbor(with = "crate::wire::cbor::bytes")]
-    pub logo: Option<std::sync::Arc<[u8]>>,
-    #[n(6)]
-    pub color: String,
     #[n(7)]
     pub kind: Option<ProjectKind>,
     #[n(8)]
     pub parent_id: Option<ProjectId>,
 }
 
-/// The colors a new project picks from.
-pub const PROJECT_COLORS: [&str; 12] = [
-    "#e5484d", "#f76b15", "#f5a623", "#ebcb00", "#9bcd1e", "#30a46c", "#12a594", "#05a2c2",
-    "#3e63dd", "#5b5bd6", "#8e4ec6", "#d6409f",
-];
-
 impl ProjectDescriptor {
-    /// A new project, named after its folder, in a random color that none of
-    /// `taken` uses, while one is left.
-    pub fn new<'a>(directory: ServerPath, taken: impl IntoIterator<Item = &'a str>) -> Self {
+    /// A new project, named after its folder.
+    pub fn new(directory: ServerPath) -> Self {
         let name = directory
             .0
             .rsplit(|byte| *byte == b'/')
             .find(|part| !part.is_empty())
             .unwrap_or(&directory.0);
         let name = String::from_utf8_lossy(name).into_owned();
-        Self::create(false, name, directory, taken)
+        Self::create(false, name, directory)
     }
 
-    /// A server's Home, in the user's home folder, in a random color.
+    /// A server's Home, in the user's home folder.
     pub fn home(directory: ServerPath) -> Self {
-        Self::create(true, "Home".into(), directory, [])
+        Self::create(true, "Home".into(), directory)
     }
 
     /// Every app and server makes new projects here.
-    fn create<'a>(
-        home: bool,
-        name: String,
-        directory: ServerPath,
-        taken: impl IntoIterator<Item = &'a str>,
-    ) -> Self {
-        let id = ProjectId::new();
-        let taken: Vec<_> = taken.into_iter().collect();
-        let mut colors: Vec<_> = PROJECT_COLORS
-            .into_iter()
-            .filter(|color| !taken.iter().any(|used| used.eq_ignore_ascii_case(color)))
-            .collect();
-        if colors.is_empty() {
-            colors = PROJECT_COLORS.to_vec();
-        }
-        let color = colors[usize::from(id.0.as_bytes()[15]) % colors.len()];
+    fn create(home: bool, name: String, directory: ServerPath) -> Self {
         Self {
-            id,
+            id: ProjectId::new(),
             home,
             directory,
             name,
-            icon: None,
-            logo: None,
-            color: color.into(),
             kind: None,
             parent_id: None,
         }
@@ -164,9 +130,6 @@ impl ProjectDescriptor {
 
     pub fn validate(&self) -> Result<(), ErrorCode> {
         validate_name(&self.name)?;
-        validate_icon(self.icon.as_deref())?;
-        validate_color(&self.color)?;
-        validate_logo(self.logo.as_deref())?;
         if !self.directory.0.starts_with(b"/")
             || self.directory.0.len() > 4096
             || self.directory.0.contains(&0)
@@ -188,99 +151,21 @@ fn validate_name(name: &str) -> Result<(), ErrorCode> {
     }
 }
 
-fn validate_icon(icon: Option<&str>) -> Result<(), ErrorCode> {
-    if icon.is_some_and(|value| {
-        value.len() > 128
-            || value.trim().is_empty()
-            || (value.graphemes(true).count() != 1 && !is_project_symbol(value))
-    }) {
-        Err(ErrorCode::BadRequest)
-    } else {
-        Ok(())
-    }
-}
-
-/// SF Symbol names are tagged so existing one-grapheme icons keep their meaning.
-pub fn is_project_symbol(value: &str) -> bool {
-    value.strip_prefix("sf:").is_some_and(|name| {
-        !name.is_empty()
-            && name.len() <= 125
-            && name
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'.')
-    })
-}
-
-pub const MAX_PROJECT_LOGO_BYTES: usize = 300 * 1024;
-
-fn validate_logo(logo: Option<&[u8]>) -> Result<(), ErrorCode> {
-    let Some(bytes) = logo else {
-        return Ok(());
-    };
-    if bytes.len() > MAX_PROJECT_LOGO_BYTES
-        || bytes.len() < 33
-        || !bytes.starts_with(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR")
-    {
-        return Err(ErrorCode::BadRequest);
-    }
-    let width = u32::from_be_bytes(
-        bytes[16..20]
-            .try_into()
-            .map_err(|_| ErrorCode::BadRequest)?,
-    );
-    let height = u32::from_be_bytes(
-        bytes[20..24]
-            .try_into()
-            .map_err(|_| ErrorCode::BadRequest)?,
-    );
-    if width == 0 || width > 256 || height != width {
-        return Err(ErrorCode::BadRequest);
-    }
-    Ok(())
-}
-
-fn validate_color(color: &str) -> Result<(), ErrorCode> {
-    if color.len() == 7
-        && color.starts_with('#')
-        && color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
-    {
-        Ok(())
-    } else {
-        Err(ErrorCode::BadRequest)
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub enum ProjectPatch {
     #[n(0)]
     Name(#[n(0)] String),
-    #[n(1)]
-    Icon(#[n(0)] Option<String>),
-    #[n(2)]
-    Color(#[n(0)] String),
-    #[n(3)]
-    Logo(
-        #[n(0)]
-        #[cbor(with = "crate::wire::cbor::bytes")]
-        Option<std::sync::Arc<[u8]>>,
-    ),
 }
 
 impl ProjectPatch {
     pub fn validate(&self) -> Result<(), ErrorCode> {
         match self {
             Self::Name(name) => validate_name(name),
-            Self::Icon(icon) => validate_icon(icon.as_deref()),
-            Self::Color(color) => validate_color(color),
-            Self::Logo(logo) => validate_logo(logo.as_deref()),
         }
     }
     pub fn apply(&self, project: &mut ProjectDescriptor) {
         match self {
             Self::Name(name) => project.name = name.trim().into(),
-            Self::Icon(icon) => project.icon.clone_from(icon),
-            Self::Color(color) => project.color = color.to_ascii_lowercase(),
-            Self::Logo(logo) => project.logo.clone_from(logo),
         }
     }
 }

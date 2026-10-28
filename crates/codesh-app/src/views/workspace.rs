@@ -991,7 +991,6 @@ impl Render for AppModel {
             self.sync_native_surfaces(window, cx);
         }
         self.prepare_workspace(window, cx);
-        self.sync_project_logos(window, cx);
         #[cfg(all(target_os = "macos", not(test)))]
         self.sync_background_effects(window, cx);
         self.window_buttons = if cfg!(target_os = "macos") && !window.is_fullscreen() {

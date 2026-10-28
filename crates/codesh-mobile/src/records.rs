@@ -52,11 +52,6 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub directory: String,
-    pub color: String,
-    /// An emoji, or an SF Symbol name prefixed with `sf:`.
-    pub icon: Option<String>,
-    /// A square PNG.
-    pub logo: Option<Vec<u8>>,
     pub parent_id: Option<String>,
     pub is_home: bool,
     pub is_worktree: bool,
@@ -68,9 +63,6 @@ impl From<&ProjectDescriptor> for Project {
             id: project.id.to_string(),
             name: project.name.clone(),
             directory: String::from_utf8_lossy(&project.directory.0).into_owned(),
-            color: project.color.clone(),
-            icon: project.icon.clone(),
-            logo: project.logo.as_deref().map(<[u8]>::to_vec),
             parent_id: project.parent_id.map(|parent| parent.to_string()),
             is_home: project.home,
             is_worktree: project.kind == Some(ProjectKind::Worktree),

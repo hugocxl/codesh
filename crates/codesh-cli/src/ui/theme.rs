@@ -88,23 +88,3 @@ pub(crate) fn activity_label(indicator: ActivityIndicator) -> &'static str {
         ActivityIndicator::Blocked => "needs you",
     }
 }
-
-/// A project's color, from its `#rrggbb` setting.
-pub(crate) fn project(color: &str) -> Style {
-    let channel = |range: std::ops::Range<usize>| {
-        color
-            .get(range)
-            .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-    };
-    match (
-        color.starts_with('#'),
-        channel(1..3),
-        channel(3..5),
-        channel(5..7),
-    ) {
-        (true, Some(red), Some(green), Some(blue)) if color.len() == 7 => {
-            Style::new().fg(Color::Rgb(red, green, blue))
-        }
-        _ => accent(),
-    }
-}

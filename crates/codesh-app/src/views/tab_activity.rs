@@ -686,10 +686,14 @@ fn ring_path(
 }
 
 pub(super) fn provider_icon(provider: AgentProvider, size: Pixels, model: &AppModel) -> AnyElement {
+    if provider == AgentProvider::Claude {
+        return gpui::img("icons/provider-claude.svg")
+            .size(size)
+            .into_any_element();
+    }
     // Full-colour logos. Codex and Grok are single-colour marks that would
     // vanish on one of the themes, so they keep their tinted outlines.
     let logo = match provider {
-        AgentProvider::Claude => Some("claude"),
         AgentProvider::OpenCode => Some("opencode"),
         AgentProvider::Cursor => Some("cursor"),
         AgentProvider::Copilot => Some("copilot"),

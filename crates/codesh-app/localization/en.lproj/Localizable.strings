@@ -124,15 +124,10 @@
 "App update waiting for %lld sessions" = "App update waiting for %lld sessions";
 "Appearance" = "Appearance";
 "Appended after the configured prompt for this action only." = "Appended after the configured prompt for this action only.";
-"Apply" = "Apply";
 "Apply %@ to pull request #%lld (%@) at its reviewed commit %@? Afterwards Codesh asks to remove this worktree and switches to the primary checkout." = "Apply %@ to pull request #%lld (%@) at its reviewed commit %@? Afterwards Codesh asks to remove this worktree and switches to the primary checkout.";
 "Apply %@ to pull request #%lld (%@) at its reviewed commit %@? Afterwards Codesh switches this repository to %@ and fast-forwards it, unless another worktree has it checked out." = "Apply %@ to pull request #%lld (%@) at its reviewed commit %@? Afterwards Codesh switches this repository to %@ and fast-forwards it, unless another worktree has it checked out.";
-"Apply Layout" = "Apply Layout";
-"Apply Layout?" = "Apply Layout?";
-"Apply Layout…" = "Apply Layout…";
 "Apply Proxy" = "Apply Proxy";
 "Apply opacity to colored cells" = "Apply opacity to colored cells";
-"Apply “%@” to “%@”? This replaces all of this project's tabs, including pinned tabs, and runs the layout's commands. Terminals no longer shown by any app will end. Only apply layouts you trust." = "Apply “%@” to “%@”? This replaces all of this project's tabs, including pinned tabs, and runs the layout's commands. Terminals no longer shown by any app will end. Only apply layouts you trust.";
 "Ask before ending a running command. Detaching never requires confirmation." = "Ask before ending a running command. Detaching never requires confirmation.";
 "Asked when connecting if empty" = "Asked when connecting if empty";
 "Audio capture is unavailable" = "Audio capture is unavailable";
@@ -216,11 +211,8 @@
 "Choose Folder" = "Choose Folder";
 "Choose Folder…" = "Choose Folder…";
 "Choose Font…" = "Choose Font…";
-"Choose Icon…" = "Choose Icon…";
-"Choose Logo" = "Choose Logo";
-"Choose Tab Focused from the layout menu at the top of the expanded sidebar to list every project's tabs there. By default, ⌘1–⌘9 then select tabs across projects." = "Choose Tab Focused from the layout menu at the top of the expanded sidebar to list every project's tabs there. By default, ⌘1–⌘9 then select tabs across projects.";
+"Choose Switch Workspace… in the command palette to show one workspace in the sidebar. Click ⚙ next to a project → Workspaces to add it to one." = "Choose Switch Workspace… in the command palette to show one workspace in the sidebar. Click ⚙ next to a project → Workspaces to add it to one.";
 "Choose a .codesh backup. Review the import before applying it on the next launch." = "Choose a .codesh backup. Review the import before applying it on the next launch.";
-"Choose a PNG, JPEG, GIF, or WebP image up to 8192 pixels and 64 MB decoded." = "Choose a PNG, JPEG, GIF, or WebP image up to 8192 pixels and 64 MB decoded.";
 "Choose a branch…" = "Choose a branch…";
 "Choose a folder inside the home folder on %@." = "Choose a folder inside the home folder on %@.";
 "Choose a folder inside the home folder on the server." = "Choose a folder inside the home folder on the server.";
@@ -230,7 +222,6 @@
 "Choose a supported dictation language in Settings → Composer." = "Choose a supported dictation language in Settings → Composer.";
 "Choose a target branch that exists on the remote" = "Choose a target branch that exists on the remote";
 "Choose an existing folder, or use Create & Add Project." = "Choose an existing folder, or use Create & Add Project.";
-"Choose an image smaller than 20 MB." = "Choose an image smaller than 20 MB.";
 "Choose an installed on-device speech language." = "Choose an installed on-device speech language.";
 "Choose file…" = "Choose file…";
 "Choose the initial blink behavior. Terminal programs can change it." = "Choose the initial blink behavior. Terminal programs can change it.";
@@ -362,7 +353,6 @@
 "Could not check for or download the latest app update: %@" = "Could not check for or download the latest app update: %@";
 "Could not check the running process: %@" = "Could not check the running process: %@";
 "Could not choose a key file: %@" = "Could not choose a key file: %@";
-"Could not choose logo: %@" = "Could not choose logo: %@";
 "Could not clear terminal panes: %@" = "Could not clear terminal panes: %@";
 "Could not configure microphone capture" = "Could not configure microphone capture";
 "Could not create folder: %@" = "Could not create folder: %@";
@@ -371,9 +361,6 @@
 "Could not install the update: %@" = "Could not install the update: %@";
 "Could not install update (%@) or restore the previous app (%@). The previous app is at %@" = "Could not install update (%@) or restore the previous app (%@). The previous app is at %@";
 "Could not install update; the previous app was restored: %@" = "Could not install update; the previous app was restored: %@";
-"Could not load .codesh/layouts: %@" = "Could not load .codesh/layouts: %@";
-"Could not load layout “%@”: %@" = "Could not load layout “%@”: %@";
-"Could not load logo: %@" = "Could not load logo: %@";
 "Could not load match" = "Could not load match";
 "Could not load themes from %@: %@" = "Could not load themes from %@: %@";
 "Could not mark activity read: %@" = "Could not mark activity read: %@";
@@ -442,7 +429,6 @@
 "Creating branch" = "Creating branch";
 "Creating worktree" = "Creating worktree";
 "Creating…" = "Creating…";
-"Crop Logo" = "Crop Logo";
 "Current device" = "Current device";
 "Current pane" = "Current pane";
 "Cursor" = "Cursor";
@@ -501,7 +487,6 @@
 "Downloading app update…" = "Downloading app update…";
 "Draft" = "Draft";
 "Draft · Open" = "Draft · Open";
-"Drag to reposition, scroll to zoom" = "Drag to reposition, scroll to zoom";
 "Draw terminal text with a heavier stroke." = "Draw terminal text with a heavier stroke.";
 "Each profile keeps its own cookies, cache, history, and logins. Pick a profile per tab from the browser toolbar." = "Each profile keeps its own cookies, cache, history, and logins. Pick a profile per tab from the browser toolbar.";
 "Edit" = "Edit";
@@ -548,7 +533,6 @@
 "File not found" = "File not found";
 "Files" = "Files";
 "Fill padding with the background color, or extend the color of the nearest cells." = "Fill padding with the background color, or extend the color of the nearest cells.";
-"Filter layouts…" = "Filter layouts…";
 "Filter providers" = "Filter providers";
 "Filter terminals or owners…" = "Filter terminals or owners…";
 "Find" = "Find";
@@ -622,7 +606,6 @@
 "How much heavier text is drawn when Thicken font is on." = "How much heavier text is drawn when Thicken font is on.";
 "How much of the macOS background effect shows through the theme color, from 0 to 100. Collapsed sidebars stay solid." = "How much of the macOS background effect shows through the theme color, from 0 to 100. Collapsed sidebars stay solid.";
 "How opaque the cursor is." = "How opaque the cursor is.";
-"Icon" = "Icon";
 "Icons" = "Icons";
 "Identity file" = "Identity file";
 "Identity file (automatic)" = "Identity file (automatic)";
@@ -636,8 +619,8 @@
 "Imported %lld visits and %lld bookmarks from %@" = "Imported %lld visits and %lld bookmarks from %@";
 "Imported settings" = "Imported settings";
 "Imports go into the default profile. Cookies bring your sign-ins; macOS may ask to allow access to the browser's key." = "Imports go into the default profile. Cookies bring your sign-ins; macOS may ask to allow access to the browser's key.";
+"In a Git project, click + next to the project name to create a worktree: a branch in its own folder with its own terminals." = "In a Git project, click + next to the project name to create a worktree: a branch in its own folder with its own terminals.";
 "In a Git project, click Commit in the status bar. Choose the AI CLI, whether to include unstaged changes, and whether to push. The CLI writes the message and Codesh commits." = "In a Git project, click Commit in the status bar. Choose the AI CLI, whether to include unstaged changes, and whether to push. The CLI writes the message and Codesh commits.";
-"In a Git project, right-click the project and choose Worktrees → Show Worktrees, then New Worktree…, to work on a branch in its own folder with its own tabs." = "In a Git project, right-click the project and choose Worktrees → Show Worktrees, then New Worktree…, to work on a branch in its own folder with its own tabs.";
 "Include providers" = "Include providers";
 "Include unstaged changes" = "Include unstaged changes";
 "Increase Font Size" = "Increase Font Size";
@@ -712,8 +695,6 @@
 "Load the current device's settings to edit them." = "Load the current device's settings to edit them.";
 "Loading branches…" = "Loading branches…";
 "Loading folders…" = "Loading folders…";
-"Loading layouts…" = "Loading layouts…";
-"Loading layout…" = "Loading layout…";
 "Loading mobile access" = "Loading mobile access";
 "Loading mobile access…" = "Loading mobile access…";
 "Loading on-device languages…" = "Loading on-device languages…";
@@ -820,7 +801,6 @@
 "No custom commands yet." = "No custom commands yet.";
 "No custom key bindings yet." = "No custom key bindings yet.";
 "No fonts found" = "No fonts found";
-"No layouts found in .codesh/layouts" = "No layouts found in .codesh/layouts";
 "No matches" = "No matches";
 "No matching commands" = "No matching commands";
 "No matching folders" = "No matching folders";
@@ -844,7 +824,6 @@
 "No remote servers yet." = "No remote servers yet.";
 "No settings found. Try another search." = "No settings found. Try another search.";
 "No speech detected. Try again or press Esc to close." = "No speech detected. Try again or press Esc to close.";
-"No symbols found" = "No symbols found";
 "No terminal" = "No terminal";
 "No update for this platform" = "No update for this platform";
 "Not Now" = "Not Now";
@@ -951,6 +930,7 @@
 "Profiles keep cookies and logins apart. New browser panes use the default profile." = "Profiles keep cookies and logins apart. New browser panes use the default profile.";
 "Project" = "Project";
 "Project %lld" = "Project %lld";
+"Project Settings" = "Project Settings";
 "Project edit is pending: %@" = "Project edit is pending: %@";
 "Project editor" = "Project editor";
 "Project folder is missing" = "Project folder is missing";
@@ -983,7 +963,6 @@
 "Rebase and Merge" = "Rebase and Merge";
 "Reconnect" = "Reconnect";
 "Reconnect %lld Servers" = "Reconnect %lld Servers";
-"Reconnect to load project layouts" = "Reconnect to load project layouts";
 "Reconnect to see existing terminals" = "Reconnect to see existing terminals";
 "Reconnect to use Git" = "Reconnect to use Git";
 "Record Key" = "Record Key";
@@ -1002,8 +981,6 @@
 "Remote project on %@" = "Remote project on %@";
 "Remove" = "Remove";
 "Remove %lld Servers…" = "Remove %lld Servers…";
-"Remove Icon" = "Remove Icon";
-"Remove Logo" = "Remove Logo";
 "Remove Project?" = "Remove Project?";
 "Remove Project…" = "Remove Project…";
 "Remove Proxy" = "Remove Proxy";
@@ -1112,7 +1089,6 @@
 "Search providers…" = "Search providers…";
 "Search servers…" = "Search servers…";
 "Search sessions…" = "Search sessions…";
-"Search symbols…" = "Search symbols…";
 "Search with %@ or enter a website address." = "Search with %@ or enter a website address.";
 "Search worktrees…" = "Search worktrees…";
 "Searches typed in the address bar use this engine." = "Searches typed in the address bar use this engine.";
@@ -1170,7 +1146,6 @@
 "Session exited · Saved output unavailable" = "Session exited · Saved output unavailable";
 "Session exited · Signal %lld" = "Session exited · Signal %lld";
 "Sessions" = "Sessions";
-"Set Logo…" = "Set Logo…";
 "Set Up Proxy…" = "Set Up Proxy…";
 "Settings close" = "Settings close";
 "Settings focus navbar" = "Settings focus navbar";
@@ -1314,7 +1289,6 @@
 "The development build at %@ is uploaded to %@. It installs codesh-server and its codesh helper in ~/.local/bin, then tests the connection. It requires x86_64 Linux with glibc 2.35 or newer." = "The development build at %@ is uploaded to %@. It installs codesh-server and its codesh helper in ~/.local/bin, then tests the connection. It requires x86_64 Linux with glibc 2.35 or newer.";
 "The device disconnects now and must be paired again to reconnect." = "The device disconnects now and must be paired again to reconnect.";
 "The folder operation was cancelled." = "The folder operation was cancelled.";
-"The image is empty." = "The image is empty.";
 "The installed app changed. Reopen Codesh to update the server." = "The installed app changed. Reopen Codesh to update the server.";
 "The installed app changed. Reopen it before installing the command line tool." = "The installed app changed. Reopen it before installing the command line tool.";
 "The installed app changed. Reopen it before updating." = "The installed app changed. Reopen it before updating.";
@@ -1329,7 +1303,6 @@
 "The project directory isn't available on this Mac" = "The project directory isn't available on this Mac";
 "The project is no longer available." = "The project is no longer available.";
 "The project or home directory could not be found." = "The project or home directory could not be found.";
-"The project's tabs changed. Choose the layout again to confirm replacement." = "The project's tabs changed. Choose the layout again to confirm replacement.";
 "The proxy settings contain characters that can't be used" = "The proxy settings contain characters that can't be used";
 "The selected AI provider \"%@\" is no longer supported. Choose another one in Settings → AI." = "The selected AI provider \"%@\" is no longer supported. Choose another one in Settings → AI.";
 "The server changed. Review the update again." = "The server changed. Review the update again.";
@@ -1416,8 +1389,6 @@
 "Unexpected Git status reply" = "Unexpected Git status reply";
 "Unexpected backup entry: %@" = "Unexpected backup entry: %@";
 "Unexpected changes preview reply" = "Unexpected changes preview reply";
-"Unexpected layout directory response" = "Unexpected layout directory response";
-"Unexpected layout file response" = "Unexpected layout file response";
 "Unexpected remote branches reply" = "Unexpected remote branches reply";
 "Unexpected reply" = "Unexpected reply";
 "Unexpected update download location" = "Unexpected update download location";
@@ -1467,7 +1438,6 @@
 "Use bright ANSI colors for bold text in the first eight palette colors." = "Use bright ANSI colors for bold text in the first eight palette colors.";
 "Use existing branch" = "Use existing branch";
 "Use for the whole app" = "Use for the whole app";
-"Use the filter at the top of the expanded sidebar to show one workspace or Focus Current Project. Right-click a project → Workspaces to add it to one." = "Use the filter at the top of the expanded sidebar to show one workspace or Focus Current Project. Right-click a project → Workspaces to add it to one.";
 "User" = "User";
 "Value" = "Value";
 "Vertical padding (points)" = "Vertical padding (points)";

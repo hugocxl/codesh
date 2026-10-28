@@ -10,7 +10,11 @@ on that server; splits, workspaces, and project order are kept by each app.
   Project…**, or `Cmd+O`. Type to search folders, or type a path. With remote
   servers set up, choose **Local** or a server.
 - `codesh <folder>` in a shell opens a folder in the desktop app.
-- Right-click a project to rename it, or change its icon, logo, or color.
+- The gear next to a project's name opens its menu: rename it, add it to
+  workspaces, show its worktrees, or copy its path.
+- A project shows its own icon next to its name when it has one: an `.icns`,
+  `.ico`, or an `icon`/`logo` PNG at its root or in a folder such as `assets`,
+  `resources`, `public`, or `packaging`. Git-ignored folders aren't searched.
 - **Remove Project…** removes it from every app and ends its terminals. Files
   stay on disk.
 - If a project's folder disappears, it shows as missing and can only be
@@ -43,7 +47,8 @@ removes its projects.
 ## Worktrees
 
 For Git projects, worktrees appear under their project and have their own
-workspace of panes. Turn them on with **Worktrees → Show Worktrees** in the project menu.
+workspace of panes. Click **+** next to a Git project's name to create one, or
+hide them with **Show Worktrees** in the project menu.
 Worktrees created outside Codesh show up on their own.
 
 **Switch Worktree…** (`Cmd+Opt+W`) lists the current project and its
@@ -85,8 +90,3 @@ Codesh can run commands when it creates or removes a worktree. List them in
   `CODESH_WORKTREE_PATH`, `CODESH_WORKTREE_NAME`, and `CODESH_WORKTREE_BRANCH`. They
   share a five-minute limit.
 - A failed setup keeps the new worktree. A failed teardown stops the removal.
-
-## Layouts
-
-Check a `.codesh/layouts/` folder into a project to open a ready-made set of
-split terminals. See [Layouts](../layouts/overview.md).

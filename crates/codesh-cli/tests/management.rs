@@ -94,8 +94,6 @@ fn projects_settings_files_exec_and_activity_are_scriptable() -> Result {
     let f = Fixture::new()?;
     let project = f.project()?;
     f.ok(&["project", "rename", &project, "Renamed"])?;
-    f.ok(&["project", "set-color", &project, "#123456"])?;
-    f.ok(&["project", "set-icon", &project, "sf:terminal"])?;
     let listed = f.json(&["project", "list", "--json"])?;
     let found = listed
         .as_array()
@@ -104,8 +102,6 @@ fn projects_settings_files_exec_and_activity_are_scriptable() -> Result {
         .find(|p| p["id"] == project)
         .ok_or("project")?;
     assert_eq!(found["name"], "Renamed");
-    assert_eq!(found["color"], "#123456");
-    assert_eq!(found["icon"], "sf:terminal");
     f.shell()?;
     assert_eq!(f.json(&["settings", "get"])?["default_shell"], "/bin/sh");
     assert!(

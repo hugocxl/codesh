@@ -24,13 +24,10 @@ pub(crate) const TIPS: &[&str] = &[
         "By default, ⌘⇧P opens the command palette. Choose Switch Project… to jump to any project or worktree by name."
     ),
     tr_key!(
-        "Use the filter at the top of the expanded sidebar to show one workspace or Focus Current Project. Right-click a project → Workspaces to add it to one."
+        "Choose Switch Workspace… in the command palette to show one workspace in the sidebar. Click ⚙ next to a project → Workspaces to add it to one."
     ),
     tr_key!(
-        "Choose Tab Focused from the layout menu at the top of the expanded sidebar to list every project's tabs there. By default, ⌘1–⌘9 then select tabs across projects."
-    ),
-    tr_key!(
-        "In a Git project, right-click the project and choose Worktrees → Show Worktrees, then New Worktree…, to work on a branch in its own folder with its own tabs."
+        "In a Git project, click + next to the project name to create a worktree: a branch in its own folder with its own terminals."
     ),
     tr_key!(
         "To pair a phone, turn on Settings → Mobile → Allow mobile devices and click Show Pairing Code, or run codesh mobile enable and then codesh mobile pair."

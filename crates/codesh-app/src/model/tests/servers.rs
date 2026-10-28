@@ -20,9 +20,6 @@ pub(super) fn descriptor(id: ProjectId, home: bool, name: &str) -> ProjectDescri
         home,
         directory: ServerPath(format!("/home/dev/{name}").into_bytes()),
         name: name.into(),
-        icon: None,
-        logo: None,
-        color: "#808080".into(),
         kind: None,
         parent_id: None,
     }

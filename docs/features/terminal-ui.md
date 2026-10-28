@@ -61,6 +61,5 @@ screen; then hold `Shift`.
 
 ## Not supported
 
-The terminal UI has no custom key bindings or
-[project layouts](../layouts/overview.md), and doesn't show images in the
+The terminal UI has no custom key bindings and doesn't show images in the
 terminal. Desktop and terminal UI layouts are kept separately.

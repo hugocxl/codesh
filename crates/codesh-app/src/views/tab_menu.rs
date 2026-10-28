@@ -9,7 +9,7 @@ pub(crate) enum Action {
     New(TabSide),
     Rename,
     ResetTitle,
-    /// Sets the tab's color to `PROJECT_COLORS[index]`.
+    /// Sets the tab's color to `TAB_COLORS[index]`.
     SetColor(usize),
     ResetColor,
     TogglePin,

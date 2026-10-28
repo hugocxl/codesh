@@ -46,7 +46,7 @@ codesh --help          # all commands; codesh <command> --help for details
 | `codesh` | Opens the [terminal UI](terminal-ui.md). |
 | `codesh <folder>` | Opens the folder as a project in the desktop app. On Linux, over SSH, or without the desktop app, opens it in the terminal UI. |
 | `codesh server start\|status\|stop` | Starts, inspects, or stops the server. `stop` refuses while terminals run; add `--force` to end them. |
-| `codesh project list\|add\|rename\|set-color\|set-icon\|delete` | Manages projects. Deleting ends its terminals but keeps files on disk. |
+| `codesh project list\|add\|rename\|delete` | Manages projects. Deleting ends its terminals but keeps files on disk. |
 | `codesh session list\|create\|send\|send-keys\|read-screen\|history\|search\|wait\|end\|discard` | Creates terminals, sends input, reads output, and waits for text or exit. |
 | `codesh worktree list\|create\|checkout-pr\|register\|remove` | Manages Git worktree projects, including checking out pull requests. |
 | `codesh settings get\|set` | Reads or changes [server settings](server.md#settings). |

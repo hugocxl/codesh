@@ -56,7 +56,7 @@ fn select(
 pub(super) fn record(project: &ProjectDescriptor) -> Value {
     json!({"id":project.id, "name":project.name, "directory":path_text(&project.directory),
         "directory_bytes":project.directory.0, "home":project.home, "parent_id":project.parent_id,
-        "kind":project.kind, "color":project.color, "icon":project.icon})
+        "kind":project.kind})
 }
 
 pub(super) fn run(command: Project, client: &Client, output: &Output, paths: Paths) -> Result {
@@ -90,10 +90,7 @@ pub(super) fn run(command: Project, client: &Client, output: &Output, paths: Pat
             if reuse && let Some(existing) = existing(&projects, &directory, paths) {
                 return output.record(&record(existing), &["id", "name"]);
             }
-            let mut project = ProjectDescriptor::new(
-                server_path(&directory),
-                projects.iter().map(|project| project.color.as_str()),
-            );
+            let mut project = ProjectDescriptor::new(server_path(&directory));
             if let Some(name) = name {
                 project.name = name.trim().into();
             }
@@ -110,12 +107,6 @@ pub(super) fn run(command: Project, client: &Client, output: &Output, paths: Pat
         Project::Rename { project, name } => {
             patch(client, &project, ProjectPatch::Name(name), output, paths)
         }
-        Project::Color { project, color } => {
-            patch(client, &project, ProjectPatch::Color(color), output, paths)
-        }
-        Project::Icon { project, icon } => {
-            patch(client, &project, ProjectPatch::Icon(icon), output, paths)
-        }
     }
 }
 
@@ -125,10 +116,7 @@ pub(crate) fn folder_project(client: &Client, folder: &Path) -> Result<ProjectId
     if let Some(project) = existing(&projects, folder, Paths::Local) {
         return Ok(project.id);
     }
-    let project = ProjectDescriptor::new(
-        server_path(folder),
-        projects.iter().map(|project| project.color.as_str()),
-    );
+    let project = ProjectDescriptor::new(server_path(folder));
     mutate(client, ProjectMutation::Create(project.clone()))?;
     Ok(project.id)
 }
@@ -487,9 +475,6 @@ mod tests {
             home: false,
             name: name.into(),
             directory: server_path(Path::new(directory)),
-            icon: None,
-            logo: None,
-            color: "#808080".into(),
             kind: None,
             parent_id: None,
         }

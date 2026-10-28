@@ -61,14 +61,6 @@ pub(crate) enum Project {
         project: String,
         name: String,
     },
-    Color {
-        project: String,
-        color: String,
-    },
-    Icon {
-        project: String,
-        icon: Option<String>,
-    },
     Delete(String),
 }
 
@@ -295,28 +287,13 @@ fn project(verb: &str, o: &mut Options<'_>) -> io::Result<Project> {
                 reuse: o.flag("--reuse"),
             })
         }
-        "rename" | "set-color" => {
+        "rename" => {
             o.count(2)?;
-            Ok(if verb == "rename" {
-                Project::Rename {
-                    project: o.word(0)?.into(),
-                    name: o.word(1)?.into(),
-                }
-            } else {
-                Project::Color {
-                    project: o.word(0)?.into(),
-                    color: o.word(1)?.into(),
-                }
+            Ok(Project::Rename {
+                project: o.word(0)?.into(),
+                name: o.word(1)?.into(),
             })
         }
-        "set-icon" if (1..=2).contains(&o.words.len()) => Ok(Project::Icon {
-            project: o.word(0)?.into(),
-            icon: o
-                .words
-                .get(1)
-                .map(|s| text(s).map(str::to_owned))
-                .transpose()?,
-        }),
         "delete" => {
             o.count(1)?;
             o.confirm()?;

@@ -23,11 +23,8 @@ pub(crate) enum Overlay {
     PullRequest(super::git::PullRequestPopover),
     Sessions(super::session_picker::SessionPicker),
     Worktrees(super::worktree_picker::WorktreePicker),
-    Layouts(crate::model::project_layouts::LayoutPicker),
     Menu(Menu),
     ProjectEditor(super::project_editor::Editor),
-    ProjectIcons(super::project_editor::icons::Icons),
-    ProjectLogo(super::project_editor::logo::Cropper),
     Projects(Entity<super::project_picker::ProjectPicker>),
     /// Go to File over the current project.
     QuickOpen(Entity<super::quick_open::QuickOpen>),
@@ -60,7 +57,6 @@ impl Overlay {
                 | Self::PullRequest(_)
                 | Self::Menu(_)
                 | Self::ProjectEditor(_)
-                | Self::ProjectIcons(_)
                 | Self::ServerForm(_)
                 | Self::Password(_)
                 | Self::Proxy(_)
@@ -70,7 +66,6 @@ impl Overlay {
 
 impl AppModel {
     pub(crate) fn dismiss_overlay(&mut self, cx: &mut Context<Self>) {
-        self.project_logo_task = None;
         if matches!(self.overlay, Some(Overlay::ServerForm(_))) {
             self.clear_server_probe();
         }
@@ -105,7 +100,6 @@ impl AppModel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.project_logo_task = None;
         self.overlay_subscription = None;
         self.overlay = Some(Overlay::Menu(Menu::new(items, position)));
         self.overlay_focus.focus(window);
@@ -303,15 +297,8 @@ pub(crate) fn layer(model: &AppModel, window: &Window, cx: &mut Context<AppModel
         Some(Overlay::ProjectEditor(editor)) => {
             super::project_editor::render(editor, model, window, cx)
         }
-        Some(Overlay::ProjectIcons(picker)) => {
-            super::project_editor::icons::render(picker, model, window, cx)
-        }
-        Some(Overlay::ProjectLogo(cropper)) => {
-            super::project_editor::logo::render(cropper, model, window, cx)
-        }
         Some(Overlay::Sessions(picker)) => picker.picker.clone().into_any_element(),
         Some(Overlay::Worktrees(switcher)) => switcher.picker.clone().into_any_element(),
-        Some(Overlay::Layouts(picker)) => picker.picker.clone().into_any_element(),
         Some(Overlay::Projects(picker)) => picker.clone().into_any_element(),
         Some(Overlay::QuickOpen(picker)) => picker.clone().into_any_element(),
         Some(Overlay::FindInFiles(picker)) => picker.clone().into_any_element(),

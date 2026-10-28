@@ -14,7 +14,7 @@ mod mobile;
 pub(crate) mod native;
 pub(crate) mod native_surfaces;
 mod preferences;
-pub(crate) mod project_layouts;
+pub(crate) mod project_icons;
 pub(crate) mod proxy;
 mod reconnect;
 pub(crate) mod remote_files;
@@ -118,7 +118,7 @@ pub(crate) struct AppModel {
     pub(crate) ai: ai::Runtime,
     pub(crate) servers: servers::Servers,
     pub(crate) proxy: proxy::ProxyState,
-    project_layouts: project_layouts::ProjectLayouts,
+    project_icons: project_icons::ProjectIcons,
     pub(crate) existing_sessions: crate::views::session_picker::ExistingSessions,
     pub(crate) window: gpui::AnyWindowHandle,
     pub(crate) state: AppState,
@@ -177,8 +177,6 @@ pub(crate) struct AppModel {
     pub(crate) agents_panel: agents_panel::AgentsPanel,
     pub(crate) tab_drag: crate::views::tab_strip::TabDragState,
     pub(crate) layout_drag: crate::views::splits::drag::LayoutDragState,
-    pub(crate) project_logo_task: Option<Task<()>>,
-    pub(crate) project_logos: crate::views::project_editor::logo::Cache,
     pub(crate) expanded_worktrees: HashSet<ProjectId>,
     pub(crate) tab_sidebar_selection: Option<(ProjectId, Option<TabId>)>,
     pub(crate) shortcut_hints: crate::views::shortcut_hints::ShortcutHints,
@@ -466,12 +464,6 @@ impl AppModel {
         let palette = palette.with_options(&boot.terminal.options);
         let configuration_error = boot.import_message;
         let theme_error = (!themes.errors.is_empty()).then(|| themes.errors.join("; "));
-        cx.on_release(|model: &mut Self, cx| {
-            for (_, (_, image)) in model.project_logos.drain() {
-                image.remove_asset(cx);
-            }
-        })
-        .detach();
         #[cfg(not(test))]
         let (notifications, opened) = codesh_ui::notifications::Notifications::start();
         #[cfg(test)]
@@ -513,8 +505,6 @@ impl AppModel {
             notice_serial: 0,
             focus: cx.focus_handle(),
             appearance: boot.settings.appearance.clone(),
-            project_logo_task: None,
-            project_logos: HashMap::new(),
             expanded_worktrees: HashSet::new(),
             tab_sidebar_selection: None,
             shortcut_hints: crate::views::shortcut_hints::ShortcutHints::default(),
@@ -538,7 +528,7 @@ impl AppModel {
             terminal_preview: None,
             terminal_background: preferences::TerminalBackground::default(),
             initial_directories: HashMap::new(),
-            project_layouts: project_layouts::ProjectLayouts::default(),
+            project_icons: project_icons::ProjectIcons::default(),
             theme,
             themes,
             metrics: Metrics::new(1.0),
@@ -1557,7 +1547,7 @@ impl AppModel {
             self.state.reveal_current_project();
         }
         self.sync_agent_sessions(cx);
-        self.sync_project_layouts(cx);
+        self.sync_project_icons(cx);
         self.sync_voice(cx);
         self.sync_git(cx);
         self.sync_references(cx);
@@ -2057,17 +2047,11 @@ impl AppModel {
         }
         let local = server.is_local();
         match update {
-            Update::ProjectLayouts {
+            Update::ProjectIcon {
                 project,
                 request,
-                result,
-            } => self.receive_project_layouts(project, request, result, cx),
-            Update::ProjectLayout {
-                project,
-                request,
-                layout,
-                result,
-            } => self.receive_project_layout(project, request, &layout, result, cx),
+                icon,
+            } => self.receive_project_icon(project, request, icon, cx),
             Update::Activity(result) => self.receive_activity(server, result, cx),
             Update::ActivityClaimed(result) => self.deliver_activity(server, result),
             Update::ActivityAcknowledged { ids, result } => {
@@ -2685,7 +2669,6 @@ mod tests {
     mod links;
     mod native;
     mod preferences;
-    mod project_layouts;
     mod project_order;
     mod projects;
     mod proxy;

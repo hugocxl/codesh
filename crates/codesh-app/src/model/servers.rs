@@ -500,7 +500,7 @@ impl AppModel {
             self.completions.remove(&pane);
         }
         self.forget_server_sessions(server, cx);
-        self.forget_server_layouts(server, cx);
+        self.forget_server_icons(server);
         if server.is_local() {
             if self.server_preferences.busy || !self.server_preferences.pending.is_empty() {
                 let message = tr!(

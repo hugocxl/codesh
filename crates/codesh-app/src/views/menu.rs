@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use codesh_core::shortcuts::ShortcutId;
 
-use codesh_app_core::PROJECT_COLORS;
+use codesh_app_core::TAB_COLORS;
 use gpui::{Bounds, Context, Hsla, Pixels, Point, SharedString, Task, Window, actions, px};
 
 use super::overlays::Overlay;
@@ -46,11 +46,9 @@ pub(crate) enum Command {
     SidebarHost(codesh_app_core::settings::SidebarHost),
     SidebarServers,
     Worktrees(codesh_app_core::ProjectId),
-    NewWorktree(codesh_app_core::ProjectId),
     NewProjectTab(codesh_app_core::ProjectId),
     RemoveWorktree(codesh_app_core::ProjectId),
     ExistingSessions(codesh_app_core::ProjectId),
-    ProjectLayouts(codesh_app_core::ProjectId),
     DetachTerminal(codesh_app_core::PaneId),
     /// Restarts the terminal with the app's proxy, or without it.
     RestartWithProxy(codesh_app_core::PaneId, bool),
@@ -66,11 +64,7 @@ pub(crate) enum Command {
     TerminalSelectCommandOutput(codesh_app_core::PaneId),
     CopyPath(codesh_app_core::ProjectId),
     RevealPath(codesh_app_core::ProjectId),
-    EditProject(codesh_app_core::ProjectId, super::project_editor::Field),
-    /// Sets a project's color to `PROJECT_COLORS[index]`.
-    ProjectColor(codesh_app_core::ProjectId, usize),
-    ProjectLogo(codesh_app_core::ProjectId),
-    RemoveProjectLogo(codesh_app_core::ProjectId),
+    EditProject(codesh_app_core::ProjectId),
     RemoveProject(codesh_app_core::ProjectId),
     AddProject,
     AddRemoteProject(codesh_app_core::ServerId),
@@ -175,9 +169,9 @@ impl Item {
     }
 }
 
-/// The project palette as rows, each with its color dot, checking `current`.
+/// The tab palette as rows, each with its color dot, checking `current`.
 pub(crate) fn color_items(current: Option<&str>, command: impl Fn(usize) -> Command) -> Vec<Item> {
-    PROJECT_COLORS
+    TAB_COLORS
         .iter()
         .enumerate()
         .map(|(index, (name, hex))| {
@@ -591,11 +585,6 @@ impl AppModel {
                 self.toggle_remote_popover(window, cx);
                 return;
             }
-            Command::NewWorktree(id) => {
-                self.open_git_form(id, true, cx);
-                self.focus_git_form(window, cx);
-                return;
-            }
             Command::NewProjectTab(id) => {
                 self.new_tab_in(id, cx);
             }
@@ -604,10 +593,6 @@ impl AppModel {
             }
             Command::RemoveWorktree(id) => {
                 self.git_request(id, codesh_protocol::GitAction::InspectRemoval, cx);
-            }
-            Command::ProjectLayouts(project) => {
-                self.open_layout_picker(project, window, cx);
-                return;
             }
             Command::ExistingSessions(project) => {
                 self.open_session_picker(project, window, cx);
@@ -646,18 +631,9 @@ impl AppModel {
                     cx.reveal_path(&project.directory);
                 }
             }
-            Command::EditProject(id, field) => {
-                self.open_project_editor(id, field, position, window, cx);
+            Command::EditProject(id) => {
+                self.open_project_editor(id, position, window, cx);
                 return;
-            }
-            Command::ProjectColor(id, index) => {
-                if let Some(color) = palette_color(index) {
-                    self.edit_project(|state| state.set_project_color(id, color), cx);
-                }
-            }
-            Command::ProjectLogo(id) => self.choose_project_logo(id, cx),
-            Command::RemoveProjectLogo(id) => {
-                self.edit_project(|state| state.set_project_logo(id, None), cx);
             }
             Command::RemoveProject(id) => self.confirm_remove_project(id, cx),
             Command::AddProject => {
@@ -744,7 +720,7 @@ impl AppModel {
 }
 
 fn palette_color(index: usize) -> Option<codesh_app_core::Color> {
-    PROJECT_COLORS.get(index)?.1.parse().ok()
+    TAB_COLORS.get(index)?.1.parse().ok()
 }
 
 #[cfg(test)]

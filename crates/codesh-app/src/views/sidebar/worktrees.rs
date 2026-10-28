@@ -115,7 +115,7 @@ pub(super) fn group(
         for (index, creation) in model.worktree_creations(project.id).enumerate() {
             worktrees = worktrees.child(creating_row(&creation.name, project.id, index, model));
         }
-        group = group.child(worktrees.child(new_worktree(project.id, model, cx)));
+        group = group.child(worktrees);
     }
     if model.appearance.sidebar_expanded && !model.has_worktrees(project) {
         group = group.child(row(project, true, model, cx));
@@ -426,48 +426,5 @@ fn creating_row(name: &str, parent: ProjectId, index: usize, model: &AppModel) -
                 .truncate()
                 .child(name.to_owned()),
         )
-        .into_any_element()
-}
-
-pub(crate) fn new_worktree(
-    id: ProjectId,
-    model: &AppModel,
-    cx: &mut Context<AppModel>,
-) -> AnyElement {
-    let m = model.metrics;
-    let theme = &model.theme;
-    let group = SharedString::from(format!("new-worktree-{id}"));
-    div()
-        .id(SharedString::from(format!("new-worktree-{id}")))
-        .debug_selector(move || format!("new-worktree-{id}"))
-        .group(group.clone())
-        .flex()
-        .items_center()
-        .gap(m.spacing4())
-        .px(m.spacing2())
-        .h(m.control_large())
-        .rounded(m.scaled(8.0))
-        .text_size(m.font_footnote())
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(theme.fg)
-        .hover(|style| style.text_color(theme.accent))
-        .cursor_pointer()
-        .on_click(cx.listener(move |model, _, window, cx| {
-            model.open_git_form(id, true, cx);
-            model.focus_git_form(window, cx);
-        }))
-        .child(
-            div()
-                .w(m.icon_xxl())
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    IconGlyph::new(Icon::Plus, m.scaled(16.0), theme.fg_muted)
-                        .hover_in_group(group, theme.accent),
-                ),
-        )
-        .child(tr!("New Worktree"))
         .into_any_element()
 }

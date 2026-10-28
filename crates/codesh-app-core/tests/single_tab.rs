@@ -1,6 +1,6 @@
 use codesh_app_core::{
     AppState, Axis, Direction, Layout, Pane, PaneContent, PaneId, ServerId, Tab, TabId, TabSide,
-    browser::BrowserPane, codesh, project_layouts::Config,
+    browser::BrowserPane, codesh,
 };
 use codesh_protocol::SessionId;
 use serde_json::json;
@@ -180,28 +180,6 @@ fn load_merges_three_subtrees_preserving_sessions_order_and_selected_pane() -> R
     let mut project = loaded.project(project_id).ok_or("project")?.clone();
     codesh::normalize(&mut project);
     assert_eq!(&project, loaded.project(project_id).ok_or("project")?);
-    Ok(())
-}
-
-#[test]
-fn layouts_merge_extra_tabs_and_keep_startup_commands() -> Result {
-    let mut state = AppState::bootstrap()?;
-    let project_id = state.add_project(ServerId::local(), std::env::current_dir()?)?;
-    state.select_project(project_id)?;
-    let config = Config::parse(
-        r#"{"tabs":[{"name":"one","command":"first"},{"name":"two","command":"second"},{"name":"three","command":"third"}]}"#,
-    )?;
-    let panes = state.apply_project_layout(project_id, &config)?;
-    assert_eq!(state.project(project_id).ok_or("project")?.tabs.len(), 1);
-    assert_eq!(
-        state.project(project_id).ok_or("project")?.tabs[0]
-            .layout
-            .leaves(),
-        panes
-    );
-    for (pane, command) in panes.into_iter().zip(["first", "second", "third"]) {
-        assert_eq!(state.startup_command(pane), Some(command));
-    }
     Ok(())
 }
 

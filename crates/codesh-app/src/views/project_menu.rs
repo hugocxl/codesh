@@ -4,8 +4,7 @@ use codesh_ui::l10n::tr_key;
 use codesh_ui::tr;
 use gpui::{AnyWindowHandle, AsyncApp, Context};
 
-use super::menu::{Command, Item, color_items};
-use super::project_editor::Field;
+use super::menu::{Command, Item};
 use crate::model::{AppModel, git::Repository};
 
 /// The menu of a top-level project. `worktrees` is `None` when its folder is not
@@ -15,32 +14,18 @@ pub(crate) fn items(state: &AppState, project: &Project, worktrees: Option<bool>
     if project.status() != ProjectStatus::Available {
         return removal(project);
     }
-    let mut items = vec![
-        Item::action(tr!("New Terminal Tab"), Command::NewProjectTab(id)),
-        Item::action(tr!("Existing Terminals…"), Command::ExistingSessions(id)),
-        Item::action(tr!("Apply Layout…"), Command::ProjectLayouts(id)),
-    ];
-    let icon = Item::submenu(tr!("Icon"), icon_items(project));
+    let mut items = terminal_items(id);
     // Another computer's Home goes by its server's name.
-    if project.is_remote_home() {
-        items.push(icon.separated());
-    } else {
-        items.extend([
-            Item::action(tr!("Rename…"), Command::EditProject(id, Field::Name)).separated(),
-            icon,
-        ]);
+    if !project.is_remote_home() {
+        items.push(Item::action(tr!("Rename…"), Command::EditProject(id)).separated());
     }
-    items.push(Item::submenu(
-        tr!("Color"),
-        color_items(Some(project.color.as_str()), |index| {
-            Command::ProjectColor(id, index)
-        }),
-    ));
     if !project.home {
         items.push(Item::submenu(tr!("Workspaces"), workspace_items(state, id)));
         if let Some(visible) = worktrees {
             items.push(
-                Item::submenu(tr!("Worktrees"), worktree_toggle_items(id, visible)).separated(),
+                Item::action(tr!("Show Worktrees"), Command::Worktrees(id))
+                    .checked_if(visible)
+                    .separated(),
             );
         }
     }
@@ -77,32 +62,12 @@ fn removal(project: &Project) -> Vec<Item> {
     }
 }
 
-fn icon_items(project: &Project) -> Vec<Item> {
-    let id = project.id;
-    let mut items = Vec::new();
-    if codesh_ui::symbols::PROJECT_ICONS {
-        items.push(Item::action(
-            tr!("Choose Icon…"),
-            Command::EditProject(id, Field::Icon),
-        ));
-    }
-    items.push(Item::action(tr!("Set Logo…"), Command::ProjectLogo(id)));
-    if project.logo.is_some() {
-        items.push(Item::action(
-            tr!("Remove Logo"),
-            Command::RemoveProjectLogo(id),
-        ));
-    }
-    items
-}
-
-fn worktree_toggle_items(id: ProjectId, visible: bool) -> Vec<Item> {
-    let mut items =
-        vec![Item::action(tr!("Show Worktrees"), Command::Worktrees(id)).checked_if(visible)];
-    if visible {
-        items.push(Item::action(tr!("New Worktree…"), Command::NewWorktree(id)).separated());
-    }
-    items
+/// A single-tab project opens terminals as splits of its one tab.
+fn terminal_items(id: ProjectId) -> Vec<Item> {
+    vec![
+        Item::action(tr!("New Terminal"), Command::NewProjectTab(id)),
+        Item::action(tr!("Existing Terminals…"), Command::ExistingSessions(id)),
+    ]
 }
 
 pub(crate) fn workspace_items(state: &AppState, project: ProjectId) -> Vec<Item> {
@@ -140,19 +105,9 @@ pub(crate) fn worktree_items(project: &Project, primary: bool) -> Vec<Item> {
             )]
         };
     }
-    let mut items = vec![
-        Item::action(tr!("New Terminal Tab"), Command::NewProjectTab(id)),
-        Item::action(tr!("Existing Terminals…"), Command::ExistingSessions(id)),
-        Item::action(tr!("Apply Layout…"), Command::ProjectLayouts(id)),
-    ];
+    let mut items = terminal_items(id);
     if !primary {
-        items.push(
-            Item::action(
-                tr!("Rename Worktree…"),
-                Command::EditProject(id, Field::Name),
-            )
-            .separated(),
-        );
+        items.push(Item::action(tr!("Rename Worktree…"), Command::EditProject(id)).separated());
     }
     items.extend(path_items(project));
     if !primary {
@@ -173,21 +128,39 @@ impl AppModel {
         if project.parent_id.is_some() {
             return worktree_items(project, false);
         }
-        let repository = self
-            .state
-            .projects()
-            .iter()
-            .any(|child| child.parent_id == Some(project.id))
-            || !self
-                .git
-                .projects
-                .get(&project.id)
-                .is_some_and(Repository::not_a_repository);
         items(
             &self.state,
             project,
-            repository.then(|| self.worktrees_visible(project.id)),
+            self.repository(project.id)
+                .then(|| self.worktrees_visible(project.id)),
         )
+    }
+
+    /// Whether `project` is, or may be, a Git repository that can have worktrees.
+    pub(crate) fn repository(&self, project: ProjectId) -> bool {
+        self.state
+            .projects()
+            .iter()
+            .any(|child| child.parent_id == Some(project))
+            || !self
+                .git
+                .projects
+                .get(&project)
+                .is_some_and(Repository::not_a_repository)
+    }
+
+    /// Opens the new worktree form, showing the project's worktrees first.
+    pub(crate) fn new_worktree(
+        &mut self,
+        project: ProjectId,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.worktrees_visible(project) {
+            self.toggle_worktree_visibility(project, cx);
+        }
+        self.open_git_form(project, true, cx);
+        self.focus_git_form(window, cx);
     }
 
     pub(crate) fn confirm_remove_project(&mut self, project: ProjectId, cx: &mut Context<Self>) {

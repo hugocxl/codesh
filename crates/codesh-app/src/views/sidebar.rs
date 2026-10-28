@@ -25,10 +25,9 @@ use super::{
     menu::{Command, Item},
     tab_sidebar,
 };
-use codesh_ui::components::{IconGlyph, SymbolGlyph};
+use codesh_ui::components::{IconButton, IconGlyph, SymbolGlyph};
 use codesh_ui::icon::Icon;
 use codesh_ui::l10n::tr_key;
-use codesh_ui::theme::{contrasting_foreground, parse_hex};
 use codesh_ui::tr;
 
 use crate::model::AppModel;
@@ -565,18 +564,14 @@ fn project_row(
             row.px(m.scaled(10.0))
                 .h(m.scaled(28.0))
                 .gap(m.spacing2())
-                .rounded(m.scaled(8.0))
-                .hover(|style| style.bg(theme.hover))
         })
         .when(!wide, |row| row.justify_center().size(m.scaled(34.0)))
         .when(missing, |row| row.opacity(0.5))
-        .when(!missing, |row| {
+        // The wide header is a label; its actions are the buttons at its end.
+        .when(!wide && !missing, |row| {
             row.cursor_pointer()
                 .on_click(cx.listener(move |model, _, window, cx| {
-                    if wide {
-                        model.select_project(id, cx);
-                        model.focus_active(window, cx);
-                    } else if active && has_worktrees {
+                    if active && has_worktrees {
                         model.toggle_sidebar(window, cx);
                     } else {
                         model.select_project(model.preferred_worktree(id), cx);
@@ -584,14 +579,16 @@ fn project_row(
                     }
                 }))
         })
-        .on_mouse_down(
-            gpui::MouseButton::Right,
-            cx.listener(move |model, event: &gpui::MouseDownEvent, window, cx| {
-                if let Some(project) = model.state.project(id) {
-                    model.open_menu(model.project_menu(project), event.position, window, cx);
-                }
-            }),
-        )
+        .when(!wide, |row| {
+            row.on_mouse_down(
+                gpui::MouseButton::Right,
+                cx.listener(move |model, event: &gpui::MouseDownEvent, window, cx| {
+                    if let Some(project) = model.state.project(id) {
+                        model.open_menu(model.project_menu(project), event.position, window, cx);
+                    }
+                }),
+            )
+        })
         .when(
             project.parent_id.is_none()
                 && !missing
@@ -599,6 +596,15 @@ fn project_row(
             |row| row.on_drag(drag, |_, _, _, cx| cx.new(|_| Empty)),
         )
         .when(!wide, |row| row.child(tile))
+        .when_some(model.project_icon(id).filter(|_| wide), |row, icon| {
+            row.child(
+                gpui::img(icon)
+                    .debug_selector(move || format!("project-icon-{id}"))
+                    .flex_none()
+                    .size(m.scaled(16.0))
+                    .rounded(m.radius_sm()),
+            )
+        })
         .when(wide, |row| {
             row.child(
                 div()
@@ -665,6 +671,7 @@ fn project_row(
                     .border_color(theme.accent),
             )
         })
+        .when(wide, |row| row.child(header_actions(project, model, cx)))
         .when(missing, |row| {
             row.child(div().absolute().top_0().right_0().child(SymbolGlyph::new(
                 "exclamationmark.triangle.fill",
@@ -672,6 +679,50 @@ fn project_row(
                 theme.warning,
             )))
         })
+        .into_any_element()
+}
+
+/// The project's settings menu and, in a Git repository, New Worktree.
+fn header_actions(project: &Project, model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
+    let id = project.id;
+    let m = model.metrics;
+    let theme = &model.theme;
+    let button = |key: &str, icon: Icon, tooltip: SharedString| {
+        IconButton::new(
+            SharedString::from(format!("{key}-{id}")),
+            icon,
+            m.icon_sm(),
+            m.scaled(20.0),
+            theme.fg_muted,
+            theme.fg,
+        )
+        .tooltip(tooltip, theme.raised(), theme.fg, theme.border, theme.bg)
+    };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        // Pressing a button must not start dragging the project.
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            button("project-settings", Icon::Settings, tr!("Project Settings")).on_click(
+                cx.listener(move |model, event: &gpui::ClickEvent, window, cx| {
+                    if let Some(project) = model.state.project(id) {
+                        model.open_menu(model.project_menu(project), event.position(), window, cx);
+                    }
+                }),
+            ),
+        )
+        .when(
+            project.status() == ProjectStatus::Available && model.repository(id),
+            |row| {
+                row.child(
+                    button("project-new-worktree", Icon::Plus, tr!("New Worktree")).on_click(
+                        cx.listener(move |model, _, window, cx| model.new_worktree(id, window, cx)),
+                    ),
+                )
+            },
+        )
         .into_any_element()
 }
 
@@ -762,35 +813,20 @@ pub(super) fn add_project_button(model: &AppModel, cx: &mut Context<AppModel>) -
         .into_any_element()
 }
 
+/// The project's own icon, or its initial.
 fn project_tile(project: &Project, model: &AppModel, group: SharedString) -> AnyElement {
     let m = model.metrics;
-    let color = parse_hex(project.color.as_str()).unwrap_or(gpui::rgb(0x80_80_80));
-    let foreground = contrasting_foreground(color);
-    let glyph = if let Some((_, logo)) = model.project_logos.get(&project.id) {
-        gpui::img(logo.clone())
+    let icon = model.project_icon(project.id);
+    let glyph = if let Some(icon) = icon.clone() {
+        gpui::img(icon)
             .size(m.icon_xxl())
-            .rounded(m.radius_md())
-            .object_fit(gpui::ObjectFit::Cover)
+            .object_fit(gpui::ObjectFit::Contain)
             .into_any_element()
-    } else if let Some(icon) = project
-        .icon
-        .as_ref()
-        .filter(|icon| codesh_ui::symbols::PROJECT_ICONS || !icon.starts_with("sf:"))
-    {
-        if let Some(symbol) = icon.strip_prefix("sf:") {
-            SymbolGlyph::new(symbol.to_owned(), m.font_title_large(), foreground.into())
-                .into_any_element()
-        } else {
-            div()
-                .text_size(m.font_title_large())
-                .child(icon.clone())
-                .into_any_element()
-        }
     } else {
         div()
             .text_size(m.font_emphasis())
             .font_weight(FontWeight::BOLD)
-            .text_color(foreground)
+            .text_color(model.theme.fg)
             .child(codesh_app_core::initial(&model.project_title(project)).to_uppercase())
             .into_any_element()
     };
@@ -801,9 +837,7 @@ fn project_tile(project: &Project, model: &AppModel, group: SharedString) -> Any
         .justify_center()
         .size(m.icon_xxl())
         .rounded(m.radius_md())
-        .when(!model.project_logos.contains_key(&project.id), |tile| {
-            tile.bg(color)
-        })
+        .when(icon.is_none(), |tile| tile.bg(model.theme.surface))
         .overflow_hidden()
         .group_hover(group, |style| style.opacity(0.85))
         .child(glyph)

@@ -10,7 +10,6 @@ use codesh_ui::tr;
 use gpui::{AppContext, Context, Focusable, Window, point, px};
 
 use super::overlays::Overlay;
-use super::project_editor::Field;
 use super::tab_activity::{self, Status};
 use crate::model::AppModel;
 
@@ -245,7 +244,7 @@ impl AppModel {
             Some(RENAME) => {
                 let size = window.viewport_size();
                 let position = point(size.width / 2.0 - px(120.0), size.height / 3.0);
-                self.open_project_editor(id, Field::Name, position, window, cx);
+                self.open_project_editor(id, position, window, cx);
             }
             Some(REMOVE) if available => {
                 self.git_request(id, codesh_protocol::GitAction::InspectRemoval, cx);

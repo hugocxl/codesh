@@ -41,9 +41,6 @@ fn project(path: &Path) -> ProjectDescriptor {
         id: ProjectId::new(),
         home: false,
         name: "Test".into(),
-        icon: None,
-        logo: None,
-        color: "#808080".into(),
         directory: ServerPath(path.as_os_str().as_bytes().into()),
         kind: None,
         parent_id: None,
@@ -201,41 +198,5 @@ fn cancellation_before_or_after_create_prevents_orphan_shells() -> Result {
             .is_err()
     );
     assert!(registry.list().is_empty());
-    Ok(())
-}
-
-#[test]
-fn logo_heavy_catalog_pages_fit_the_wire_and_continue_without_losing_projects() -> Result {
-    let (events, _) = mpsc::channel();
-    let registry = Registry::new(ServerSettings::default(), events);
-    let mut logo = include_bytes!("../../codesh-protocol/tests/fixtures/project-logo.png").to_vec();
-    logo.resize(codesh_protocol::MAX_PROJECT_LOGO_BYTES, 0);
-    let logo: Arc<[u8]> = logo.into();
-    for _ in 0..60 {
-        let mut project = project(Path::new("/tmp"));
-        project.logo = Some(logo.clone());
-        registry.mutate_project(&intent(ProjectMutation::Create(project)))?;
-    }
-    let mut after = None;
-    let mut count = 0;
-    loop {
-        let page = registry.read_catalog(after, None)?;
-        count += page.projects.len();
-        after = page.next;
-        let mut bytes = Vec::new();
-        codesh_protocol::wire::encode(
-            &codesh_protocol::Message::Reply {
-                id: codesh_protocol::RequestId(1),
-                body: codesh_protocol::ReplyBody::Catalog(page),
-            },
-            codesh_protocol::CONTROL,
-            &mut bytes,
-        )?;
-        assert!(bytes.len() < 4 * 1024 * 1024);
-        if after.is_none() {
-            break;
-        }
-    }
-    assert_eq!(count, 61);
     Ok(())
 }

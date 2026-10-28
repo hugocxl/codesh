@@ -216,9 +216,6 @@ fn worktree_form_reviews_hooks_validates_templates_and_saves_the_submitted_locat
         directory: directory.clone(),
         name: "Renamed worktree".into(),
         home: false,
-        icon: None,
-        logo: None,
-        color: "#ffffff".into(),
         kind: Some(codesh_protocol::ProjectKind::Worktree),
         parent_id: Some(project),
     };

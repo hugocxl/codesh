@@ -100,8 +100,6 @@ pub(crate) const PROJECT: &str = "Usage: codesh project <action> [--json]
   list
   add <directory> [--name NAME] [--create] [--reuse]
   rename <project> <name>
-  set-color <project> <#RRGGBB>
-  set-icon <project> [icon]        Omit icon to clear it
   delete <project> --yes          Ends its terminals and deletes child projects;
                                  files and worktree folders stay on disk
 

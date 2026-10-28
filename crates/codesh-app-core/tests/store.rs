@@ -120,7 +120,7 @@ fn malformed_domain_state_is_rejected_with_the_path() -> TestResult {
         ),
         ("/projects/0/tabs/0/panes/0/content/session", json!(0)),
         ("/projects/0/id", json!("invalid")),
-        ("/projects/0/color", json!("blue")),
+        ("/projects/0/tabs/0/color", json!("blue")),
         ("/window/bounds/width", json!(-1)),
     ] {
         let mut value = valid.clone();

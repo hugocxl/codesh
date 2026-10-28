@@ -178,7 +178,7 @@ fn project_rows<'a>(
                 )]
             } else {
                 vec![
-                    Span::styled(if open { "●" } else { "○" }, theme::project(&project.color)),
+                    Span::styled(if open { "●" } else { "○" }, theme::accent()),
                     Span::raw(" "),
                 ]
             };

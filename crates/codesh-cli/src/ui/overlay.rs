@@ -246,7 +246,7 @@ fn projects(frame: &mut Frame<'_>, shared: &Shared, ui: &mut Ui, filter: &str, s
                     theme::muted(),
                 )
             } else {
-                Span::styled(" ● ", theme::project(&entry.project.color))
+                Span::styled(" ● ", theme::accent())
             };
             let path = projects::display_path(catalog, &entry.project.directory);
             let used = lead.width() + Span::raw(&name).width() + 2;

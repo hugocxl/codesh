@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use codesh_core::tr_key;
-use codesh_protocol::PROJECT_COLORS as PALETTE;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -30,7 +29,7 @@ impl FromStr for Color {
             Ok(Self(value.to_ascii_lowercase()))
         } else {
             Err(AppError::InvalidState(
-                "project color must be a #RRGGBB hex string".into(),
+                "color must be a #RRGGBB hex string".into(),
             ))
         }
     }
@@ -75,10 +74,6 @@ pub struct Project {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<std::time::SystemTime>,
-    pub icon: Option<String>,
-    #[serde(default)]
-    pub logo: Option<std::sync::Arc<[u8]>>,
-    pub color: Color,
     pub server_id: ServerId,
     #[serde(with = "crate::catalog::directory")]
     pub directory: PathBuf,
@@ -98,21 +93,21 @@ pub enum ProjectStatus {
     Missing,
 }
 
-/// The shared palette, by name. Names are English keys, translated where
+/// The tab color palette, by name. Names are English keys, translated where
 /// shown.
-pub const PROJECT_COLORS: [(&str, &str); 12] = [
-    (tr_key!("Red"), PALETTE[0]),
-    (tr_key!("Orange"), PALETTE[1]),
-    (tr_key!("Amber"), PALETTE[2]),
-    (tr_key!("Yellow"), PALETTE[3]),
-    (tr_key!("Lime"), PALETTE[4]),
-    (tr_key!("Green"), PALETTE[5]),
-    (tr_key!("Teal"), PALETTE[6]),
-    (tr_key!("Cyan"), PALETTE[7]),
-    (tr_key!("Blue"), PALETTE[8]),
-    (tr_key!("Indigo"), PALETTE[9]),
-    (tr_key!("Violet"), PALETTE[10]),
-    (tr_key!("Pink"), PALETTE[11]),
+pub const TAB_COLORS: [(&str, &str); 12] = [
+    (tr_key!("Red"), "#e5484d"),
+    (tr_key!("Orange"), "#f76b15"),
+    (tr_key!("Amber"), "#f5a623"),
+    (tr_key!("Yellow"), "#ebcb00"),
+    (tr_key!("Lime"), "#9bcd1e"),
+    (tr_key!("Green"), "#30a46c"),
+    (tr_key!("Teal"), "#12a594"),
+    (tr_key!("Cyan"), "#05a2c2"),
+    (tr_key!("Blue"), "#3e63dd"),
+    (tr_key!("Indigo"), "#5b5bd6"),
+    (tr_key!("Violet"), "#8e4ec6"),
+    (tr_key!("Pink"), "#d6409f"),
 ];
 
 impl Project {

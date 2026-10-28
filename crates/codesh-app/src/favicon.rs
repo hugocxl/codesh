@@ -20,7 +20,7 @@ pub(crate) fn fetch(url: &str) -> Option<gpui::RenderImage> {
     decode(&bytes)
 }
 
-fn decode(bytes: &[u8]) -> Option<gpui::RenderImage> {
+pub(crate) fn decode(bytes: &[u8]) -> Option<gpui::RenderImage> {
     let mut bgra = image::load_from_memory(bytes)
         .ok()?
         .thumbnail(SIZE, SIZE)

@@ -24,7 +24,7 @@ through `AppState::insert_split_pane`.
 
 ## Normalization
 
-Loading saved state, restoring a backup, and applying a project layout merge
+Loading saved state and restoring a backup merge
 multiple tabs in order: the first tab survives and each later layout subtree is
 appended on the right intact. Pane IDs, content, terminal sessions, and startup
 commands are kept. Merging clears groups and zoom, repairs selected tab IDs,

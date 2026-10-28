@@ -1,6 +1,3 @@
-pub(crate) mod icons;
-pub(crate) mod logo;
-
 use codesh_app_core::{ProjectId, ProjectStatus, TabId};
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
 use codesh_ui::tr;
@@ -12,12 +9,6 @@ use gpui::{
 use super::overlays::{Overlay, clamp};
 use super::server_menu::Servers;
 use crate::model::AppModel;
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Field {
-    Name,
-    Icon,
-}
 
 #[derive(Clone, Copy)]
 enum Target {
@@ -41,7 +32,6 @@ impl AppModel {
     pub(crate) fn open_project_editor(
         &mut self,
         id: ProjectId,
-        field: Field,
         position: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -53,12 +43,6 @@ impl AppModel {
         else {
             return;
         };
-        if matches!(field, Field::Icon) {
-            if codesh_ui::symbols::PROJECT_ICONS {
-                self.open_project_icons(id, position, window, cx);
-            }
-            return;
-        }
         let text = project.name.clone();
         self.open_metadata_editor(Target::Project(id), text, position, window, cx);
     }

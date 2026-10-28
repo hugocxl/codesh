@@ -220,7 +220,7 @@ to the server can throw.
 | --- | --- |
 | `ServerCredential` | `serverId`, `serverName`, `hosts`, `port`, `fingerprint` (32 bytes), `deviceId`, `token` (32 bytes) |
 | `PairingLink` | `hosts`, `port` |
-| `Project` | `id`, `name`, `directory`, `color`, `icon?`, `logo?`, `parentId?`, `isHome`, `isWorktree` |
+| `Project` | `id`, `name`, `directory`, `parentId?`, `isHome`, `isWorktree` |
 | `Session` | `id`, `projectId`, `directory`, `status`, `owner?`, `attached` |
 | `SessionStatus` | `starting`, `live`, `ended`, `unavailable` |
 | `ClientKind` | `desktop`, `tui`, `cli`, `mobile`, `other` |
@@ -561,9 +561,6 @@ val connection = withContext(sdk) { Connection.connectChannel(channel, "dev@box"
 
 A project is a folder on the computer. A session is a terminal running in it.
 
-- `Project.color` is `#rrggbb`. `icon` is an emoji or an SF Symbol name with
-  an `sf:` prefix; on Android, map the symbols you support and ignore the
-  rest. `logo` is square PNG data; prefer it over `icon`.
 - Worktrees have `isWorktree` set, and `parentId` names the project they
   belong to. `isHome` marks the project for the user's home folder.
 - `sessions(projectId:)` includes ended sessions whose output the server

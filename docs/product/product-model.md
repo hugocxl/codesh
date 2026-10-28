@@ -27,7 +27,7 @@ flowchart TB
 | Piece | What it is |
 | --- | --- |
 | Server | Runs on a computer. Owns projects, terminal sessions, and server settings. |
-| Project | A folder on a server, with a name, color, and optional icon or logo. |
+| Project | A folder on a server, with a name. |
 | Home | The built-in project for your home folder. |
 | Worktree project | A Git worktree, shown under the project it came from. |
 | Workspace | A group of projects in one app, used to filter the sidebar. |
@@ -36,15 +36,15 @@ flowchart TB
 | Session | A running terminal. Belongs to exactly one project. |
 | Paired device | A phone client allowed to connect to the server. |
 
-**Shared or private.** Project names, icons, colors, and deletions reach every
+**Shared or private.** Project names and deletions reach every
 app. Layouts, workspaces, and project order stay in the app that made them.
 
 ## Projects
 
 - A project is an identity that points to a folder. Two projects can point to
   the same folder. They share its files but are otherwise separate.
-- A new project is named after its folder. Its name, icon, logo, and color can
-  be changed.
+- A new project is named after its folder, and can be renamed. The desktop
+  app shows an icon it finds among the project's files.
 - If the folder disappears, the project shows as failed and can only be
   deleted. An offline server does not make its projects fail.
 - Changing directory inside a terminal never moves it to another project.
@@ -110,29 +110,3 @@ Deleting always asks first and explains what will end.
 - Terminals support selection, copy and paste, search, links, the mouse, input
   methods, and shell integration: jump between prompts and select a command's
   output.
-
-## Project layouts
-
-Named layouts live in `.codesh/layouts/` inside a project or worktree. Use YAML,
-YML, or JSON files; the filename is the layout's name. Choose **Apply Layout…**
-from the project menu. Layouts are never applied automatically. Confirmation
-replaces that project's panes in this app; terminals still shown by another app
-keep running.
-
-```yaml
-layout: horizontal
-panes:
-  - tab:
-      name: editor
-      command: nvim .
-  - layout: vertical
-    panes:
-      - tab: npm run dev
-      - tab:
-          name: shell
-```
-
-`horizontal` means side by side; `vertical` means stacked. Splits can be nested.
-A leaf's `tab` is a command string or an object with optional `name` and `command`.
-Commands run in the project folder; a command list is joined with `&&`. In a
-`tabs` list, extra entries are added as splits on the right.

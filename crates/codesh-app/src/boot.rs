@@ -284,14 +284,9 @@ pub(crate) enum Work {
     ProjectSessions {
         project: codesh_protocol::ProjectId,
     },
-    ProjectLayouts {
+    ProjectIcon {
         project: codesh_protocol::ProjectId,
         request: u64,
-    },
-    LoadProjectLayout {
-        project: codesh_protocol::ProjectId,
-        request: u64,
-        layout: codesh_app_core::project_layouts::Descriptor,
     },
     ReadCatalog,
     CancelCreation(codesh_protocol::OperationId),
@@ -379,8 +374,7 @@ impl Work {
             Self::ClaimActivity(..) => "ClaimActivity",
             Self::Git(..) => "Git",
             Self::ProjectSessions { .. } => "ProjectSessions",
-            Self::ProjectLayouts { .. } => "ProjectLayouts",
-            Self::LoadProjectLayout { .. } => "LoadProjectLayout",
+            Self::ProjectIcon { .. } => "ProjectIcon",
             Self::ReadCatalog => "ReadCatalog",
             Self::CancelCreation(..) => "CancelCreation",
             Self::MutateProject(..) => "MutateProject",
@@ -444,16 +438,10 @@ pub(crate) enum Update {
         operation: codesh_protocol::OperationId,
         result: Result<(), ClientError>,
     },
-    ProjectLayouts {
+    ProjectIcon {
         project: codesh_protocol::ProjectId,
         request: u64,
-        result: Result<Vec<codesh_app_core::project_layouts::Descriptor>, String>,
-    },
-    ProjectLayout {
-        project: codesh_protocol::ProjectId,
-        request: u64,
-        layout: codesh_app_core::project_layouts::Descriptor,
-        result: Result<codesh_app_core::project_layouts::Config, String>,
+        icon: Option<Arc<gpui::RenderImage>>,
     },
     Catalog(Result<codesh_protocol::CatalogPage, ClientError>),
     ProjectMutated {
@@ -895,20 +883,10 @@ fn rejected(work: Work, error: ClientError) -> Update {
             operation: intent.operation,
             result: Err(error),
         },
-        Work::ProjectLayouts { project, request } => Update::ProjectLayouts {
+        Work::ProjectIcon { project, request } => Update::ProjectIcon {
             project,
             request,
-            result: Err(error.to_string()),
-        },
-        Work::LoadProjectLayout {
-            project,
-            request,
-            layout,
-        } => Update::ProjectLayout {
-            project,
-            request,
-            layout,
-            result: Err(error.to_string()),
+            icon: None,
         },
         Work::ReadServerSettings | Work::WriteServerSettings(_) => {
             Update::ServerSettings(Err(error))
@@ -988,23 +966,11 @@ fn perform(work: Work, client: &Client, target: &Target) -> Option<Update> {
                 result: client.cancel_creation(operation),
             });
         }
-        Work::ProjectLayouts { project, request } => {
-            return Some(Update::ProjectLayouts {
+        Work::ProjectIcon { project, request } => {
+            return Some(Update::ProjectIcon {
                 project,
                 request,
-                result: project_layouts::list(client, project),
-            });
-        }
-        Work::LoadProjectLayout {
-            project,
-            request,
-            layout,
-        } => {
-            return Some(Update::ProjectLayout {
-                project,
-                request,
-                result: project_layouts::load(client, project, &layout),
-                layout,
+                icon: project_icon::find(client, project).map(Arc::new),
             });
         }
         Work::ReadCatalog => return Some(Update::Catalog(client.catalog())),
@@ -1292,7 +1258,7 @@ pub(crate) fn missing_session(error: &ClientError) -> bool {
 }
 
 mod delivery;
-mod project_layouts;
+mod project_icon;
 mod requests;
 
 #[cfg(test)]

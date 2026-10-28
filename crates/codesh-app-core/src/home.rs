@@ -8,7 +8,7 @@ use crate::{AppError, AppState, Project, ServerId, WindowState};
 
 impl AppState {
     pub fn bootstrap() -> Result<Self, AppError> {
-        let home = new_home(home_directory()?)?;
+        let home = new_home(home_directory()?);
         let window = WindowState {
             active_pane: None,
             focus_history: Vec::new(),
@@ -43,7 +43,7 @@ impl AppState {
             home.directory = directory;
             self.projects.insert(0, home);
         } else {
-            self.projects.insert(0, new_home(directory)?);
+            self.projects.insert(0, new_home(directory));
         }
         let remote_homes: Vec<_> = self
             .projects
@@ -107,7 +107,7 @@ fn home_directory() -> Result<PathBuf, AppError> {
         .ok_or(AppError::HomeDirectoryUnavailable)
 }
 
-fn new_home(directory: PathBuf) -> Result<Project, AppError> {
+fn new_home(directory: PathBuf) -> Project {
     let home = ProjectDescriptor::home(ServerPath(directory.into_os_string().into_vec()));
     Project::from_descriptor(ServerId::local(), &home)
 }

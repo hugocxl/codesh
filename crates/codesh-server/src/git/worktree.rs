@@ -271,9 +271,6 @@ impl Registry {
                 .and_then(|options| options.name.as_deref())
                 .unwrap_or(name)
                 .into(),
-            icon: None,
-            logo: None,
-            color: parent.color.clone(),
             kind: Some(ProjectKind::Worktree),
             parent_id: Some(parent.id),
         };

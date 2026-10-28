@@ -13,27 +13,18 @@ impl Project {
             id: self.id,
             home: self.home,
             name: self.name.clone(),
-            icon: self.icon.clone(),
-            logo: self.logo.clone(),
-            color: self.color.to_string(),
             directory: ServerPath(self.directory.as_os_str().as_bytes().into()),
             kind: self.kind,
             parent_id: self.parent_id,
         }
     }
     /// `server`'s project as `descriptor` describes it, with no tabs yet.
-    pub(crate) fn from_descriptor(
-        server: ServerId,
-        descriptor: &ProjectDescriptor,
-    ) -> Result<Self, AppError> {
+    pub(crate) fn from_descriptor(server: ServerId, descriptor: &ProjectDescriptor) -> Self {
         let mut project = Self {
             id: descriptor.id,
             home: descriptor.home,
             name: String::new(),
             created_at: Some(std::time::SystemTime::now()),
-            icon: None,
-            logo: None,
-            color: crate::Color::default(),
             server_id: server,
             directory: PathBuf::new(),
             kind: None,
@@ -42,23 +33,19 @@ impl Project {
             groups: None,
             status: ProjectStatus::Available,
         };
-        project.with_descriptor(descriptor)?;
-        Ok(project)
+        project.with_descriptor(descriptor);
+        project
     }
 
-    fn with_descriptor(&mut self, descriptor: &ProjectDescriptor) -> Result<(), AppError> {
+    fn with_descriptor(&mut self, descriptor: &ProjectDescriptor) {
         self.id = descriptor.id;
         self.home = descriptor.home;
         self.name.clone_from(&descriptor.name);
-        self.icon.clone_from(&descriptor.icon);
-        self.logo.clone_from(&descriptor.logo);
-        self.color = descriptor.color.parse()?;
         self.directory =
             PathBuf::from(std::ffi::OsString::from_vec(descriptor.directory.0.clone()));
         self.kind = descriptor.kind;
         self.parent_id = descriptor.parent_id;
         self.refresh_status();
-        Ok(())
     }
 }
 
@@ -257,12 +244,12 @@ impl AppState {
             if project.server_id == server
                 && let Some(descriptor) = descriptors.remove(&project.id)
             {
-                project.with_descriptor(&descriptor)?;
+                project.with_descriptor(&descriptor);
             }
         }
         for descriptor in descriptors.into_values() {
             self.projects
-                .push(Project::from_descriptor(server, &descriptor)?);
+                .push(Project::from_descriptor(server, &descriptor));
         }
         let home = self
             .projects

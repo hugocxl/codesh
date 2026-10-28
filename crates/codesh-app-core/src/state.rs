@@ -213,14 +213,10 @@ impl AppState {
                 "connect to the server before adding projects to it".into(),
             ));
         }
-        let descriptor = codesh_protocol::ProjectDescriptor::new(
-            codesh_protocol::ServerPath(directory.into_os_string().into_vec()),
-            self.projects
-                .iter()
-                .filter(|project| project.server_id == server)
-                .map(|project| project.color.as_str()),
-        );
-        let project = Project::from_descriptor(server, &descriptor)?;
+        let descriptor = codesh_protocol::ProjectDescriptor::new(codesh_protocol::ServerPath(
+            directory.into_os_string().into_vec(),
+        ));
+        let project = Project::from_descriptor(server, &descriptor);
         let id = project.id;
         self.queue_project(server, codesh_protocol::ProjectMutation::Create(descriptor))?;
         self.projects.push(project);
@@ -240,38 +236,6 @@ impl AppState {
         }
         self.patch_project(id, codesh_protocol::ProjectPatch::Name(name.trim().into()))?;
         name.trim().clone_into(&mut self.project_mut(id)?.name);
-        Ok(())
-    }
-
-    pub fn set_project_icon(
-        &mut self,
-        id: ProjectId,
-        icon: Option<String>,
-    ) -> Result<(), AppError> {
-        let project = self.project_mut(id)?;
-        project.require_available()?;
-        self.patch_project(id, codesh_protocol::ProjectPatch::Icon(icon.clone()))?;
-        self.project_mut(id)?.icon = icon;
-        Ok(())
-    }
-
-    pub fn set_project_logo(
-        &mut self,
-        id: ProjectId,
-        logo: Option<std::sync::Arc<[u8]>>,
-    ) -> Result<(), AppError> {
-        self.project_mut(id)?.require_available()?;
-        self.patch_project(id, codesh_protocol::ProjectPatch::Logo(logo.clone()))?;
-        self.project_mut(id)?.logo = logo;
-        Ok(())
-    }
-
-    pub fn set_project_color(&mut self, id: ProjectId, color: Color) -> Result<(), AppError> {
-        let project = self.project_mut(id)?;
-        project.require_available()?;
-        let patch = codesh_protocol::ProjectPatch::Color(color.to_string());
-        self.patch_project(id, patch)?;
-        self.project_mut(id)?.color = color;
         Ok(())
     }
 

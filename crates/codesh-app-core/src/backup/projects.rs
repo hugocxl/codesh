@@ -199,20 +199,8 @@ impl AppState {
                     .project(project.id)
                     .map(|previous| (project, previous))
             })
-            .flat_map(|(project, previous)| {
-                [
-                    (project.name != previous.name)
-                        .then(|| (project.id, ProjectPatch::Name(project.name.clone()))),
-                    (project.icon != previous.icon)
-                        .then(|| (project.id, ProjectPatch::Icon(project.icon.clone()))),
-                    (project.color != previous.color)
-                        .then(|| (project.id, ProjectPatch::Color(project.color.to_string()))),
-                    (project.logo != previous.logo)
-                        .then(|| (project.id, ProjectPatch::Logo(project.logo.clone()))),
-                ]
-                .into_iter()
-                .flatten()
-            })
+            .filter(|(project, previous)| project.name != previous.name)
+            .map(|(project, _)| (project.id, ProjectPatch::Name(project.name.clone())))
             .collect();
         for (project, patch) in patches {
             restored.patch_project(project, patch)?;

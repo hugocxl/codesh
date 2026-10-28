@@ -35,7 +35,6 @@ pub mod shortcuts;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 pub mod spinner;
-pub mod symbols;
 pub mod text_input;
 pub mod theme;
 pub mod toast;

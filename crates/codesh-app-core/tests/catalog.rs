@@ -1,5 +1,5 @@
 use codesh_app_core::{AppState, ProjectId, ServerId, store};
-use codesh_protocol::{CatalogPage, ProjectPatch, ServerIdentity, ServerPath, SessionId};
+use codesh_protocol::{CatalogPage, ServerIdentity, ServerPath, SessionId};
 type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 fn snapshot(state: &AppState) -> CatalogPage {
     CatalogPage {
@@ -77,11 +77,9 @@ fn shared_metadata_refresh_keeps_layout_and_overlays_only_pending_fields() -> Re
         .find(|entry| entry.id == project)
         .ok_or("project")?;
     descriptor.name = "Other client name".into();
-    ProjectPatch::Color("#123456".into()).apply(descriptor);
     catalog.revision += 1;
     state.apply_catalog(ServerId::local(), &catalog)?;
     assert_eq!(state.current_project().name, "Offline name");
-    assert_eq!(state.current_project().color.as_str(), "#123456");
     assert_eq!(state.current_project().tabs, tabs);
     assert_eq!(state.window(), &window);
     assert_eq!(state.project_intents(ServerId::local()), pending);
