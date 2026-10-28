@@ -467,6 +467,12 @@ impl AppModel {
         cx.spawn(async move |this, cx| {
             while let Ok(event) = events.recv().await {
                 let followed = this.update(cx, |model, cx| match event {
+                    Event::Opened(identifier)
+                        if identifier == super::updates::UPDATE_NOTIFICATION =>
+                    {
+                        cx.activate(true);
+                        model.confirm_update(cx);
+                    }
                     Event::Opened(identifier) => {
                         if let Some((server, id)) = notification_event(&identifier) {
                             cx.activate(true);

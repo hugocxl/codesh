@@ -18,6 +18,10 @@ use codesh_ui::tr;
 pub(crate) use status::UpdateAction;
 use std::io::Write;
 
+/// The system notification that announces a downloaded app update; opening
+/// it shows the install prompt.
+pub(super) const UPDATE_NOTIFICATION: &str = "app-update";
+
 #[derive(Default)]
 pub(super) struct Updater {
     installation: Option<Installation>,
@@ -396,7 +400,7 @@ impl AppModel {
         }
     }
 
-    fn finish_update_check(
+    pub(super) fn finish_update_check(
         &mut self,
         result: crate::updater::Result<Option<PreparedUpdate>>,
         cx: &mut Context<Self>,
@@ -414,8 +418,25 @@ impl AppModel {
                 self.discard_update(update, cx);
                 return Err(error);
             }
-            if let Some(previous) = self.updates.ready.replace(update) {
-                self.discard_update(previous, cx);
+            let version = update.version.clone();
+            let announced = match self.updates.ready.replace(update) {
+                Some(previous) => {
+                    let announced = previous.version == version;
+                    self.discard_update(previous, cx);
+                    announced
+                }
+                None => false,
+            };
+            if !manual && !announced {
+                self.notifications.deliver(
+                    UPDATE_NOTIFICATION,
+                    &tr!(
+                        "%@ %@ is available",
+                        Channel::current().app_name(),
+                        &version
+                    ),
+                    &tr!("Open it to review and install the update."),
+                );
             }
             self.updates.retry_preparation = None;
             self.updates.mode = None;

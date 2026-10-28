@@ -3,6 +3,7 @@
 
 "%@\n\nChanges were staged before generating AI metadata." = "%@\n\nChanges were staged before generating AI metadata.";
 "%@\n\nVerify this fingerprint with your server administrator before trusting it." = "%@\n\nVerify this fingerprint with your server administrator before trusting it.";
+"%@ %@ is available" = "%@ %@ is available";
 "%@ CLI is not installed" = "%@ CLI is not installed";
 "%@ CLI is not installed. Choose another provider or install its CLI." = "%@ CLI is not installed. Choose another provider or install its CLI.";
 "%@ Updates" = "%@ Updates";
@@ -861,6 +862,7 @@
 "Open files with" = "Open files with";
 "Open in Default Browser" = "Open in Default Browser";
 "Open in External Browser" = "Open in External Browser";
+"Open it to review and install the update." = "Open it to review and install the update.";
 "Open on GitHub" = "Open on GitHub";
 "Open settings" = "Open settings";
 "Open terminal links in the browser" = "Open terminal links in the browser";

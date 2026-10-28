@@ -360,3 +360,32 @@ fn explicit_stop_does_not_reconnect_when_another_client_announces_an_update(
             .any(|(_, work)| matches!(work, Work::Connect | Work::ReconnectAfterUpdate(_)))
     );
 }
+
+#[gpui::test]
+fn a_downloaded_update_is_announced_once_and_opens_the_install_prompt(cx: &mut TestAppContext) {
+    let (boot, _requests) = stub_boot(AppState::bootstrap().expect("state"));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    let simulated = view.update(cx, |model, cx| {
+        let (notifications, opened, simulated) =
+            codesh_ui::notifications::SimulatedNotifications::start();
+        model.notifications = notifications;
+        AppModel::follow_notifications(opened, cx);
+        model.servers.local.connection = ConnectionState::Ready;
+        model.updates.server = Some(codesh_protocol::ServerInfo::current());
+        simulated
+    });
+    let downloaded = || {
+        Ok(Some(
+            crate::updater::PreparedUpdate::fixture().expect("update"),
+        ))
+    };
+    view.update(cx, |model, cx| {
+        model.finish_update_check(downloaded(), cx);
+        model.finish_update_check(downloaded(), cx);
+    });
+    assert_eq!(simulated.visible(), ["app-update"]);
+    assert!(!cx.has_pending_prompt());
+    simulated.open("app-update");
+    cx.run_until_parked();
+    assert!(cx.has_pending_prompt());
+}
