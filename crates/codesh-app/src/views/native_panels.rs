@@ -64,7 +64,9 @@ pub(crate) fn panel_content(
                 cx.notify();
             });
         },
-        PanelStyle::new(model.theme.clone(), m).sidebar(px(0.0)),
+        PanelStyle::new(model.theme.clone(), m)
+            .sidebar(px(0.0))
+            .background(gpui::transparent_black()),
     )
     .grip(model.webview_grip(None, PanelPosition::Right.resize_cursor()));
     div()
@@ -102,6 +104,8 @@ fn body(model: &AppModel, _cx: &mut Context<AppModel>) -> AnyElement {
             .map(|(panel, _)| panel.clone().into_any_element()),
         SidePanel::None => None,
     };
+    let theme = &model.theme;
+    // The pane grid's inset already separates the panel on its left.
     div()
         .flex()
         .flex_col()
@@ -109,8 +113,24 @@ fn body(model: &AppModel, _cx: &mut Context<AppModel>) -> AnyElement {
         .size_full()
         .min_h_0()
         .min_w_0()
-        .overflow_hidden()
-        .children(view)
+        .pt(style::spacing())
+        .pr(style::spacing())
+        .pb(style::spacing())
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .min_w_0()
+                .overflow_hidden()
+                .rounded(model.metrics.scaled(style::RADIUS))
+                .border_1()
+                .border_color(style::border(theme))
+                .bg(style::panel(theme))
+                .shadow(codesh_ui::theme::Elevation::Elevated.shadow(theme.bg))
+                .children(view),
+        )
         .into_any_element()
 }
 

@@ -254,7 +254,6 @@ impl Render for GitPanel {
             .px(spacing())
             .pt(spacing())
             .gap(spacing())
-            .bg(theme.bg)
             .text_color(theme.fg)
             .text_size(m.font_body())
             .child(branch_line)

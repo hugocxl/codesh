@@ -62,6 +62,15 @@ pub(crate) fn chrome(theme: &Theme) -> Hsla {
     theme.bg
 }
 
+/// The right side panel floats above the pane cards: lighter still in dark
+/// themes, and close to white in light ones.
+pub(crate) fn panel(theme: &Theme) -> Hsla {
+    if is_light(theme) {
+        return blend(gpui::white(), theme.bg, 0.7);
+    }
+    blend(theme.fg, theme.bg, 0.06)
+}
+
 fn tint(theme: &Theme) -> Hsla {
     blend(theme.fg, theme.bg, 0.025)
 }

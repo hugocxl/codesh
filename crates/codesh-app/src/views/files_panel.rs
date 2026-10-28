@@ -549,7 +549,6 @@ impl Render for FilesPanel {
             .min_h_0()
             .px(style::spacing())
             .pt(style::spacing())
-            .bg(self.theme.bg)
             .text_color(self.theme.fg)
             .text_size(self.metrics.font_footnote())
             .on_key_down(cx.listener(Self::key_down))
