@@ -322,11 +322,14 @@ impl AppModel {
                 .map_or(0, |index| index + 1)
         };
         self.sort_projects(&mut parents);
-        if self.state.remote_servers_selected()
-            || self.appearance.sidebar_project_order != ProjectOrder::Manual
-        {
-            parents.sort_by_cached_key(|project| server(project));
-        }
+        let by_server = self.state.remote_servers_selected()
+            || self.appearance.sidebar_project_order != ProjectOrder::Manual;
+        parents.sort_by_cached_key(|project| {
+            (
+                !project.server_id.is_local(),
+                if by_server { server(project) } else { 0 },
+            )
+        });
         parents
     }
 
@@ -410,7 +413,13 @@ impl DraggedProject {
         {
             return;
         }
-        let target = target.filter(|target| *target != self.id);
+        let local = |id| {
+            model
+                .state
+                .project(id)
+                .is_some_and(|project| project.server_id.is_local())
+        };
+        let target = target.filter(|target| *target != self.id && local(*target) == local(self.id));
         if self.last_target.replace(target) != target
             && let Some(target) = target
         {

@@ -1,3 +1,4 @@
+use codesh_core::shortcuts::{ShortcutId, display_chord};
 use codesh_ui::components::{IconGlyph, Tooltip};
 use codesh_ui::icon::Icon;
 use codesh_ui::tr;
@@ -95,15 +96,32 @@ fn background_click(event: &gpui::ClickEvent, window: &mut Window, cx: &mut App)
 /// Chrome icon buttons, sized like Notion's: an 18px glyph in a 28px box.
 const CHROME_BUTTON: f32 = 28.0;
 const CHROME_ICON: f32 = 18.0;
+const CHROME_RADIUS: f32 = 8.0;
+/// Pane header buttons keep the chrome proportions at 80% of the size.
+const COMPACT: f32 = 0.8;
 
 pub(crate) fn action_button(
     id: impl Into<ElementId>,
     tooltip: impl Into<SharedString>,
+    shortcut: Option<ShortcutId>,
+    model: &AppModel,
+) -> Stateful<Div> {
+    sized_button(id, tooltip, shortcut, 1.0, model)
+}
+
+fn sized_button(
+    id: impl Into<ElementId>,
+    tooltip: impl Into<SharedString>,
+    shortcut: Option<ShortcutId>,
+    scale: f32,
     model: &AppModel,
 ) -> Stateful<Div> {
     let m = model.metrics;
     let theme = model.theme.clone();
     let tooltip = tooltip.into();
+    let shortcut: Option<SharedString> = shortcut
+        .and_then(|id| model.settings.keymap.chord(id))
+        .map(|chord| display_chord(chord.as_str()).into());
     div()
         .id(id)
         .relative()
@@ -111,9 +129,9 @@ pub(crate) fn action_button(
         .flex_none()
         .items_center()
         .justify_center()
-        .size(m.scaled(CHROME_BUTTON))
+        .size(m.scaled(CHROME_BUTTON * scale))
         .mr(m.spacing2())
-        .rounded(m.radius_sm())
+        .rounded(m.scaled(CHROME_RADIUS * scale))
         .cursor_pointer()
         .hover(|style| style.bg(theme.hover))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -126,6 +144,7 @@ pub(crate) fn action_button(
                     theme.border,
                     theme.bg,
                 )
+                .shortcut(shortcut.clone())
             })
             .into()
         })
@@ -135,9 +154,32 @@ pub(super) fn icon_button(
     id: impl Into<ElementId>,
     icon: Icon,
     tooltip: impl Into<SharedString>,
+    shortcut: Option<ShortcutId>,
     model: &AppModel,
 ) -> Stateful<Div> {
-    action_button(id, tooltip, model).child(chrome_glyph(icon, model.theme.fg_muted, model))
+    action_button(id, tooltip, shortcut, model).child(chrome_glyph(
+        icon,
+        model.theme.fg_muted,
+        model,
+    ))
+}
+
+/// An [`icon_button`] for pane headers, 20% smaller than the sidebar's.
+pub(super) fn compact_icon_button(
+    id: impl Into<ElementId>,
+    icon: Icon,
+    tooltip: impl Into<SharedString>,
+    shortcut: Option<ShortcutId>,
+    model: &AppModel,
+) -> Stateful<Div> {
+    sized_button(id, tooltip, shortcut, COMPACT, model).child(
+        IconGlyph::new(
+            icon,
+            model.metrics.scaled(CHROME_ICON * COMPACT),
+            model.theme.fg_muted,
+        )
+        .fit(),
+    )
 }
 
 /// The glyph every chrome button draws, so icons measure the same everywhere.
@@ -158,7 +200,12 @@ pub(crate) fn sidebar_toggle(model: &AppModel, cx: &Context<AppModel>) -> Statef
     icon_button(
         "toggle-sidebar",
         Icon::PanelLeft,
-        tr!("Toggle Sidebar"),
+        if model.appearance.sidebar_expanded {
+            tr!("Hide Sidebar")
+        } else {
+            tr!("Show Sidebar")
+        },
+        Some(ShortcutId::ToggleSidebar),
         model,
     )
     .debug_selector(|| "sidebar-toggle".into())
