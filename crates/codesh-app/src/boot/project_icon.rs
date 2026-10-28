@@ -4,9 +4,9 @@
 use codesh_client::Client;
 use codesh_protocol::{FileEntry, FilesAction, FilesReply, FilesRequest, ProjectId, ServerPath};
 
-/// Directories that commonly hold a project's artwork. The search only
-/// descends into these, so a large project costs a handful of listings.
-const DIRECTORIES: &[&str] = &[
+/// Directories that commonly hold a project's artwork. The search descends
+/// into these before any other, so a large project costs a handful of listings.
+const ARTWORK: &[&str] = &[
     ".github",
     "app",
     "art",
@@ -34,8 +34,28 @@ const DIRECTORIES: &[&str] = &[
     "static",
     "windows",
 ];
-const MAX_DEPTH: usize = 3;
-const MAX_LISTINGS: usize = 16;
+/// Directories that never hold a project's own icon.
+const SKIPPED: &[&str] = &[
+    "__tests__",
+    "coverage",
+    "dist",
+    "e2e",
+    "fixtures",
+    "node_modules",
+    "out",
+    "target",
+    "test",
+    "tests",
+    "vendor",
+];
+/// Search cost of entering a directory. Artwork folders are free, so a
+/// search that finds one finishes it first. Folders within them, such as
+/// galleries of screenshots, rarely hold the icon.
+const ARTWORK_COST: usize = 0;
+const OTHER_COST: usize = 3;
+const NESTED_COST: usize = 6;
+const MAX_DEPTH: usize = 6;
+const MAX_LISTINGS: usize = 48;
 /// Candidates read before giving up, in case the best ones don't decode.
 const MAX_READS: usize = 3;
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
@@ -69,17 +89,21 @@ pub(super) fn find(client: &Client, project: ProjectId) -> Option<gpui::RenderIm
         .find_map(|path| decode(&read(path)?))
 }
 
-/// Icon files found breadth-first from the project root, best first.
+/// Icon files found from the project root, best first. Directories are listed
+/// cheapest first, deepest first among equals, so artwork folders nested in a
+/// monorepo's packages are reached without listing every source folder.
 fn candidates(mut list: impl FnMut(&ServerPath) -> Vec<FileEntry>) -> Vec<ServerPath> {
+    use std::cmp::Reverse;
     let mut found = Vec::new();
-    let mut queue = std::collections::VecDeque::from([(ServerPath(Vec::new()), 0)]);
+    let mut queue =
+        std::collections::BinaryHeap::from([(Reverse(0), 0, Reverse(Vec::new()), false)]);
     let mut listings = 0;
-    while let Some((directory, depth)) = queue.pop_front() {
+    while let Some((Reverse(cost), depth, Reverse(directory), in_artwork)) = queue.pop() {
         if listings == MAX_LISTINGS {
             break;
         }
         listings += 1;
-        for entry in list(&directory) {
+        for entry in list(&ServerPath(directory)) {
             if entry.is_ignored {
                 continue;
             }
@@ -87,21 +111,36 @@ fn candidates(mut list: impl FnMut(&ServerPath) -> Vec<FileEntry>) -> Vec<Server
                 continue;
             };
             let name = name.to_ascii_lowercase();
-            if entry.is_directory {
-                if depth + 1 < MAX_DEPTH && searched(&name) {
-                    queue.push_back((entry.path, depth + 1));
+            if !entry.is_directory {
+                if let Some(rank) = rank(&name, depth) {
+                    found.push((rank, entry.path));
                 }
-            } else if let Some(rank) = rank(&name, depth) {
-                found.push((rank, entry.path));
+                continue;
             }
+            if depth + 1 >= MAX_DEPTH {
+                continue;
+            }
+            let artwork = artwork(&name);
+            let step = match (artwork, in_artwork) {
+                (true, _) => ARTWORK_COST,
+                _ if name.starts_with('.') || SKIPPED.contains(&name.as_str()) => continue,
+                (false, false) => OTHER_COST,
+                (false, true) => NESTED_COST,
+            };
+            queue.push((
+                Reverse(cost + step),
+                depth + 1,
+                Reverse(entry.path.0),
+                artwork,
+            ));
         }
     }
     found.sort_by(|a, b| b.0.cmp(&a.0));
     found.into_iter().map(|(_, path)| path).collect()
 }
 
-fn searched(name: &str) -> bool {
-    DIRECTORIES.contains(&name)
+fn artwork(name: &str) -> bool {
+    ARTWORK.contains(&name)
         || name.ends_with(".xcassets")
         || name.ends_with(".appiconset")
         || name.ends_with(".iconset")
@@ -184,27 +223,28 @@ mod tests {
     }
 
     #[test]
-    fn prefers_named_app_icons_and_skips_ignored_and_unrelated_folders() {
+    fn finds_app_icons_nested_in_a_monorepo_and_skips_ignored_folders() {
         let found = candidates(|directory| match directory.0.as_slice() {
             b"" => vec![
-                entry("packaging", true, false),
+                entry("apps", true, false),
                 entry("node_modules", true, true),
-                entry("crates", true, false),
                 entry("screenshot.png", false, false),
             ],
-            b"packaging" => vec![entry("packaging/macos", true, false)],
-            b"packaging/macos" => vec![
-                entry("packaging/macos/AppIconBeta.png", false, false),
-                entry("packaging/macos/AppIcon.png", false, false),
+            b"apps" => vec![entry("apps/desktop", true, false)],
+            b"apps/desktop" => vec![entry("apps/desktop/src-tauri", true, false)],
+            b"apps/desktop/src-tauri" => vec![entry("apps/desktop/src-tauri/icons", true, false)],
+            b"apps/desktop/src-tauri/icons" => vec![
+                entry("apps/desktop/src-tauri/icons/AppIconBeta.png", false, false),
+                entry("apps/desktop/src-tauri/icons/AppIcon.png", false, false),
             ],
-            b"crates" | b"node_modules" => panic!("searched {directory:?}"),
+            b"node_modules" => panic!("searched {directory:?}"),
             _ => Vec::new(),
         });
         assert_eq!(
             found,
             [
-                ServerPath(b"packaging/macos/AppIcon.png".to_vec()),
-                ServerPath(b"packaging/macos/AppIconBeta.png".to_vec()),
+                ServerPath(b"apps/desktop/src-tauri/icons/AppIcon.png".to_vec()),
+                ServerPath(b"apps/desktop/src-tauri/icons/AppIconBeta.png".to_vec()),
             ]
         );
     }
