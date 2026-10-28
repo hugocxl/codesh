@@ -202,6 +202,7 @@ impl QuickOpen {
             .collect();
         div()
             .id(index)
+            .w_full()
             .h(self.metrics.scaled(32.0))
             .px(super::codesh::style::spacing())
             .flex()
@@ -256,6 +257,7 @@ impl Render for QuickOpen {
             self.scroll.clone(),
             cx.processor(|this, index, _, cx| this.render_row(index, cx)),
         )
+        .w_full()
         .flex_grow()
         .min_h(px(0.0));
         div()
@@ -295,7 +297,7 @@ impl Render for QuickOpen {
                     .on_action(
                         cx.listener(|_, _: &Dismiss, _, cx| cx.emit(QuickOpenEvent::Dismissed)),
                     )
-                    .child(self.input.clone())
+                    .child(div().flex().flex_none().child(self.input.clone()))
                     .child(list)
                     .when(self.matches.is_empty(), |el| {
                         el.child(
