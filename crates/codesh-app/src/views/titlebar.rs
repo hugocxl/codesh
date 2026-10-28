@@ -92,6 +92,10 @@ fn background_click(event: &gpui::ClickEvent, window: &mut Window, cx: &mut App)
     }
 }
 
+/// Chrome icon buttons, sized like Notion's: an 18px glyph in a 28px box.
+const CHROME_BUTTON: f32 = 28.0;
+const CHROME_ICON: f32 = 18.0;
+
 pub(crate) fn action_button(
     id: impl Into<ElementId>,
     tooltip: impl Into<SharedString>,
@@ -107,7 +111,7 @@ pub(crate) fn action_button(
         .flex_none()
         .items_center()
         .justify_center()
-        .size(m.control_medium())
+        .size(m.scaled(CHROME_BUTTON))
         .mr(m.spacing2())
         .rounded(m.radius_sm())
         .cursor_pointer()
@@ -138,7 +142,7 @@ pub(super) fn icon_button(
 
 /// The glyph every chrome button draws, so icons measure the same everywhere.
 pub(crate) fn chrome_glyph(icon: Icon, color: gpui::Hsla, model: &AppModel) -> IconGlyph {
-    IconGlyph::new(icon, model.metrics.icon_md(), color).fit()
+    IconGlyph::new(icon, model.metrics.scaled(CHROME_ICON), color).fit()
 }
 
 pub(crate) fn navigation(
