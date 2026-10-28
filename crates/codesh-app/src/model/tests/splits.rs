@@ -489,8 +489,8 @@ fn pane_focused_by_direction_takes_input_and_draws_its_output(cx: &mut TestAppCo
         let _ = requests.try_iter().collect::<Vec<_>>();
         cx.simulate_keystrokes(&format!("{modifier}-{key}"));
         // Releasing the modifiers re-renders the workspace without the pane.
-        cx.simulate_modifiers_change(gpui::Modifiers::alt());
-        cx.simulate_modifiers_change(gpui::Modifiers::none());
+        cx.simulate_modifiers_change(Modifiers::alt());
+        cx.simulate_modifiers_change(Modifiers::none());
         cx.run_until_parked();
         let active = view
             .read_with(cx, |model, _| model.active_pane())
@@ -507,7 +507,7 @@ fn pane_focused_by_direction_takes_input_and_draws_its_output(cx: &mut TestAppCo
             ),
             "typing after {key} missed the focused pane"
         );
-        let renders = |cx: &mut gpui::VisualTestContext| {
+        let renders = |cx: &mut VisualTestContext| {
             view.read_with(cx, |model, cx| {
                 model.grids[&active].view.read(cx).render_count
             })

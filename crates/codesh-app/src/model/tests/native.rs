@@ -233,8 +233,6 @@ fn files_panel_retries_when_its_server_side_connection_opens(cx: &mut TestAppCon
 
 #[gpui::test]
 fn new_terminal_shortcut_leaves_editors_and_side_panels_for_local_home(cx: &mut TestAppContext) {
-    use gpui::Focusable;
-
     let (state, project) = git::registered_current_project();
     let (mut boot, _requests) = stub_boot(state);
     let key = if cfg!(target_os = "macos") {

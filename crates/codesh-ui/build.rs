@@ -8,6 +8,7 @@ fn main() -> io::Result<()> {
     let output = env::var_os("OUT_DIR").ok_or_else(|| io::Error::other("OUT_DIR is missing"))?;
     let mut source = String::from("static ASSETS: &[(&str, &[u8])] = &[\n");
     for directory in ["icons", "themes"] {
+        writeln!(io::stdout(), "cargo:rerun-if-changed=assets/{directory}")?;
         let mut names = Vec::new();
         for entry in fs::read_dir(format!("assets/{directory}"))? {
             let entry = entry?;

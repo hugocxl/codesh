@@ -1,6 +1,5 @@
 use super::*;
 use codesh_app_core::settings::{AppLayout, ProjectOrder, Settings};
-use gpui::Focusable;
 
 fn fixture() -> (AppState, [ProjectId; 4]) {
     let mut state = AppState::bootstrap().expect("state");
@@ -266,9 +265,13 @@ fn sidebar_host_filter_keeps_matching_projects(cx: &mut TestAppContext) {
     let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
     view.update(cx, |model, cx| {
         acknowledge_catalog(model, cx);
+        let local_home = model.state.home().id;
         for (host, expected) in [
-            (SidebarHost::All, vec![local, parent, other_project]),
-            (SidebarHost::Local, vec![local]),
+            (
+                SidebarHost::All,
+                vec![local_home, local, parent, other_project],
+            ),
+            (SidebarHost::Local, vec![local_home, local]),
             (SidebarHost::Server(server), vec![parent]),
             (SidebarHost::Server(ServerId::new()), vec![]),
         ] {

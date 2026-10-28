@@ -60,7 +60,7 @@ pub(super) fn apply(repository: &Path, action: &GitAction) -> Result<GitReply> {
                 repository,
                 &["check-ref-format", &format!("refs/tags/{name}")],
             )?;
-            run(repository, &["tag", "--", name, hash])?;
+            run(repository, &["tag", "--no-sign", "--", name, hash])?;
         }
         _ => return Err(error("Unsupported Git mutation")),
     }
