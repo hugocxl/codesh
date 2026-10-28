@@ -2308,7 +2308,7 @@ impl AppModel {
             }
             self.save(cx);
         }
-        if self.pane_tab(pane).is_none() {
+        if self.pane_tab(pane).is_none() || Self::reconnects_after(server, error) {
             return;
         }
         if missing_session(error) {

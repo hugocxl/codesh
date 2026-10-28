@@ -308,6 +308,53 @@ fn a_remote_going_offline_leaves_local_panes_live_and_reconnects_when_opened(
 }
 
 #[gpui::test]
+fn a_remote_dropping_mid_attach_reconnects_quietly_and_reattaches(cx: &mut TestAppContext) {
+    let (scene, view, cx) = show_local_and_remote(cx);
+    let remote_work = scene
+        .remotes
+        .borrow_mut()
+        .remove(&scene.remote)
+        .expect("remote worker");
+    let session = SessionId::new(42).expect("session");
+    view.update(cx, |model, cx| {
+        model.start_attach(scene.remote_pane, Size { cols: 80, rows: 24 }, cx);
+        let failed = Update::AttachFailed {
+            pane: scene.remote_pane,
+            session: Some(session),
+            created: false,
+            error: codesh_client::ClientError::Disconnected,
+        };
+        model.receive(from(scene.remote, failed), cx);
+        model.receive(
+            from(scene.remote, Update::Event(ClientEvent::Disconnected)),
+            cx,
+        );
+        assert_eq!(model.error, None, "the drop reconnects on its own");
+        work(&remote_work);
+        let home = model.state.server_home(scene.remote).expect("home").id;
+        let sessions = vec![SessionInfo {
+            project: scene.api,
+            id: session,
+            directory: ServerPath(b"/home/dev/api".to_vec()),
+        }];
+        model.connect_server(scene.remote, cx);
+        let generation = model.generation(scene.remote);
+        model.receive((scene.remote, generation, Update::Connected(sessions)), cx);
+        let catalog = page(2, home, &[(scene.api, "api")]);
+        model.receive((scene.remote, generation, Update::Catalog(Ok(catalog))), cx);
+    });
+    redraw(cx);
+    assert!(
+        work(&remote_work).iter().any(|work| matches!(
+            work,
+            Work::Attach { pane, session: Some(attached), .. }
+                if *pane == scene.remote_pane && *attached == session
+        )),
+        "the pane attaches to its session again"
+    );
+}
+
+#[gpui::test]
 fn a_remote_reached_over_ssh_lists_its_projects_and_runs_a_terminal(cx: &mut TestAppContext) {
     remote_terminal(cx).expect("remote terminal over ssh");
 }

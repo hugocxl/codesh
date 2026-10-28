@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use codesh_app_core::ServerId;
-use codesh_client::RemoteReason;
+use codesh_client::{ClientError, RemoteReason};
 use gpui::{Context, Task};
 
 use super::{AppModel, ConnectionState, Quitting};
@@ -110,6 +110,13 @@ impl AppModel {
                 self.reconnect_now(server, generation, cx);
             }
         }
+    }
+
+    /// A request to another computer failed because the connection dropped.
+    /// The drop is reported next and connects again on its own, so the
+    /// failure isn't worth telling the user about.
+    pub(super) fn reconnects_after(server: ServerId, error: &ClientError) -> bool {
+        !server.is_local() && matches!(error, ClientError::Disconnected)
     }
 
     /// It logs in with a password that hasn't been typed this session.
