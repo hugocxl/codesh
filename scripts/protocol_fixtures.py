@@ -59,8 +59,8 @@ def append_only(base):
 
 
 def last_release(version):
-    """The newest beta tag, if it speaks `version`; otherwise the version is unreleased."""
-    tags = git("tag", "--list", "v*-beta.*").split()
+    """The newest release tag, if it speaks `version`; otherwise the version is unreleased."""
+    tags = [tag for tag in git("tag", "--list", "v*").split() if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag)]
     if not tags:
         return None
     tag = max(tags, key=lambda tag: int(re.split(r"[-.]", tag)[-1]))

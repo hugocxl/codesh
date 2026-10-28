@@ -161,8 +161,8 @@ fn uploads(cx: &mut TestAppContext) -> Result {
         pane.drop_paths(std::slice::from_ref(&notes), cx);
     });
     let uploaded = machine.path("uploads");
-    wait_text(cx, &view, &format!("{}/", uploaded.display()))?;
-    wait_text(cx, &view, "/notes.txt'")?;
+    wait_wrapped_text(cx, &view, &format!("{}/", uploaded.display()))?;
+    wait_wrapped_text(cx, &view, "/notes.txt'")?;
     assert_eq!(
         machine.uploads(),
         [("notes.txt".to_owned(), b"dropped notes".to_vec())]

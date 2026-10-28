@@ -1,12 +1,12 @@
 name: Build release
 
-# Builds, signs, notarizes and verifies one release for every platform. Used
-# by the beta and stable release workflows.
+# Builds, signs, notarizes and verifies the Apple silicon release. Used by the
+# release workflow.
 on:
   workflow_call:
     inputs:
       version:
-        description: X.Y.Z or X.Y.Z-beta.N
+        description: X.Y.Z
         required: true
         type: string
       source:
@@ -14,10 +14,9 @@ on:
         required: true
         type: string
       build_number:
-        description: Commit count of a stable release; a beta's is in its version
-        required: false
+        description: Commit count the release was built from
+        required: true
         type: string
-        default: ''
 
 permissions:
   contents: read
@@ -44,22 +43,6 @@ jobs:
             arch: arm64
             target: aarch64-apple-darwin
             runner: macos-15
-          # Cross-compiled and verified through Rosetta: Intel runners are far slower.
-          - platform: macos
-            directory: x86_64
-            arch: x86_64
-            target: x86_64-apple-darwin
-            runner: macos-15
-          - platform: linux
-            directory: linux-x86_64
-            arch: x86_64
-            target: x86_64-unknown-linux-gnu
-            runner: ubuntu-22.04
-          - platform: linux
-            directory: linux-arm64
-            arch: arm64
-            target: aarch64-unknown-linux-gnu
-            runner: ubuntu-22.04-arm
     env:
       VERSION: ${{ inputs.version }}
       BUILD_NUMBER: ${{ inputs.build_number }}
@@ -70,15 +53,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source }}
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config binutils
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.92.0
           targets: ${{ matrix.target }}
-      - name: Install Rosetta to run the x86_64 build on Apple silicon
-        if: runner.os == 'macOS' && matrix.arch == 'x86_64'
-        run: arch -x86_64 /usr/bin/true || sudo softwareupdate --install-rosetta --agree-to-license
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
@@ -128,7 +106,7 @@ jobs:
           SIGN_IDENTITY: ${{ steps.identity.outputs.name }}
         run: >-
           bash scripts/build-release.sh --arch "$ARCH" --version "$VERSION"
-          ${BUILD_NUMBER:+--build-number "$BUILD_NUMBER"} --sign-identity "$SIGN_IDENTITY"
+          --build-number "$BUILD_NUMBER" --sign-identity "$SIGN_IDENTITY"
       - name: Notarize and verify DMG
         if: runner.os == 'macOS' && env.NOTARIZE == 'true'
         env:
@@ -152,15 +130,6 @@ jobs:
           "$PACKAGE_DIR/codesh-$VERSION-macos-$ARCH.zip"
           --version "$VERSION" --dmg "$PACKAGE_DIR/Codesh-$VERSION-$ARCH.dmg"
           ${{ env.NOTARIZE == 'true' && '--notarized' || '' }}
-      - name: Build and package the native glibc 2.35 pair
-        if: runner.os == 'Linux'
-        run: bash scripts/build-cli-linux.sh "$ARCH" "$VERSION"
-      - name: Verify packaged pair and standalone installation
-        if: runner.os == 'Linux'
-        run: >-
-          python3 scripts/verify-release-package.py
-          "$PACKAGE_DIR/codesh-$VERSION-linux-$ARCH.tar.gz"
-          --version "$VERSION"
       - name: Upload distribution archives
         uses: actions/upload-artifact@v4
         with:
@@ -168,7 +137,6 @@ jobs:
           path: |
             ${{ env.PACKAGE_DIR }}/Codesh-${{ env.VERSION }}-${{ matrix.arch }}.dmg
             ${{ env.PACKAGE_DIR }}/codesh-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}.zip
-            ${{ env.PACKAGE_DIR }}/codesh-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           retention-days: 7
       - name: Upload debug symbols and dependency audits
@@ -193,72 +161,3 @@ jobs:
             security delete-keychain "$KEYCHAIN_PATH"
           fi
           rm -f "$RUNNER_TEMP/codesh-release-certificate.p12"
-
-  linux-desktop:
-    name: Build (Linux desktop, ${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: x86_64
-            target: x86_64-unknown-linux-gnu
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            target: aarch64-unknown-linux-gnu
-    env:
-      VERSION: ${{ inputs.version }}
-      ARCH: ${{ matrix.arch }}
-      PACKAGE_DIR: target/packages/${{ inputs.version }}/linux-desktop-${{ matrix.arch }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.source }}
-      - run: >-
-          sudo apt-get update && sudo apt-get install -y
-          build-essential pkg-config clang cmake binutils libfontconfig1-dev libfreetype-dev
-          libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libvulkan-dev
-          libssl-dev libwebkit2gtk-4.1-0 curl dpkg-dev file desktop-file-utils
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.92.0
-          targets: ${{ matrix.target }}
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: desktop-release-${{ matrix.target }}
-          cache-on-failure: true
-      - name: Stamp and build the desktop with matching helpers
-        run: |
-          rm -rf target/packages
-          python3 scripts/release.py stamp "$VERSION"
-          bash scripts/build-desktop-release-linux.sh "$ARCH" "$VERSION"
-      - name: Verify install, helpers, leases and uninstall without a display
-        run: >-
-          python3 scripts/verify-desktop-linux.py
-          "$PACKAGE_DIR/codesh-desktop-$VERSION-linux-$ARCH.tar.gz" --version "$VERSION"
-      - name: Verify APT dependencies, package lifecycle, AppImage and the user-local installer
-        run: bash scripts/verify-desktop-runtime.sh "$VERSION" "$ARCH" "$PACKAGE_DIR"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: distribution-linux-desktop-${{ matrix.arch }}
-          path: |
-            ${{ env.PACKAGE_DIR }}/codesh-desktop-${{ env.VERSION }}-linux-${{ matrix.arch }}.tar.gz
-            ${{ env.PACKAGE_DIR }}/Codesh-${{ env.VERSION }}-linux-${{ matrix.arch }}.AppImage
-            ${{ env.PACKAGE_DIR }}/codesh-desktop*.deb
-          if-no-files-found: error
-          retention-days: 7
-      - uses: actions/upload-artifact@v4
-        with:
-          name: symbols-linux-desktop-${{ matrix.arch }}
-          path: |
-            ${{ env.PACKAGE_DIR }}/*-symbols.tar.gz
-            ${{ env.PACKAGE_DIR }}/*-audit.txt
-          if-no-files-found: error
-          retention-days: 30
-      - if: always()
-        run: rm -rf target/packages

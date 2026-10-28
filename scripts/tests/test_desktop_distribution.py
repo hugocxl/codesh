@@ -287,7 +287,7 @@ class DesktopDistributionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, reason):
                     INSTALL.latest("stable")
 
-    def test_linux_metadata_is_complete_checksummed_and_keeps_macos_assets(self):
+    def test_metadata_checksums_linux_and_lists_only_built_platforms(self):
         for name in (f"Codesh-{self.new}-arm64.dmg", f"Codesh-{self.new}-x86_64.dmg",
                      f"codesh-desktop-{self.new}-linux-arm64.tar.gz", f"codesh-desktop-{self.new}-linux-x86_64.tar.gz"):
             (self.home / name).write_bytes(b"release bytes")
@@ -295,8 +295,8 @@ class DesktopDistributionTests(unittest.TestCase):
         self.assertEqual(set(metadata["platforms"]), {"macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64"})
         self.assertEqual(metadata["platforms"]["linux-aarch64"]["sha256"], hashlib.sha256(b"release bytes").hexdigest())
         (self.home / f"codesh-desktop-{self.new}-linux-x86_64.tar.gz").unlink()
-        with self.assertRaises(FileNotFoundError):
-            RELEASE.update_metadata(self.new, "hugocxl/codesh", self.home)
+        metadata = RELEASE.update_metadata(self.new, "hugocxl/codesh", self.home)
+        self.assertEqual(set(metadata["platforms"]), {"macos-aarch64", "macos-x86_64", "linux-aarch64"})
 
     def test_desktop_audit_does_not_weaken_standalone_glibc_or_library_policy(self):
         inputs = ["Class: ELF64\nData: little endian\nMachine: AArch64\n",

@@ -15,13 +15,14 @@ variables use the `CODESH_` prefix, and mobile pairing links use `codesh://pair`
 
 ## Releases and updates
 
-Releases are published on
-[GitHub Releases](https://github.com/hugocxl/codesh/releases). Mac disk images
-are named `Codesh-{version}-{arch}.dmg`. Linux releases add the CLI/server
-archives, `.deb` packages, AppImages, and the desktop installer script.
+Every commit on `main` that passes CI is published on
+[GitHub Releases](https://github.com/hugocxl/codesh/releases) as
+`X.Y.<commit count>`, with `X.Y` from `VERSION`
+(`.github/workflows/release.yml`). Releases ship Apple silicon only:
+`Codesh-{version}-arm64.dmg`, the `codesh-{version}-macos-arm64.zip`
+CLI/server pair, and `install-codesh.sh`.
 
-The app's updater reads `update.json`: the beta feed is
-`releases/download/beta-2.x/update.json`, and stable uses the latest release's
+The newest release is marked latest, and installed apps update from its
 `releases/latest/download/update.json`. Remote installs fetch
 `install-codesh.sh` from the matching release.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Versions and packaging metadata of beta (X.Y.Z-beta.N) and stable (X.Y.Z) releases."""
+"""Versions and packaging metadata of releases (X.Y.<commit count>) and local beta builds."""
 import argparse
 import hashlib
 import json
@@ -32,14 +32,14 @@ def channel(version):
         return "beta"
     if STABLE_PATTERN.fullmatch(version):
         return "stable"
-    raise ValueError("release version must be X.Y.Z or <BETA_VERSION>-beta.<positive commit count>")
+    raise ValueError("release version must be X.Y.Z or X.Y.Z-beta.<positive commit count>")
 
 
 def build_number(version):
     """A beta's commit count, which orders betas and becomes the bundle version."""
     match = BETA_PATTERN.fullmatch(version)
     if not match:
-        raise ValueError("beta version must be <BETA_VERSION>-beta.<positive commit count>")
+        raise ValueError("beta version must be X.Y.Z-beta.<positive commit count>")
     return match[2]
 
 
@@ -48,38 +48,13 @@ def git(root, *args):
 
 
 def checkout_version(root):
+    """Every commit on main releases as <VERSION>.<commit count>."""
     if git(root, "rev-parse", "--is-shallow-repository") != "false":
-        raise ValueError("beta numbering requires a full checkout (fetch-depth: 0)")
-    base = (root / "BETA_VERSION").read_text().strip()
-    version = f"{base}-beta.{git(root, 'rev-list', '--count', 'HEAD')}"
-    build_number(version)
-    return version
-
-
-def promotion(root, beta_tag, version, next_beta_version):
-    """The build number a stable release of `beta_tag` keeps, after checking the inputs."""
-    if channel(version) != "stable" or channel(next_beta_version) != "stable":
-        raise ValueError("stable and next beta versions must be X.Y.Z")
-    if version_key(next_beta_version) <= version_key(version):
-        raise ValueError("the next beta version must be newer than the stable version")
-    if not beta_tag.startswith("v"):
-        raise ValueError("beta tag must be vX.Y.Z-beta.N")
-    build = build_number(beta_tag[1:])
-    if git(root, "rev-parse", "--is-shallow-repository") != "false":
-        raise ValueError("promotion requires a full checkout (fetch-depth: 0)")
-    try:
-        commit = git(root, "rev-parse", "--verify", "--quiet", f"refs/tags/{beta_tag}^{{commit}}")
-    except subprocess.CalledProcessError:
-        raise ValueError(f"{beta_tag} does not exist") from None
-    if subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", commit, "origin/main"]).returncode:
-        raise ValueError(f"{beta_tag} is not on main")
-    if git(root, "rev-list", "--count", commit) != build:
-        raise ValueError(f"{beta_tag} does not match its commit count")
-    return build
-
-
-def version_key(version):
-    return tuple(int(part) for part in version.split("-")[0].split("."))
+        raise ValueError("release numbering requires a full checkout (fetch-depth: 0)")
+    base = (root / "VERSION").read_text().strip()
+    if not re.fullmatch(r"[0-9]+\.[0-9]+", base):
+        raise ValueError("VERSION must be X.Y")
+    return f"{base}.{git(root, 'rev-list', '--count', 'HEAD')}"
 
 
 def replace_once(pattern, replacement, text, label):
@@ -172,6 +147,8 @@ def update_metadata(version, repository, directory):
     for platform, arch in (("linux-aarch64", "arm64"), ("linux-x86_64", "x86_64")):
         filename = f"codesh-desktop-{version}-linux-{arch}.tar.gz"
         path = directory / filename
+        if not path.exists():
+            continue
         size = path.stat().st_size
         if not 0 < size <= 2 * 1024**3 or path.is_symlink():
             raise ValueError(f"invalid desktop update for {arch}")
@@ -199,10 +176,6 @@ def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("version")
-    promote = commands.add_parser("promote")
-    promote.add_argument("beta_tag")
-    promote.add_argument("version")
-    promote.add_argument("next_beta_version")
     check = commands.add_parser("check-build")
     check.add_argument("version")
     check.add_argument("executable", type=Path)
@@ -222,9 +195,7 @@ def main():
             version = checkout_version(ROOT)
             print(f"version={version}")
             print(f"tag=v{version}")
-        elif args.command == "promote":
-            build = promotion(ROOT, args.beta_tag, args.version, args.next_beta_version)
-            print(f"build_number={build}")
+            print(f"build_number={version.rsplit('.', 1)[1]}")
         elif args.command == "check-build":
             check_build(args.version, args.executable)
         elif args.command == "stamp":
