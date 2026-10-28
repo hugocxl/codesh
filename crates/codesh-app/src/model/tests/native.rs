@@ -238,7 +238,7 @@ fn new_terminal_shortcut_leaves_editors_and_side_panels_for_local_home(cx: &mut 
     let key = if cfg!(target_os = "macos") {
         "cmd-alt-shift-t"
     } else {
-        "ctrl-alt-shift-t"
+        "ctrl-alt-shift-y"
     };
     boot.settings.keymap = boot
         .settings
