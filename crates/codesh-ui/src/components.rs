@@ -7,6 +7,7 @@ pub fn register_shortcuts(registry: &mut crate::shortcuts::Registry<'_>) {
 }
 
 use crate::icon::Icon;
+use gpui::prelude::FluentBuilder;
 use gpui::{
     App, AppContext, ClickEvent, Context, ElementId, FocusHandle, Hsla, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Pixels, Render, RenderOnce, SharedString,
@@ -314,6 +315,7 @@ impl RenderOnce for IconButton {
 #[derive(Debug)]
 pub struct Tooltip {
     text: SharedString,
+    shortcut: Option<SharedString>,
     background: Hsla,
     foreground: Hsla,
     border: Hsla,
@@ -330,6 +332,7 @@ impl Tooltip {
     ) -> Self {
         Self {
             text: text.into(),
+            shortcut: None,
             background,
             foreground,
             border,
@@ -337,20 +340,43 @@ impl Tooltip {
         }
     }
 
+    /// Shows `shortcut` as a keycap after the text, like a menu item.
+    #[must_use]
+    pub fn shortcut(mut self, shortcut: Option<impl Into<SharedString>>) -> Self {
+        self.shortcut = shortcut.map(Into::into);
+        self
+    }
+
     fn surface(&self) -> gpui::Div {
+        let muted = self.foreground.opacity(0.6);
         div()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
             .max_w(px(320.0))
-            .line_clamp(4)
-            .px(px(8.0))
-            .py(px(4.0))
-            .rounded(px(5.0))
+            .px(px(10.0))
+            .py(px(5.0))
+            .rounded(px(8.0))
             .bg(self.background)
             .border_1()
             .border_color(self.border)
-            .text_size(px(11.0))
+            .text_size(px(12.0))
             .text_color(self.foreground)
             .shadow(crate::theme::Elevation::Elevated.shadow(self.theme_background))
-            .child(self.text.clone())
+            .child(div().line_clamp(4).child(self.text.clone()))
+            .when_some(self.shortcut.clone(), |surface, shortcut| {
+                surface.child(
+                    div()
+                        .flex_none()
+                        .px(px(4.0))
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(self.border)
+                        .text_size(px(11.0))
+                        .text_color(muted)
+                        .child(shortcut),
+                )
+            })
     }
 }
 

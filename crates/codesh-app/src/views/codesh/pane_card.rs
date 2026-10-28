@@ -1,5 +1,6 @@
 use codesh_app_core::{Direction, PaneContent, PaneId};
-use codesh_ui::{components::IconGlyph, icon::Icon};
+use codesh_core::shortcuts::ShortcutId;
+use codesh_ui::{components::IconGlyph, icon::Icon, tr};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
@@ -78,26 +79,47 @@ pub(crate) fn render(
                 .invisible()
                 .group_hover("pane-card", Styled::visible)
         });
-    for (name, icon, tooltip, action) in [
-        ("right", Icon::Columns, "Split Right", Action::Right),
-        ("down", Icon::Rows, "Split Down", Action::Down),
+    let (zoom_icon, zoom_tooltip) = if zoomed {
+        (Icon::Restore, tr!("Restore Pane"))
+    } else {
+        (Icon::Maximize, tr!("Zoom Pane"))
+    };
+    for (name, icon, tooltip, shortcut, action) in [
+        (
+            "right",
+            Icon::Columns,
+            tr!("Split Right"),
+            ShortcutId::SplitRight,
+            Action::Right,
+        ),
+        (
+            "down",
+            Icon::Rows,
+            tr!("Split Down"),
+            ShortcutId::SplitDown,
+            Action::Down,
+        ),
         (
             "zoom",
-            if zoomed {
-                Icon::Restore
-            } else {
-                Icon::Maximize
-            },
-            "Zoom / Restore",
+            zoom_icon,
+            zoom_tooltip,
+            ShortcutId::ToggleZoomPane,
             Action::Zoom,
         ),
-        ("close", Icon::X, "Close Pane", Action::Close),
+        (
+            "close",
+            Icon::X,
+            tr!("Close Pane"),
+            ShortcutId::ClosePane,
+            Action::Close,
+        ),
     ] {
         controls = controls.child(
-            crate::views::titlebar::icon_button(
+            crate::views::titlebar::compact_icon_button(
                 SharedString::from(format!("pane-{id}-{name}")),
                 icon,
                 tooltip,
+                Some(shortcut),
                 model,
             )
             .debug_selector(move || format!("pane-{id}-{name}"))

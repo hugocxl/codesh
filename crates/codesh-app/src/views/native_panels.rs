@@ -3,6 +3,7 @@
 
 use codesh_app_core::settings::SidePanel;
 use codesh_app_core::{PaneContent, PaneId};
+use codesh_core::shortcuts::ShortcutId;
 use codesh_ui::icon::Icon;
 use codesh_ui::panel::{
     PanelFrame, PanelId, PanelPosition, PanelSizeBounds, PanelSizing, PanelStyle,
@@ -135,10 +136,14 @@ fn body(model: &AppModel, _cx: &mut Context<AppModel>) -> AnyElement {
 
 /// The sidebar's Files and Source Control toggles.
 pub(crate) fn sidebar_buttons(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
-    let button = |id: &'static str, panel: SidePanel, icon: Icon, tooltip: SharedString| {
+    let button = |id: &'static str,
+                  panel: SidePanel,
+                  icon: Icon,
+                  tooltip: SharedString,
+                  shortcut: ShortcutId| {
         let active = model.appearance.side_panel == panel;
         let theme = &model.theme;
-        crate::views::titlebar::action_button(id, tooltip, model)
+        crate::views::titlebar::action_button(id, tooltip, Some(shortcut), model)
             .debug_selector(move || id.into())
             .when(active, |button| button.bg(theme.surface))
             .on_click(cx.listener(move |model, _, window, cx| {
@@ -159,20 +164,8 @@ pub(crate) fn sidebar_buttons(model: &AppModel, cx: &mut Context<AppModel>) -> A
             crate::views::titlebar::icon_button(
                 "sidebar-new-terminal",
                 Icon::Plus,
-                model
-                    .settings
-                    .keymap
-                    .chord(codesh_core::shortcuts::ShortcutId::NewTab)
-                    .map_or_else(
-                        || tr!("New Terminal").to_string(),
-                        |chord| {
-                            format!(
-                                "{} ({})",
-                                tr!("New Terminal"),
-                                codesh_core::shortcuts::display_chord(chord.as_str())
-                            )
-                        },
-                    ),
+                tr!("New Terminal"),
+                Some(ShortcutId::NewTab),
                 model,
             )
             .debug_selector(|| "sidebar-new-terminal".into())
@@ -187,12 +180,14 @@ pub(crate) fn sidebar_buttons(model: &AppModel, cx: &mut Context<AppModel>) -> A
             SidePanel::Files,
             Icon::Folder,
             tr!("Files"),
+            ShortcutId::ToggleFiles,
         ))
         .child(button(
             "sidebar-source-control",
             SidePanel::SourceControl,
             Icon::GitBranch,
             tr!("Source Control"),
+            ShortcutId::ToggleSourceControl,
         ))
         .into_any_element()
 }

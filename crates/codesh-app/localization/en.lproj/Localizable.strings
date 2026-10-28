@@ -548,6 +548,7 @@
 "File not found" = "File not found";
 "Files" = "Files";
 "Fill padding with the background color, or extend the color of the nearest cells." = "Fill padding with the background color, or extend the color of the nearest cells.";
+"Filter by Host" = "Filter by Host";
 "Filter layouts…" = "Filter layouts…";
 "Filter providers" = "Filter providers";
 "Filter terminals or owners…" = "Filter terminals or owners…";
@@ -607,6 +608,7 @@
 "Hide" = "Hide";
 "Hide %@" = "Hide %@";
 "Hide Others" = "Hide Others";
+"Hide Sidebar" = "Hide Sidebar";
 "Hide Tips" = "Hide Tips";
 "Hide Tips?" = "Hide Tips?";
 "Hide app" = "Hide app";
@@ -1189,6 +1191,7 @@
 "Show Codesh Tip" = "Show Codesh Tip";
 "Show Codesh tips at the bottom of the built-in sidebar." = "Show Codesh tips at the bottom of the built-in sidebar.";
 "Show Pairing Code" = "Show Pairing Code";
+"Show Sidebar" = "Show Sidebar";
 "Show Worktrees" = "Show Worktrees";
 "Show a one-time code to scan with the Codesh app." = "Show a one-time code to scan with the Codesh app.";
 "Show agents panel" = "Show agents panel";
@@ -1508,6 +1511,7 @@
 "Your changes are lost if you don't save them." = "Your changes are lost if you don't save them.";
 "You’re running the latest version of %@." = "You’re running the latest version of %@.";
 "Zoom" = "Zoom";
+"Zoom Pane" = "Zoom Pane";
 "Zoom Window" = "Zoom Window";
 "committed %@" = "committed %@";
 "couldn't commit" = "couldn't commit";
