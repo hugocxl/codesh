@@ -686,35 +686,35 @@ fn ring_path(
 }
 
 pub(super) fn provider_icon(provider: AgentProvider, size: Pixels, model: &AppModel) -> AnyElement {
-    let name = match provider {
-        AgentProvider::Claude => "claude",
-        AgentProvider::Codex => "codex",
-        AgentProvider::OpenCode => "opencode",
-        AgentProvider::Cursor => "cursor",
-        AgentProvider::Copilot => "copilot",
-        AgentProvider::Droid => "factory",
-        AgentProvider::Pi => "pi",
-        AgentProvider::Grok => "grok",
-        AgentProvider::Kiro => "kiro",
-        AgentProvider::Xal => "xal",
-        AgentProvider::Antigravity => "antigravity",
-        AgentProvider::OhMyPi => "omp",
-        AgentProvider::Unrecognized(_) => {
-            return svg()
-                .path("icons/terminal.svg")
-                .size(size)
-                .text_color(model.theme.fg)
-                .into_any_element();
-        }
+    // Full-colour logos. Codex and Grok are single-colour marks that would
+    // vanish on one of the themes, so they keep their tinted outlines.
+    let logo = match provider {
+        AgentProvider::Claude => Some("claude"),
+        AgentProvider::OpenCode => Some("opencode"),
+        AgentProvider::Cursor => Some("cursor"),
+        AgentProvider::Copilot => Some("copilot"),
+        AgentProvider::Droid => Some("droid"),
+        AgentProvider::Pi => Some("pi"),
+        AgentProvider::Kiro => Some("kiro"),
+        AgentProvider::Antigravity => Some("antigravity"),
+        AgentProvider::OhMyPi => Some("omp"),
+        _ => None,
     };
-    let path = SharedString::from(format!("icons/provider-{name}.svg"));
-    if provider == AgentProvider::Claude {
-        gpui::img(path).size(size).into_any_element()
-    } else {
-        svg()
-            .path(path)
+    if let Some(name) = logo {
+        return gpui::img(SharedString::from(format!("icons/agent-{name}.png")))
             .size(size)
-            .text_color(model.theme.fg)
-            .into_any_element()
+            .rounded(size * 0.25)
+            .into_any_element();
     }
+    let path = match provider {
+        AgentProvider::Codex => "icons/provider-codex.svg",
+        AgentProvider::Grok => "icons/provider-grok.svg",
+        AgentProvider::Xal => "icons/provider-xal.svg",
+        _ => "icons/terminal.svg",
+    };
+    svg()
+        .path(path)
+        .size(size)
+        .text_color(model.theme.fg)
+        .into_any_element()
 }

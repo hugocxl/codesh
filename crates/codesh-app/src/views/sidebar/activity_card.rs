@@ -1,5 +1,5 @@
 //! Card content is derived exclusively from model caches.
-use codesh_app_core::{PaneContent, Project, Tab};
+use codesh_app_core::{Pane, PaneContent, Project, Tab};
 use codesh_protocol::{AgentProvider, AgentState};
 
 use crate::model::AppModel;
@@ -57,44 +57,44 @@ impl Data {
             .map(|activity| &activity.snapshot);
         // Session IDs are server-scoped. Resolve through this worktree's panes,
         // as the existing agents panel does, including mirrored sessions.
-        let agent = snapshot.and_then(|snapshot| {
-            tabs.iter()
-                .flat_map(|tab| tab.panes.iter().map(move |pane| (tab, pane)))
-                .filter_map(|(tab, pane)| {
-                    let PaneContent::Terminal {
-                        session: Some(session),
-                    } = pane.content
-                    else {
-                        return None;
-                    };
-                    snapshot
-                        .agents
-                        .iter()
-                        .find(|agent| agent.session == session)
-                        .map(|agent| (agent, tab, pane))
-                })
-                .min_by_key(|(agent, _, _)| match agent.state {
-                    AgentState::Blocked => 0,
-                    AgentState::Working => 1,
-                    _ => 2,
-                })
-        });
-        let shown_pane = tabs
-            .first()
-            .and_then(|tab| tab.displayed_pane(model.state.shown_pane(tab)));
-        let shown = tabs
-            .first()
-            .map(|tab| tab.title(model.state.shown_pane(tab)).trim());
+        let agent_in = |pane: &Pane| {
+            let PaneContent::Terminal {
+                session: Some(session),
+            } = pane.content
+            else {
+                return None;
+            };
+            snapshot?
+                .agents
+                .iter()
+                .find(|agent| agent.session == session)
+        };
+        let working = tabs
+            .iter()
+            .flat_map(|tab| &tab.panes)
+            .filter_map(agent_in)
+            .any(|agent| agent.state == AgentState::Working);
+        // The card speaks for the pane the user has selected, so switching
+        // panes switches the headline.
+        let selected = model.state.window().selected_tab.get(&project.id);
+        let tab = tabs
+            .iter()
+            .find(|tab| Some(&tab.id) == selected)
+            .or_else(|| tabs.first());
+        let shown_id = tab.and_then(|tab| model.state.shown_pane(tab));
+        let shown_pane = tab.and_then(|tab| tab.displayed_pane(shown_id));
+        let shown = tab.map(|tab| tab.title(shown_id).trim());
+        let agent = shown_pane.and_then(agent_in);
         let browsing =
             shown_pane.is_some_and(|pane| matches!(pane.content, PaneContent::Browser(_)));
         let headline =
             if let Some(headline) = shown_pane.and_then(|pane| file_headline(&pane.content)) {
                 headline
-            } else if let Some((agent, tab, pane)) = agent {
+            } else if let Some(agent) = agent {
                 // Agents title their terminal with the current task after a
                 // spinner glyph; until they do, the card names the agent. An older
                 // session's prompt would describe some other conversation.
-                let task = task_title(tab.title(Some(pane.id)), agent.provider.name());
+                let task = shown.and_then(|title| task_title(title, agent.provider.name()));
                 Headline::Agent { task }
             } else {
                 match shown.filter(|title| !title.is_empty()) {
@@ -108,11 +108,10 @@ impl Data {
                             directory: (!project.home && directory != project.name)
                                 .then_some(directory),
                         },
-                        None => Headline::Command(title.to_owned()),
+                        None => Headline::Command(without_host(title).to_owned()),
                     },
                 }
             };
-        let working = agent.is_some_and(|(agent, _, _)| agent.state == AgentState::Working);
         Self {
             headline,
             directory: shown_pane.and_then(|pane| idle_directory(&pane.title)),
@@ -122,7 +121,7 @@ impl Data {
                 .filter(|branch| *branch != project.name),
             pr: pr.map(|pr| pr.number),
             working,
-            provider: agent.map(|(agent, _, _)| agent.provider),
+            provider: agent.map(|agent| agent.provider),
         }
     }
 }
@@ -135,18 +134,39 @@ fn file_headline(content: &PaneContent) -> Option<Headline> {
     }
 }
 
-/// An idle shell titles its terminal `user@host:directory`; returns the
-/// directory, shortened to its last component (or `~`).
+/// Drops the `(host) ` prefix some prompts, like Pure, put before the
+/// directory or running command.
+fn without_host(title: &str) -> &str {
+    title
+        .strip_prefix('(')
+        .and_then(|rest| rest.split_once(") "))
+        .filter(|(host, _)| !host.is_empty() && !host.contains(char::is_whitespace))
+        .map_or(title, |(_, rest)| rest.trim_start())
+}
+
+/// An idle shell titles its terminal with its directory, as `user@host:dir`,
+/// `(host) dir` or the bare path; returns the directory, shortened to its last
+/// component (or `~`).
 fn idle_directory(title: &str) -> Option<String> {
-    let (user, rest) = title.split_once('@')?;
-    let (host, directory) = rest.split_once(':')?;
-    if user.is_empty()
-        || host.is_empty()
-        || user.contains(char::is_whitespace)
-        || host.contains(char::is_whitespace)
-    {
-        return None;
-    }
+    let title = without_host(title.trim());
+    let directory = if title.starts_with(['~', '/']) {
+        // A bare path with spaces is more likely a command line.
+        if title.contains(char::is_whitespace) {
+            return None;
+        }
+        title
+    } else {
+        let (user, rest) = title.split_once('@')?;
+        let (host, directory) = rest.split_once(':')?;
+        if user.is_empty()
+            || host.is_empty()
+            || user.contains(char::is_whitespace)
+            || host.contains(char::is_whitespace)
+        {
+            return None;
+        }
+        directory
+    };
     if directory.is_empty() {
         return None;
     }
@@ -193,6 +213,14 @@ mod tests {
         assert_eq!(idle_directory("hugo@mini:"), None);
         assert_eq!(idle_directory("htop"), None);
         assert_eq!(idle_directory("ssh hugo@mini-pro: deploy"), None);
+        assert_eq!(
+            idle_directory("(mac-mini-m2-pro) ~/repos/vitruve").as_deref(),
+            Some("vitruve")
+        );
+        assert_eq!(idle_directory("(mac-mini-m2-pro) ~").as_deref(), Some("~"));
+        assert_eq!(idle_directory("(mac-mini-m2-pro) cargo test"), None);
+        assert_eq!(without_host("(mac-mini-m2-pro) cargo test"), "cargo test");
+        assert_eq!(without_host("(cd x) && make"), "(cd x) && make");
     }
 
     #[test]
