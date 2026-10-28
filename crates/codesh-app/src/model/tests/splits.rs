@@ -469,3 +469,82 @@ fn card_controls_target_their_own_pane_and_keep_the_close_workflow(cx: &mut Test
     })();
     assert!(result.is_ok(), "{result:?}");
 }
+
+#[gpui::test]
+fn pane_focused_by_direction_takes_input_and_draws_its_output(cx: &mut TestAppContext) {
+    let (state, _, panes) = split_state();
+    let (boot, requests) = stub_boot(state);
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update(cx, |model, cx| {
+        acknowledge_catalog(model, cx);
+        attach_panes(model, &panes, cx);
+    });
+    cx.run_until_parked();
+    let modifier = if cfg!(target_os = "macos") {
+        "cmd-alt"
+    } else {
+        "alt"
+    };
+    for key in ["left", "right", "down", "up", "left"] {
+        let _ = requests.try_iter().collect::<Vec<_>>();
+        cx.simulate_keystrokes(&format!("{modifier}-{key}"));
+        // Releasing the modifiers re-renders the workspace without the pane.
+        cx.simulate_modifiers_change(gpui::Modifiers::alt());
+        cx.simulate_modifiers_change(gpui::Modifiers::none());
+        cx.run_until_parked();
+        let active = view
+            .read_with(cx, |model, _| model.active_pane())
+            .expect("active");
+        let channel = ChannelId(
+            u32::try_from(panes.iter().position(|pane| *pane == active).expect("pane") + 1)
+                .expect("channel"),
+        );
+        cx.simulate_input("x");
+        cx.run_until_parked();
+        assert!(
+            requests.try_iter().any(
+                |(_, work)| matches!(work, Work::Input(sent, bytes) if sent == channel && bytes == b"x")
+            ),
+            "typing after {key} missed the focused pane"
+        );
+        let renders = |cx: &mut gpui::VisualTestContext| {
+            view.read_with(cx, |model, cx| {
+                model.grids[&active].view.read(cx).render_count
+            })
+        };
+        let before = renders(cx);
+        view.update(cx, |model, cx| {
+            let output = ClientEvent::Frame {
+                channel,
+                frame: frame_with("x"),
+            };
+            model.receive((ServerId::local(), 1, Update::Event(output)), cx);
+        });
+        cx.run_until_parked();
+        assert!(renders(cx) > before, "echo after {key} was not drawn");
+    }
+}
+
+fn frame_with(text: &str) -> codesh_protocol::ScreenFrame {
+    codesh_protocol::ScreenFrame {
+        size: Size { cols: 80, rows: 24 },
+        graphics: None,
+        seq: 7,
+        reset: false,
+        rows: vec![codesh_protocol::Row {
+            index: 0,
+            runs: vec![codesh_protocol::Run {
+                text: text.into(),
+                width: u16::try_from(text.len()).expect("width"),
+                style: codesh_protocol::Style::default(),
+            }],
+        }],
+        cursor: codesh_protocol::Cursor {
+            shape: codesh_protocol::CursorShape::default(),
+            row: 0,
+            col: 0,
+            visible: true,
+        },
+        modes: codesh_protocol::Modes::default(),
+    }
+}
