@@ -286,3 +286,27 @@ fn sidebar_host_filter_keeps_matching_projects(cx: &mut TestAppContext) {
         );
     });
 }
+
+#[gpui::test]
+fn manual_order_lists_local_projects_before_remote_ones(cx: &mut TestAppContext) {
+    let mut state = AppState::bootstrap().expect("state");
+    let local_home = state.home().id;
+    let server = ServerId::new();
+    let [remote_home, remote] = std::array::from_fn(|_| ProjectId::new());
+    state
+        .apply_catalog(
+            server,
+            &servers::page(2, remote_home, &[(remote, "Remote")]),
+        )
+        .expect("remote");
+    let local = state
+        .add_project(ServerId::local(), std::env::temp_dir())
+        .expect("local");
+    let (boot, _requests, _remotes) = remote_boot(state, vec![servers::entry(server, "Server")]);
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update(cx, |model, cx| {
+        acknowledge_catalog(model, cx);
+        model.appearance.sidebar_project_order = ProjectOrder::Manual;
+        assert_eq!(parent_ids(model), [local_home, local, remote]);
+    });
+}
