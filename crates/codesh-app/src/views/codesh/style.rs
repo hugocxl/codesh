@@ -45,8 +45,29 @@ fn blend(foreground: Hsla, background: Hsla, amount: f32) -> Hsla {
     .into()
 }
 
+/// Pane cards stand out from the window chrome: lighter in dark themes, and in
+/// light themes the chrome darkens so cards keep the theme's own background.
 pub(crate) fn card(theme: &Theme) -> Hsla {
+    if is_light(theme) {
+        return theme.bg;
+    }
+    tint(theme)
+}
+
+/// The window background behind the pane cards, shared by the sidebar.
+pub(crate) fn chrome(theme: &Theme) -> Hsla {
+    if is_light(theme) {
+        return tint(theme);
+    }
+    theme.bg
+}
+
+fn tint(theme: &Theme) -> Hsla {
     blend(theme.fg, theme.bg, 0.025)
+}
+
+fn is_light(theme: &Theme) -> bool {
+    theme.bg.l > theme.fg.l
 }
 
 pub(crate) fn border(theme: &Theme) -> Hsla {

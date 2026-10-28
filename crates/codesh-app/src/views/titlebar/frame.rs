@@ -92,7 +92,7 @@ pub(crate) fn render(
     let surface = div()
         .relative()
         .size_full()
-        .bg(theme.bg)
+        .bg(crate::views::codesh::style::chrome(theme))
         .border_color(theme.border)
         .when(!tiling.top, |surface| surface.border_t(px(BORDER)))
         .when(!tiling.bottom, |surface| surface.border_b(px(BORDER)))

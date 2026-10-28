@@ -41,9 +41,9 @@ fn background(appearance: &Appearance, theme: &Theme, available: bool) -> Hsla {
     // Codesh keeps the sidebar flat on the window colour unless the native
     // effect is on; the standard sidebar raises it instead.
     if !available || !enabled(appearance) {
-        return theme.bg;
+        return crate::views::codesh::style::chrome(theme);
     }
-    let mut color = theme.bg;
+    let mut color = crate::views::codesh::style::chrome(theme);
     color.a = 1.0 - f32::from(appearance.sidebar_vibrancy_level.min(100)) / 100.0;
     color
 }
