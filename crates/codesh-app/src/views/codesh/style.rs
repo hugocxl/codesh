@@ -1,5 +1,5 @@
-use codesh_ui::theme::Theme;
-use gpui::{Hsla, Rgba};
+use codesh_ui::theme::{Theme, blend};
+use gpui::Hsla;
 
 /// The one spacing of Codesh's chrome: the window inset, the gap between
 /// pane cards, the sidebar's and panels' side padding, and the insets of a
@@ -31,18 +31,6 @@ pub(crate) const HIDE_COLLAPSED_SIDEBAR: bool = true;
 /// [`GUTTER`] as a length.
 pub(crate) fn spacing() -> gpui::Pixels {
     gpui::px(GUTTER)
-}
-
-fn blend(foreground: Hsla, background: Hsla, amount: f32) -> Hsla {
-    let top: Rgba = foreground.into();
-    let bottom: Rgba = background.into();
-    Rgba {
-        r: top.r * amount + bottom.r * (1.0 - amount),
-        g: top.g * amount + bottom.g * (1.0 - amount),
-        b: top.b * amount + bottom.b * (1.0 - amount),
-        a: 1.0,
-    }
-    .into()
 }
 
 /// Pane cards stand out from the window chrome: lighter in dark themes, and in

@@ -677,7 +677,7 @@ pub(crate) fn agent_logo(name: &str, size: Pixels, model: &AppModel) -> AnyEleme
             .text_color(model.theme.fg)
             .into_any_element();
     }
-    let variant = if matches!(name, "codex" | "grok") && model.theme.bg.l >= 0.5 {
+    let variant = if matches!(name, "codex" | "grok") && model.theme.is_light() {
         "-light"
     } else {
         ""

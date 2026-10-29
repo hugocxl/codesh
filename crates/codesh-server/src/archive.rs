@@ -4,11 +4,11 @@ mod storage;
 use storage::StoredRecord;
 
 use std::collections::BTreeMap;
-use std::fs::{self, DirBuilder, File, OpenOptions};
+use std::fs::{self, DirBuilder, File};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, BufWriter, Read, Write};
 use std::ops::Range;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
@@ -541,23 +541,9 @@ fn read_record(path: &Path, budget: u64) -> io::Result<Record> {
 }
 
 fn write_record(directory: &Path, session: SessionId, record: &Record) -> io::Result<()> {
-    let nonce = getrandom::u64().map_err(|error| io::Error::other(error.to_string()))?;
-    let temporary = directory.join(format!(".{:016x}-{nonce:016x}.tmp", session.get()));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temporary)?;
-        write_buffered(record, &mut file)?;
-        file.sync_all()?;
-        fs::rename(&temporary, record_path(directory, session))?;
-        File::open(directory)?.sync_all()
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    codesh_core::fs::write_atomic(&record_path(directory, session), |file| {
+        write_buffered(record, file)
+    })
 }
 
 fn write_buffered(record: &Record, writer: impl Write) -> io::Result<()> {

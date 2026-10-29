@@ -171,7 +171,7 @@ impl Catalog {
             Err(error) => return Err(error),
         };
         state.validate().map_err(io::Error::other)?;
-        let now = retention::now();
+        let now = codesh_core::time::unix_now();
         for membership in state.sessions.values_mut() {
             membership.ended_at.get_or_insert(now);
             membership.status = if archive.contains(membership.info.id) {
@@ -222,7 +222,7 @@ impl Catalog {
     pub(crate) fn ensure_durable(&self) -> Result<(), ServerError> {
         let _write = self.write.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(path) = &self.path {
-            storage::sync_parent(path).map_err(|error| storage_error(&error))?;
+            codesh_core::fs::sync_parent(path).map_err(|error| storage_error(&error))?;
         }
         Ok(())
     }

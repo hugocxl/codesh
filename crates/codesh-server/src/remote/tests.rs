@@ -42,7 +42,7 @@ fn offer(remote: &RemoteAccess, owner: ClientId) -> [u8; 16] {
     let secret = [9; 16];
     remote.lock().offer = Some(Offer {
         secret,
-        expires_at: now() + PAIRING_SECONDS,
+        expires_at: codesh_core::time::unix_now() + PAIRING_SECONDS,
         owner,
     });
     secret
@@ -71,7 +71,7 @@ fn wrong_secrets_leave_the_offer_usable_but_expiry_ends_it() -> Result<(), Serve
     for _ in 0..10 {
         assert!(remote.pair(&request([0; 16]), server()).is_none());
     }
-    let expired = now() + PAIRING_SECONDS + 1;
+    let expired = codesh_core::time::unix_now() + PAIRING_SECONDS + 1;
     assert!(
         remote
             .pair_at(&request(secret), server(), expired)

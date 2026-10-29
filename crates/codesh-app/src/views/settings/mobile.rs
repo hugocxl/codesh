@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use codesh_app_core::qr::{QUIET_ZONE, QrCode};
 use codesh_protocol::{ListenerStatus, PairedDevice, PairingOffer, RemoteAccessState};
@@ -219,10 +218,7 @@ fn devices(
             .child("No paired devices yet.")
             .into_any_element();
     }
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = codesh_core::time::unix_now();
     div()
         .flex()
         .flex_col()
@@ -265,12 +261,11 @@ fn presence(device: &PairedDevice, now: u64) -> SharedString {
     let Some(seen) = device.last_seen else {
         return "Never connected".into();
     };
-    match now.saturating_sub(seen) {
-        0..60 => "Last seen just now".into(),
-        seconds @ 60..3_600 => format!("Last seen {} min ago", seconds / 60).into(),
-        seconds @ 3_600..86_400 => format!("Last seen {} h ago", seconds / 3_600).into(),
-        seconds => format!("Last seen {} d ago", seconds / 86_400).into(),
-    }
+    format!(
+        "Last seen {}",
+        codesh_core::time::ago(now.saturating_sub(seen))
+    )
+    .into()
 }
 
 fn units(value: usize) -> f32 {

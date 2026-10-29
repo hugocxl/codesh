@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use codesh_protocol::transport::tls::TlsIdentity;
 use codesh_protocol::{
@@ -122,7 +122,7 @@ impl RemoteAccess {
     }
 
     pub(crate) fn state(&self, connected: &HashSet<DeviceId>) -> RemoteAccessState {
-        let now = now();
+        let now = codesh_core::time::unix_now();
         let state = self.lock();
         RemoteAccessState {
             revision: self.revision(),
@@ -242,7 +242,7 @@ impl RemoteAccess {
         invite
             .validate()
             .map_err(|_| unavailable("No network address found for pairing"))?;
-        let expires_at = now() + PAIRING_SECONDS;
+        let expires_at = codesh_core::time::unix_now() + PAIRING_SECONDS;
         state.offer = Some(Offer {
             secret: invite.secret,
             expires_at,
@@ -274,7 +274,7 @@ impl RemoteAccess {
     }
 
     pub(crate) fn pair(&self, request: &PairRequest, server: ServerIdentity) -> Option<Paired> {
-        self.pair_at(request, server, now())
+        self.pair_at(request, server, codesh_core::time::unix_now())
     }
 
     fn pair_at(&self, request: &PairRequest, server: ServerIdentity, now: u64) -> Option<Paired> {
@@ -327,7 +327,7 @@ impl RemoteAccess {
     /// The same answer for every failure, and the same work whether or not the device exists.
     pub(crate) fn authenticate(&self, credential: &DeviceCredential) -> Option<DeviceId> {
         let presented = hash(&credential.token);
-        let now = now();
+        let now = codesh_core::time::unix_now();
         let mut state = self.lock();
         let usable = state.stored.settings.enabled && state.unreadable.is_none();
         let device = state
@@ -410,13 +410,6 @@ impl RemoteAccess {
 
 fn unavailable(message: &str) -> ServerError {
     ServerError::new(ErrorCode::BadRequest, message)
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
 }
 
 fn random<const N: usize>() -> Result<[u8; N], ServerError> {

@@ -1,8 +1,15 @@
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Whether `path` is a regular file with an execute bit set.
+pub fn is_executable_file(path: &Path) -> bool {
+    path.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
 
 pub fn command_arguments(source: &str) -> io::Result<Vec<String>> {
     let invalid = |message| io::Error::new(io::ErrorKind::InvalidInput, message);

@@ -3,9 +3,21 @@ use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::os::unix::fs::DirBuilderExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::release::{Channel, Version};
+
+/// `path` written from `~` when it is inside `home`, such as `~/code`. `None`
+/// outside it, or when the home folder is the root.
+pub fn abbreviate_home(path: &Path, home: &Path) -> Option<PathBuf> {
+    home.parent()?;
+    let rest = path.strip_prefix(home).ok()?;
+    Some(if rest.as_os_str().is_empty() {
+        PathBuf::from("~")
+    } else {
+        Path::new("~").join(rest)
+    })
+}
 
 pub fn codesh_dir() -> io::Result<PathBuf> {
     let linux = cfg!(target_os = "linux");

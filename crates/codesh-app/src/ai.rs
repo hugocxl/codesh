@@ -1,7 +1,6 @@
 //! Headless AI providers. Callers own their prompts and any resulting actions.
 
 use std::io::Read;
-use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -245,11 +244,7 @@ impl Provider {
         search
             .iter()
             .map(|dir| dir.join(self.executable))
-            .find(|path| {
-                path.metadata().is_ok_and(|metadata| {
-                    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-                })
-            })
+            .find(|path| codesh_core::executable::is_executable_file(path))
     }
 
     /// Runs the provider inside the project, where it reads the project's own instructions.

@@ -99,14 +99,7 @@ impl PathService {
     }
 
     pub(crate) fn expanded_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed == "~" {
-            return self.home_directory.clone();
-        }
-        if let Some(rest) = trimmed.strip_prefix("~/") {
-            return format!("{}/{rest}", self.home_directory);
-        }
-        trimmed.to_owned()
+        expand_home(path.trim(), &self.home_directory)
     }
 
     pub(crate) fn typed_path_state(path: &str) -> TypedPathState {
@@ -118,19 +111,7 @@ impl PathService {
     }
 
     pub(crate) fn abbreviated_display_path(&self, path: &str) -> String {
-        let standardized = standardize(path);
-        let display = if standardized == self.home_directory {
-            "~".to_owned()
-        } else if let Some(rest) = standardized.strip_prefix(&format!("{}/", self.home_directory)) {
-            format!("~/{rest}")
-        } else {
-            standardized
-        };
-        if display.ends_with('/') {
-            display
-        } else {
-            format!("{display}/")
-        }
+        super::search::display_path(&standardize(path), &self.home_directory)
     }
 
     fn confirm_path(&self, trimmed: &str) -> String {
@@ -236,6 +217,15 @@ pub(crate) fn directory_contents(path: &str) -> Result<Vec<DirectoryItem>, std::
         }
     }
     Ok(items)
+}
+
+/// `path` with a leading `~` replaced by `home`.
+pub(crate) fn expand_home(path: &str, home: &str) -> String {
+    if path == "~" {
+        return home.to_owned();
+    }
+    path.strip_prefix("~/")
+        .map_or_else(|| path.to_owned(), |rest| format!("{home}/{rest}"))
 }
 
 pub(crate) fn standardize(path: &str) -> String {

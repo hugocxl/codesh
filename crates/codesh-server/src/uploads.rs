@@ -159,10 +159,7 @@ pub(crate) fn file_name(name: &str) -> String {
     }
     let (stem, extension) = split(cleaned);
     let extension = if extension.len() <= 16 { extension } else { "" };
-    let mut end = NAME_BYTES - extension.len();
-    while !stem.is_char_boundary(end) {
-        end -= 1;
-    }
+    let end = stem.floor_char_boundary(NAME_BYTES - extension.len());
     format!("{}{extension}", &stem[..end])
 }
 

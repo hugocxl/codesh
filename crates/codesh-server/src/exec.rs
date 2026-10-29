@@ -245,11 +245,7 @@ fn drain(reader: &mut impl Read, bytes: &mut Vec<u8>, truncated: &mut bool) -> i
 fn utf8(bytes: &[u8], truncated: &mut bool) -> String {
     let mut text = String::from_utf8_lossy(bytes).into_owned();
     if text.len() > MAX_EXEC_OUTPUT {
-        let mut end = MAX_EXEC_OUTPUT;
-        while !text.is_char_boundary(end) {
-            end -= 1;
-        }
-        text.truncate(end);
+        text.truncate(text.floor_char_boundary(MAX_EXEC_OUTPUT));
         *truncated = true;
     }
     text

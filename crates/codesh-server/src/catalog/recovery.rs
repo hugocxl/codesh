@@ -15,7 +15,7 @@ impl Catalog {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .statuses
-            .insert(session, (status, super::retention::now()));
+            .insert(session, (status, codesh_core::time::unix_now()));
         self.retry_exits();
     }
 

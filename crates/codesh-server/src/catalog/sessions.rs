@@ -114,7 +114,9 @@ impl Catalog {
                 creation.error = Some(error.to_reply());
                 if let Some(session) = state.sessions.get_mut(&creation.info.id) {
                     session.status = SessionStatus::Unavailable;
-                    session.ended_at.get_or_insert(super::retention::now());
+                    session
+                        .ended_at
+                        .get_or_insert(codesh_core::time::unix_now());
                 }
             }
             Ok(())

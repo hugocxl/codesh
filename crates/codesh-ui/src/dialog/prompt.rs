@@ -432,10 +432,10 @@ pub fn confirm_with_prompt(
     panel.setBackgroundColor(Some(&NSColor::clearColor()));
     panel.setTitle(&NSString::from_str(title));
     let appearance = NSAppearance::appearanceNamed(unsafe {
-        if style.theme.bg.l < 0.5 {
-            NSAppearanceNameDarkAqua
-        } else {
+        if style.theme.is_light() {
             NSAppearanceNameAqua
+        } else {
+            NSAppearanceNameDarkAqua
         }
     });
     panel.setAppearance(appearance.as_deref());

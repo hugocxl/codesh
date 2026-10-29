@@ -5,7 +5,7 @@ use super::{Arc, AtomicBool, Duration, Ordering, Phase, PoisonError, Recorder, S
 use process::Process;
 use std::fs::File;
 use std::io::Read;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::RecvTimeoutError;
@@ -175,11 +175,7 @@ fn executable(name: &str) -> Result<PathBuf, String> {
     directories
         .into_iter()
         .map(|directory| directory.join(name))
-        .find(|path| {
-            path.metadata().is_ok_and(|metadata| {
-                metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-            })
-        })
+        .find(|path| codesh_core::executable::is_executable_file(path))
         .ok_or_else(|| format!("Install {name} to use offline dictation.").into())
 }
 

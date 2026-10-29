@@ -743,7 +743,7 @@ impl Registry {
     }
 
     pub fn prune_expired_sessions(&self) -> Result<(), ServerError> {
-        self.prune_sessions_at(crate::catalog::retention::now())
+        self.prune_sessions_at(codesh_core::time::unix_now())
     }
 
     fn prune_sessions_at(&self, now: u64) -> Result<(), ServerError> {

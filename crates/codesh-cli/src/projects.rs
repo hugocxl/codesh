@@ -2,6 +2,9 @@
 //! by its worktrees.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 
 use codesh_protocol::{CatalogPage, ProjectDescriptor, ProjectId, ServerPath};
 
@@ -70,17 +73,16 @@ pub(crate) fn cycle(catalog: &CatalogPage, current: ProjectId, forward: bool) ->
 
 /// `directory` for display, with the home folder shortened to `~`.
 pub(crate) fn display_path(catalog: &CatalogPage, directory: &ServerPath) -> String {
-    let home = catalog
+    let path = Path::new(OsStr::from_bytes(&directory.0));
+    let shortened = catalog
         .projects
         .iter()
         .find(|project| project.home)
-        .map(|project| project.directory.0.as_slice())
-        .filter(|home| home.len() > 1);
-    let path = directory.0.as_slice();
-    let shortened = match home.and_then(|home| path.strip_prefix(home)) {
-        Some([]) => "~".to_owned(),
-        Some(rest) if rest.starts_with(b"/") => format!("~{}", String::from_utf8_lossy(rest)),
-        _ => String::from_utf8_lossy(path).into_owned(),
-    };
-    crate::ui::clean(&shortened)
+        .and_then(|home| {
+            codesh_core::dirs::abbreviate_home(
+                path,
+                Path::new(OsStr::from_bytes(&home.directory.0)),
+            )
+        });
+    crate::ui::clean(&shortened.as_deref().unwrap_or(path).to_string_lossy())
 }

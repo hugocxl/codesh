@@ -61,7 +61,6 @@ fn resolve_shell(settings: &ServerSettings) -> PathBuf {
 }
 
 fn select_shell(configured: Option<PathBuf>, inherited: Option<OsString>, linux: bool) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     configured
         .or_else(|| {
             inherited
@@ -70,9 +69,7 @@ fn select_shell(configured: Option<PathBuf>, inherited: Option<OsString>, linux:
                 .filter(|shell| {
                     !linux
                         || (shell.is_absolute()
-                            && shell.metadata().is_ok_and(|metadata| {
-                                metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-                            }))
+                            && codesh_core::executable::is_executable_file(shell))
                 })
         })
         .unwrap_or_else(|| PathBuf::from(if linux { "/bin/sh" } else { FALLBACK_SHELL }))

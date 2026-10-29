@@ -31,6 +31,11 @@ const FALLBACK_FOREGROUND: u32 = 0xc9_c2_d9;
 const FALLBACK_ACCENT: u32 = 0xc3_70_d3;
 
 impl Theme {
+    /// Whether the background is light, so dark-on-light assets and appearances apply.
+    pub fn is_light(&self) -> bool {
+        self.bg.l >= 0.5
+    }
+
     pub fn from_scheme(theme: &ColorScheme) -> Self {
         let bg = theme.background.unwrap_or(rgb(FALLBACK_BACKGROUND));
         let fg = theme.foreground.unwrap_or(rgb(FALLBACK_FOREGROUND));
@@ -46,7 +51,7 @@ impl Theme {
             fg_muted: with_alpha(fg, 0.65).into(),
             fg_dim: with_alpha(fg, 0.4).into(),
             surface: with_alpha(fg, 0.08).into(),
-            border: blend(with_alpha(fg, 0.12).into(), bg.into()),
+            border: blend(fg.into(), bg.into(), 0.12),
             hover: with_alpha(fg, 0.06).into(),
             accent: accent.into(),
             accent_soft: with_alpha(accent, 0.1).into(),
@@ -60,7 +65,7 @@ impl Theme {
     }
 
     pub fn raised(&self) -> Hsla {
-        blend(self.surface, self.bg)
+        blend(self.surface, self.bg, self.surface.a)
     }
 
     pub fn border_solid(&self) -> Hsla {
@@ -74,11 +79,12 @@ impl Theme {
     }
 }
 
-fn blend(top: Hsla, bottom: Hsla) -> Hsla {
-    let top: Rgba = top.into();
-    let bottom: Rgba = bottom.into();
+/// The opaque color `amount` of the way from `background` to `foreground`.
+pub fn blend(foreground: Hsla, background: Hsla, amount: f32) -> Hsla {
+    let top: Rgba = foreground.into();
+    let bottom: Rgba = background.into();
     let mix = |top_channel: f32, bottom_channel: f32| {
-        top_channel * top.a + bottom_channel * (1.0 - top.a)
+        top_channel * amount + bottom_channel * (1.0 - amount)
     };
     Rgba {
         r: mix(top.r, bottom.r),

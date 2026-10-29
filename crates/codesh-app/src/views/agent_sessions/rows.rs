@@ -78,13 +78,7 @@ fn section(recency: Recency, model: &AppModel) -> Div {
 }
 
 fn age(session: &Session) -> SharedString {
-    let age = session.modified.elapsed().unwrap_or_default().as_secs();
-    match age {
-        0..60 => "Just now".into(),
-        60..3600 => format!("{}m ago", age / 60).into(),
-        3600..86_400 => format!("{}h ago", age / 3600).into(),
-        _ => format!("{}d ago", age / 86_400).into(),
-    }
+    codesh_core::time::ago(session.modified.elapsed().unwrap_or_default().as_secs()).into()
 }
 
 fn row(

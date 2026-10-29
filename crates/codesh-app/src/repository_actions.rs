@@ -342,10 +342,7 @@ fn add_pull_request_context(git: &impl Git, plan: &mut Plan) -> Result<(), Strin
 }
 
 fn clip(text: &str, bytes: usize) -> (&str, bool) {
-    let mut end = text.len().min(bytes);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
+    let end = text.floor_char_boundary(bytes);
     (&text[..end], end < text.len())
 }
 

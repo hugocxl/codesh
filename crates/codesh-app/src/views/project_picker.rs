@@ -1079,15 +1079,10 @@ async fn folder_prompt(
 }
 
 pub(crate) fn display_path(path: &Path) -> String {
-    if let Some(home) = std::env::home_dir()
-        && let Ok(relative) = path.strip_prefix(home)
-    {
-        if relative.as_os_str().is_empty() {
-            "~".into()
-        } else {
-            format!("~/{}", relative.display())
-        }
-    } else {
-        path.to_string_lossy().into_owned()
-    }
+    std::env::home_dir()
+        .and_then(|home| codesh_core::dirs::abbreviate_home(path, &home))
+        .as_deref()
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned()
 }

@@ -1,4 +1,4 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use codesh_app_core::ServerId;
 use codesh_protocol::{DeviceId, PairingOffer, RemoteAccessSettings, RemoteAccessState};
@@ -199,12 +199,9 @@ impl AppModel {
                 self.mobile.cancel = true;
             }
             Ok(offer) => {
-                let lifetime = offer.expires_at.saturating_sub(
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                );
+                let lifetime = offer
+                    .expires_at
+                    .saturating_sub(codesh_core::time::unix_now());
                 self.mobile.expiry = Some(cx.spawn(async move |model, cx| {
                     cx.background_executor()
                         .timer(Duration::from_secs(lifetime))

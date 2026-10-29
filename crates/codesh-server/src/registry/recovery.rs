@@ -109,7 +109,7 @@ fn retention_removes_expired_output_without_ending_live_sessions() -> TestResult
     registry.prune_expired_sessions()?;
     assert!(registry.read_saved_screen(ended.id).is_ok());
     assert_eq!(registry.catalog_revision(), revision);
-    let later = crate::catalog::retention::now() + crate::catalog::retention::RETENTION_SECONDS;
+    let later = codesh_core::time::unix_now() + crate::catalog::retention::RETENTION_SECONDS;
     registry.prune_sessions_at(later)?;
     assert!(registry.read_saved_screen(ended.id).is_err());
     assert!(registry.catalog_revision() > revision);
@@ -145,7 +145,7 @@ fn retention_migrates_old_entries_once_and_prunes_on_startup() -> TestResult {
         .ok_or("entry")?
         .remove("ended_at");
     fs::write(&path, serde_json::to_vec(&stored)?)?;
-    let before = crate::catalog::retention::now();
+    let before = codesh_core::time::unix_now();
     let registry = profile.open()?;
     assert!(registry.read_saved_screen(session.id).is_ok());
     drop(registry);
@@ -154,7 +154,7 @@ fn retention_migrates_old_entries_once_and_prunes_on_startup() -> TestResult {
         .as_u64()
         .ok_or("timestamp")?;
     assert!(ended_at >= before);
-    assert!(ended_at <= crate::catalog::retention::now());
+    assert!(ended_at <= codesh_core::time::unix_now());
     stored["sessions"][&key]["ended_at"] = (ended_at - 60).into();
     fs::write(&path, serde_json::to_vec(&stored)?)?;
     drop(profile.open()?);

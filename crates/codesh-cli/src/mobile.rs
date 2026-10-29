@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::io::{self, Write};
 use std::sync::mpsc::RecvTimeoutError;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use codesh_app_core::qr::{QUIET_ZONE, QrCode};
 use codesh_client::{Client, ClientEvent};
@@ -68,14 +68,19 @@ fn print_state(state: &RemoteAccessState) -> Result {
         return Ok(());
     }
     writeln!(stdout, "Paired devices:")?;
-    let now = now();
+    let now = codesh_core::time::unix_now();
     for device in &state.devices {
         let seen = if device.connected {
             "connected".to_owned()
         } else {
             device.last_seen.map_or_else(
                 || "never connected".to_owned(),
-                |seen| format!("last seen {}", ago(now.saturating_sub(seen))),
+                |seen| {
+                    format!(
+                        "last seen {}",
+                        codesh_core::time::ago(now.saturating_sub(seen))
+                    )
+                },
             )
         };
         let id = device.id.to_string();
@@ -129,7 +134,11 @@ fn pair(client: &Client, addresses: Vec<String>) -> Result {
     stdout.flush()?;
     drop(stdout);
     let started = Instant::now();
-    let lifetime = Duration::from_secs(offer.expires_at.saturating_sub(now()));
+    let lifetime = Duration::from_secs(
+        offer
+            .expires_at
+            .saturating_sub(codesh_core::time::unix_now()),
+    );
     loop {
         match events.recv_timeout(lifetime.saturating_sub(started.elapsed())) {
             Ok(ClientEvent::RemoteAccessChanged { .. }) => {
@@ -176,20 +185,4 @@ fn print_code(output: &mut impl Write, code: &QrCode) -> io::Result<()> {
         writeln!(output, "\x1b[0m")?;
     }
     Ok(())
-}
-
-fn ago(seconds: u64) -> String {
-    match seconds {
-        0..60 => "just now".into(),
-        60..3_600 => format!("{} min ago", seconds / 60),
-        3_600..86_400 => format!("{} h ago", seconds / 3_600),
-        _ => format!("{} d ago", seconds / 86_400),
-    }
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
 }

@@ -311,7 +311,7 @@ impl Editor {
         };
         if let Some((relative, goto)) = cli {
             let program = self.path.join(relative);
-            if executable(&program) {
+            if codesh_core::executable::is_executable_file(&program) {
                 let mut args = vec![directory.as_os_str().to_owned()];
                 if file.path.is_dir() {
                     if file.path != directory {
@@ -346,12 +346,6 @@ fn location_argument(file: &FileLocation) -> OsString {
         file.column.unwrap_or(1)
     ));
     target
-}
-
-fn executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    path.metadata()
-        .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
 #[cfg(target_os = "macos")]
@@ -516,7 +510,7 @@ fn editors() -> &'static [Editor] {
             let path = directories
                 .iter()
                 .map(|directory| directory.join(command))
-                .find(|path| executable(path))?;
+                .find(|path| codesh_core::executable::is_executable_file(path))?;
             Some(Editor {
                 bundle: bundle.into(),
                 path,

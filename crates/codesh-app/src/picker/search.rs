@@ -1,5 +1,6 @@
 use super::fold::fold;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -517,13 +518,7 @@ pub(crate) fn standardized_absolute_path(path: &str, home_directory: &str) -> Op
     if trimmed.is_empty() {
         return None;
     }
-    let expanded = if trimmed == "~" {
-        home_directory.to_owned()
-    } else if let Some(rest) = trimmed.strip_prefix("~/") {
-        format!("{home_directory}/{rest}")
-    } else {
-        trimmed.to_owned()
-    };
+    let expanded = super::path_service::expand_home(trimmed, home_directory);
     if !expanded.starts_with('/') {
         return None;
     }
@@ -561,13 +556,10 @@ fn folded_search_path(path: &str, root: &str) -> String {
 }
 
 pub(crate) fn display_path(path: &str, home: &str) -> String {
-    let display = if path == home {
-        "~".to_owned()
-    } else if let Some(rest) = path.strip_prefix(&format!("{home}/")) {
-        format!("~/{rest}")
-    } else {
-        path.to_owned()
-    };
+    let display = codesh_core::dirs::abbreviate_home(Path::new(path), Path::new(home)).map_or_else(
+        || path.to_owned(),
+        |path| path.to_string_lossy().into_owned(),
+    );
     if display.ends_with('/') {
         display
     } else {

@@ -75,16 +75,10 @@ pub(super) fn find_executable(
     name: &str,
     directories: impl IntoIterator<Item = PathBuf>,
 ) -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
     directories
         .into_iter()
         .map(|directory| directory.join(name))
-        .find(|path| {
-            path.is_absolute()
-                && path.metadata().is_ok_and(|metadata| {
-                    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-                })
-        })
+        .find(|path| path.is_absolute() && codesh_core::executable::is_executable_file(path))
 }
 
 pub(super) fn diff(
