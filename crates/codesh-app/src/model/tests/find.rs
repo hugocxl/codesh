@@ -146,3 +146,106 @@ fn find_searches_each_edit_immediately_ignores_case_and_keeps_input_out_of_the_s
             .any(|(_, work)| matches!(work, Work::Input(_, bytes) if bytes == b"x"))
     );
 }
+
+#[gpui::test]
+fn palette_find_debounces_edits_researches_options_and_opens_unicode_columns(
+    cx: &mut TestAppContext,
+) {
+    use crate::model::native::Stub;
+    use crate::views::command_palette::PaletteEntry;
+    use codesh_core::shortcuts::ShortcutId;
+    use codesh_protocol::{ExecResult, FileContent, FilesAction, FilesReply};
+    use codesh_ui::command_palette::PaletteEvent;
+    use std::cell::RefCell;
+
+    let (state, _) = git::registered_current_project();
+    let (boot, _requests) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    let recorded = calls.clone();
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update(cx, |model, _| {
+        model.servers.local.connection = ConnectionState::Ready;
+        model.native.stub = Some(Rc::new(Stub {
+            exec: Box::new(move |request| {
+                recorded.borrow_mut().push(request.argv.clone());
+                Ok(ExecResult {
+                    stdout: r#"{"type":"match","data":{"path":{"text":"src/main.rs"},"lines":{"text":"é foo\n"},"line_number":1,"submatches":[{"start":3}]}}"#.into(),
+                    stderr: String::new(), exit_code: 0, timed_out: false, truncated: false, cancelled: false,
+                })
+            }),
+            files: Box::new(|request| match request.action {
+                FilesAction::Read(path) => Ok(FilesReply::Content(FileContent {
+                    path, content: "é foo\n".into(), size: 7,
+                })),
+                FilesAction::List(_) => Ok(FilesReply::Entries(Vec::new())),
+                _ => Ok(FilesReply::Done),
+            }),
+        }));
+    });
+    cx.simulate_keystrokes(ShortcutId::FindInFiles.definition().keys[0]);
+    cx.run_until_parked();
+    assert_eq!(
+        view.read_with(cx, AppModel::palette_page),
+        Some(PaletteEntry::Find)
+    );
+    calls.borrow_mut().clear();
+    cx.simulate_input("fo");
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_millis(200));
+    cx.simulate_input("o");
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_millis(249));
+    cx.run_until_parked();
+    assert!(calls.borrow().is_empty(), "each edit restarts the debounce");
+    cx.executor().advance_clock(Duration::from_millis(1));
+    cx.run_until_parked();
+    assert_eq!(calls.borrow().len(), 1);
+    assert_eq!(calls.borrow()[0].last().map(String::as_str), Some("foo"));
+    view.read_with(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        let palette = palette.read(cx);
+        let items = palette.items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "src/main.rs:1:4");
+        assert_eq!(items[0].highlights.len(), 1);
+        assert_eq!(items[0].highlights[0], 3..6);
+    });
+    view.update(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        palette.update(cx, |_, cx| {
+            cx.emit(PaletteEvent::AccessoryToggled {
+                page: "find".into(),
+                id: "case".into(),
+                active: true,
+            });
+        });
+    });
+    cx.run_until_parked();
+    assert!(view.read_with(cx, |model, cx| {
+        model
+            .palette_entity()
+            .expect("palette")
+            .read(cx)
+            .items()
+            .is_empty()
+    }));
+    cx.executor().advance_clock(Duration::from_millis(250));
+    cx.run_until_parked();
+    assert_eq!(calls.borrow().len(), 2);
+    assert!(!calls.borrow()[1].iter().any(|argument| argument == "-i"));
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert!(view.read_with(cx, |model, _| model.overlay.is_none()));
+    cx.simulate_input("X");
+    cx.run_until_parked();
+    view.read_with(cx, |model, cx| {
+        let pane = model.active_pane().expect("editor");
+        let editor = model.editors[&pane].view().expect("loaded editor");
+        assert_eq!(
+            editor.read(cx).text(),
+            "é Xfoo\n",
+            "the caret uses a character column"
+        );
+    });
+}

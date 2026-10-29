@@ -95,6 +95,13 @@ pub(crate) struct FindMatch {
     pub(crate) preview: String,
 }
 
+impl FindMatch {
+    /// The one-based character column to use when opening this match in an editor.
+    pub(crate) fn character_column(&self) -> u32 {
+        character_column(&self.preview, self.column)
+    }
+}
+
 // Ripgrep encodes non-UTF-8 paths and lines in a base64 `bytes` field.
 fn field_bytes(value: &serde_json::Value) -> Option<Vec<u8>> {
     if let Some(text) = value.get("text").and_then(serde_json::Value::as_str) {
