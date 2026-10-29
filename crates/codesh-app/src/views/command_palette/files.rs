@@ -2,7 +2,7 @@
 
 #![expect(
     clippy::unused_self,
-    reason = "Page specs share the host's page contract"
+    reason = "Every page function takes the model, used or not"
 )]
 
 use std::{collections::HashSet, rc::Rc};

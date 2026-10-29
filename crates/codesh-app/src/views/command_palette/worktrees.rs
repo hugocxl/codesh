@@ -117,7 +117,7 @@ impl AppModel {
 
     #[expect(
         clippy::unused_self,
-        reason = "Page specifications share the host dispatch signature"
+        reason = "Every page function takes the model, used or not"
     )]
     pub(super) fn worktrees_spec(&self, parent: ProjectId, _cx: &App) -> PageSpec {
         PageSpec::new(PaletteEntry::Worktrees(parent).id(), "Search worktrees…")

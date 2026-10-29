@@ -64,7 +64,6 @@ impl AppModel {
     }
 
     /// Filters the sidebar to each remote server's Home.
-    #[allow(dead_code, reason = "The palette's Switch Workspace page offers it")]
     pub(crate) fn select_remote_servers(&mut self, cx: &mut Context<Self>) {
         if self.appearance.sidebar_focus {
             self.appearance.sidebar_focus = false;

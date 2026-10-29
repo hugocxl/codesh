@@ -1,8 +1,8 @@
 //! Switch Project, Switch Workspace, and New Terminal in Project.
 
-#![allow(
+#![expect(
     clippy::unused_self,
-    reason = "Page dispatch uses a uniform AppModel method interface"
+    reason = "Every page function takes the model, used or not"
 )]
 
 use std::rc::Rc;

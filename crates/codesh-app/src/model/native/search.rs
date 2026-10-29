@@ -1,10 +1,5 @@
 //! Files and searches behind the palette's Go to File and Find in Files pages.
 
-#![allow(
-    dead_code,
-    reason = "The palette's Go to File and Find in Files pages read these"
-)]
-
 use codesh_app_core::ProjectId;
 use codesh_protocol::ExecResult;
 use gpui::Context;

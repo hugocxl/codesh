@@ -138,7 +138,7 @@ impl AppModel {
 
     #[expect(
         clippy::unused_self,
-        reason = "The page dispatcher uses a model method"
+        reason = "Every page function takes the model, used or not"
     )]
     pub(super) fn terminals_spec(&self, project: ProjectId, _cx: &App) -> PageSpec {
         PageSpec::new(

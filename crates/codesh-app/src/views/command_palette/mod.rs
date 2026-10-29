@@ -111,7 +111,6 @@ impl PaletteEntry {
 }
 
 /// What a row is, shown as its kind label and tile.
-#[allow(dead_code, reason = "The palette's pages show their own kinds")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Kind {
     Command,
@@ -145,7 +144,6 @@ impl Kind {
     }
 
     /// Themes draw their own swatches instead.
-    #[allow(dead_code, reason = "The palette's pages show their own kinds")]
     pub(crate) fn tile(self) -> Tile {
         match self {
             Self::Command => Tile::icon(Icon::Play, TileHue::Gray),

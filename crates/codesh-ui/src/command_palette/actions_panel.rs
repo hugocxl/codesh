@@ -9,7 +9,7 @@ use gpui::{
     Styled, Subscription, anchored, deferred, div, point, px,
 };
 
-use super::model::{ActionId, Item, ItemId, PageId};
+use super::model::{ActionId, Item, ItemAction, ItemId, PageId};
 use super::{Palette, keycaps, layout};
 use crate::fuzzy;
 use crate::text_input::{self, InputEvent, TextInput};
@@ -117,19 +117,25 @@ impl ActionsPanel {
             keep_open: primary.is_some_and(|action| action.keep_open),
         }];
         if has_payload {
-            entries.extend(item.actions.iter().skip(1).map(|action| {
-                Entry {
-                    action: Some(action.id.clone()),
-                    title: action.title.clone(),
-                    keycaps: action
-                        .shortcut
-                        .as_ref()
-                        .map(|chord| keycaps::parse(chord))
-                        .unwrap_or_default(),
-                    destructive: action.destructive,
-                    keep_open: action.keep_open,
-                }
-            }));
+            let repeats_primary =
+                |action: &&ItemAction| primary.is_some_and(|primary| primary.id == action.id);
+            entries.extend(
+                item.actions
+                    .iter()
+                    .skip(1)
+                    .filter(|action| !repeats_primary(action))
+                    .map(|action| Entry {
+                        action: Some(action.id.clone()),
+                        title: action.title.clone(),
+                        keycaps: action
+                            .shortcut
+                            .as_ref()
+                            .map(|chord| keycaps::parse(chord))
+                            .unwrap_or_default(),
+                        destructive: action.destructive,
+                        keep_open: action.keep_open,
+                    }),
+            );
         }
         self.entries = entries;
         self.filter(query);

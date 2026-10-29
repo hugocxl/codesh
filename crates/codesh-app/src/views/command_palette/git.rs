@@ -3,7 +3,7 @@
 
 #![expect(
     clippy::unused_self,
-    reason = "Page specs follow the shared page contract"
+    reason = "Every page function takes the model, used or not"
 )]
 
 use std::{ops::Range, rc::Rc};

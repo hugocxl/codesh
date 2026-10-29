@@ -301,7 +301,6 @@ impl AppModel {
         self.send(server, work, cx)
     }
 
-    #[allow(dead_code, reason = "The palette's Existing Terminals page opens them")]
     pub(crate) fn open_existing_session(
         &mut self,
         project: ProjectId,

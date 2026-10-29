@@ -11,10 +11,6 @@ mod instance;
 mod model;
 mod navigation;
 mod opener;
-#[allow(
-    dead_code,
-    reason = "The palette's Open Project page is rebuilt on this engine"
-)]
 mod picker;
 mod profiler;
 mod proxy;

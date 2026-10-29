@@ -3,7 +3,7 @@
 
 #![expect(
     clippy::unused_self,
-    reason = "Page dispatch uses uniform model method signatures"
+    reason = "Every page function takes the model, used or not"
 )]
 
 use std::rc::Rc;

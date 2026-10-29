@@ -700,15 +700,17 @@ impl<A: Clone + 'static> Palette<A> {
         if self.actions.is_some() {
             return;
         }
-        let state = &self.current().state;
-        let Some(item) = state.selected_item() else {
+        let Some(item) = self.current().state.selected_item() else {
             return;
         };
-        let Some(action) = item.actions.get(1) else {
-            return;
-        };
-        let (item, action) = (item.id.clone(), action.id.clone());
-        self.emit_action(&item, action, cx);
+        let id = item.id.clone();
+        match item.actions.get(1) {
+            Some(action) => {
+                let action = action.id.clone();
+                self.emit_action(&id, action, cx);
+            }
+            None => self.emit_primary(&id, cx),
+        }
     }
 
     fn on_dismiss(&mut self, _: &Dismiss, window: &mut Window, cx: &mut Context<Self>) {
