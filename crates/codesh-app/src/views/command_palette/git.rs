@@ -140,11 +140,7 @@ impl AppModel {
         let items = ranked
             .into_iter()
             .take(limit)
-            .map(|ranked| {
-                let mut item = branch_item(project, ranked.item, ranked.ranges, busy);
-                item.actions.clear();
-                item
-            })
+            .map(|ranked| branch_item(project, ranked.item, ranked.ranges, busy))
             .collect();
         (items, more)
     }
