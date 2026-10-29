@@ -36,20 +36,6 @@ use gpui::{
     Subscription, Window, canvas, div, px,
 };
 
-pub(crate) fn register_commands(
-    registry: &mut codesh_ui::command_palette::Registry<super::command_palette::Handler>,
-    model: &crate::model::AppModel,
-) {
-    use super::command_palette::action;
-    use codesh_core::shortcuts::ShortcutId;
-    registry.register(action(
-        model,
-        ShortcutId::OpenSettings,
-        "Open Settings",
-        super::workspace::OpenSettings,
-    ));
-}
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum Category {
     General,

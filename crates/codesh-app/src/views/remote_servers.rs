@@ -1,10 +1,7 @@
 //! The sidebar's Remote section: other computers' servers with their state,
 //! and the popover, form, password prompt, and list that manage them.
 
-use std::rc::Rc;
-
 use codesh_app_core::ServerId;
-use codesh_ui::command_palette::{Command, Registry};
 use codesh_ui::components::{ButtonInteraction, IconButton, IconGlyph};
 use codesh_ui::controls::{self, Style};
 use codesh_ui::icon::Icon;
@@ -16,7 +13,6 @@ use gpui::{
     Window, div, px,
 };
 
-use super::command_palette::Handler;
 use super::overlays::Overlay;
 use crate::model::{AppModel, ConnectionTest, DeviceForm, RemoteServer, ServerStatus};
 
@@ -343,143 +339,6 @@ pub(crate) fn list(
         )
 }
 
-/// "Remote Servers…" in the command palette: Add Server…, then each server.
-pub(crate) fn command(model: &AppModel, cx: &Context<AppModel>) -> Command<Handler> {
-    let _ = model;
-    let model = cx.weak_entity();
-    Command::list("remote_servers", "Remote Servers…", move |cx| {
-        let mut servers = Registry::default();
-        let add: Handler = Rc::new(|model, _, cx| model.open_server_form(None, cx));
-        servers
-            .register(Command::new("remote-add-server", "Add Server…", add).keywords("Add Server"));
-        let manage: Handler = Rc::new(AppModel::open_servers_tab);
-        servers.register(
-            Command::new("remote-manage-servers", "Manage Servers…", manage)
-                .keywords("Manage Servers"),
-        );
-        let Some(model) = model.upgrade() else {
-            return servers;
-        };
-        for server in model.read(cx).remote_servers() {
-            servers.register(server_command(&server, model.downgrade()));
-        }
-        servers
-    })
-    .keywords("Remote Servers")
-}
-
-/// One server's page: what can be done with it now.
-#[allow(
-    clippy::too_many_lines,
-    reason = "One palette page of a server's actions"
-)]
-fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> Command<Handler> {
-    let id = server.entry.id;
-    let title = format!("{}  ·  {}", server.entry.name, status_label(server));
-    Command::list(format!("remote-{id}"), title, move |cx| {
-        let mut actions = Registry::default();
-        let Some(server) = model.upgrade().and_then(|model| {
-            model
-                .read(cx)
-                .remote_servers()
-                .into_iter()
-                .find(|server| server.entry.id == id)
-        }) else {
-            return actions;
-        };
-        let handler =
-            |action: fn(&mut AppModel, ServerId, &mut Window, &mut Context<AppModel>)| -> Handler {
-                Rc::new(move |model, window, cx| action(model, id, window, cx))
-            };
-        actions.register(
-            Command::new(
-                "new-tab",
-                "New Terminal",
-                handler(|model, id, _, cx| model.new_remote_home_tab(id, cx)),
-            )
-            .keywords("New Terminal"),
-        );
-        actions.register(
-            Command::new(
-                "add-project",
-                "Add Project…",
-                handler(|model, id, _, cx| model.open_remote_project_picker(id, cx)),
-            )
-            .keywords("Add Project"),
-        );
-        let connected = matches!(
-            server.status,
-            ServerStatus::Connected | ServerStatus::Connecting
-        );
-        actions.register(
-            Command::new(
-                "connect",
-                if connected { "Reconnect" } else { "Connect" },
-                handler(|model, id, _, cx| model.reconnect_remote_server(id, cx)),
-            )
-            .keywords(if connected { "Reconnect" } else { "Connect" }),
-        );
-        if connected {
-            actions.register(
-                Command::new(
-                    "disconnect",
-                    "Disconnect",
-                    handler(|model, id, _, cx| model.disconnect_remote_servers(&[id], cx)),
-                )
-                .keywords("Disconnect"),
-            );
-        }
-        actions.register(
-            Command::new(
-                "edit",
-                "Edit…",
-                handler(|model, id, _, cx| model.open_server_form(Some(id), cx)),
-            )
-            .keywords("Edit"),
-        );
-        if server.missing && crate::model::released_version().is_some() {
-            actions.register(
-                Command::new(
-                    "install",
-                    "Install Codesh…",
-                    handler(|model, id, window, cx| {
-                        model.confirm_install_server(id, window.window_handle(), cx);
-                    }),
-                )
-                .keywords("Install Codesh"),
-            );
-        }
-        if server.incompatible && crate::model::released_version().is_some() {
-            actions.register(
-                Command::new(
-                    "copy-update-command",
-                    "Copy Update Command",
-                    handler(|model, _, _, cx| model.copy_update_command(cx)),
-                )
-                .keywords("Copy Update Command"),
-            );
-        }
-        actions.register(
-            Command::new(
-                "remove",
-                "Remove…",
-                handler(|model, id, window, cx| {
-                    model.confirm_forget_servers(vec![id], window.window_handle(), cx);
-                }),
-            )
-            .keywords("Remove"),
-        );
-        actions
-    })
-    .keywords(
-        [
-            server.entry.destination(),
-            server.entry.group.as_deref().unwrap_or_default(),
-        ]
-        .join(" "),
-    )
-}
-
 fn input(
     model: &AppModel,
     cx: &mut Context<AppModel>,
@@ -531,26 +390,6 @@ impl AppModel {
         self.overlay = Some(Overlay::RemoteServers);
         self.overlay_focus.focus(window);
         cx.notify();
-    }
-
-    /// One server's actions in the command palette.
-    pub(crate) fn open_remote_servers(
-        &mut self,
-        server: ServerId,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(listed) = self
-            .remote_servers()
-            .into_iter()
-            .find(|listed| listed.entry.id == server)
-        else {
-            return;
-        };
-        let mut registry = Registry::default();
-        registry.register(command(self, cx));
-        registry.register(server_command(&listed, cx.weak_entity()));
-        self.show_palette(registry, Some(&format!("remote-{server}")), window, cx);
     }
 
     pub(crate) fn open_server_form(&mut self, device: Option<ServerId>, cx: &mut Context<Self>) {

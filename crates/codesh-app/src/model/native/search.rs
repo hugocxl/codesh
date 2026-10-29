@@ -1,11 +1,15 @@
+//! Files and searches behind the palette's Go to File and Find in Files pages.
+
+#![allow(
+    dead_code,
+    reason = "The palette's Go to File and Find in Files pages read these"
+)]
+
 use codesh_app_core::ProjectId;
 use codesh_protocol::ExecResult;
-use gpui::{AppContext, Context, Focusable, Window};
+use gpui::Context;
 
 use crate::model::AppModel;
-use crate::views::find_in_files::{FindEvent, FindInFiles, parse_rg_json};
-use crate::views::overlays::Overlay;
-use crate::views::quick_open::{QuickOpen, QuickOpenEvent};
 
 /// A project's files for Go to File, kept until its files change.
 pub(crate) struct FileList {
@@ -14,6 +18,17 @@ pub(crate) struct FileList {
     /// next use, and shown meanwhile.
     pub(crate) stale: bool,
     loading: bool,
+}
+
+impl FileList {
+    pub(crate) fn files(&self) -> &[String] {
+        &self.files
+    }
+
+    /// Whether the files are being listed, the first time or again.
+    pub(crate) fn loading(&self) -> bool {
+        self.loading
+    }
 }
 
 fn argv(arguments: &[&str]) -> Vec<String> {
@@ -41,7 +56,7 @@ fn listed_files(result: &Result<ExecResult, String>) -> Option<Vec<String>> {
 
 /// The one-based character column of ripgrep's one-based byte `column` in
 /// `line`.
-fn character_column(line: &str, column: u32) -> u32 {
+pub(crate) fn character_column(line: &str, column: u32) -> u32 {
     let bytes = usize::try_from(column.saturating_sub(1)).unwrap_or(usize::MAX);
     line.get(..bytes)
         .and_then(|prefix| u32::try_from(prefix.chars().count()).ok())
@@ -70,53 +85,129 @@ pub(crate) fn search_argv(query: &str, case_sensitive: bool, regex: bool) -> Vec
     arguments
 }
 
-impl AppModel {
-    /// Opens Go to File over the current project, or closes it.
-    pub(crate) fn toggle_quick_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.overlay, Some(Overlay::QuickOpen(_))) {
-            self.dismiss_overlay(cx);
-            return;
-        }
-        if self.close_prompt.is_some() {
-            return;
-        }
-        self.dismiss_overlay(cx);
-        let project = self.state.current_project().id;
-        let (theme, metrics) = (self.theme.clone(), self.metrics);
-        let picker = cx.new(|cx| QuickOpen::new(&theme, metrics, cx));
-        self.overlay_subscription =
-            Some(
-                cx.subscribe_in(&picker, window, move |model, _, event, _, cx| match event {
-                    QuickOpenEvent::Open { path } => {
-                        model.dismiss_overlay(cx);
-                        model.open_project_file(project, path, None, cx);
-                    }
-                    QuickOpenEvent::Dismissed => model.dismiss_overlay(cx),
-                }),
-            );
-        picker.focus_handle(cx).focus(window);
-        self.overlay = Some(Overlay::QuickOpen(picker));
-        self.focus_requested = false;
-        self.load_file_list(project, cx);
-        cx.notify();
-    }
+/// One ripgrep match.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FindMatch {
+    pub(crate) path: String,
+    pub(crate) line: u32,
+    /// One-based byte column, as reported by ripgrep.
+    pub(crate) column: u32,
+    pub(crate) preview: String,
+}
 
-    fn show_file_list(&self, project: ProjectId, cx: &mut Context<Self>) {
-        let (Some(Overlay::QuickOpen(picker)), Some(list)) =
-            (&self.overlay, self.native.file_lists.get(&project))
-        else {
-            return;
+// Ripgrep encodes non-UTF-8 paths and lines in a base64 `bytes` field.
+fn field_bytes(value: &serde_json::Value) -> Option<Vec<u8>> {
+    if let Some(text) = value.get("text").and_then(serde_json::Value::as_str) {
+        return Some(text.as_bytes().to_vec());
+    }
+    let encoded = value.get("bytes")?.as_str()?;
+    let mut output = Vec::with_capacity(encoded.len() * 3 / 4);
+    let mut bits = 0_u32;
+    let mut count = 0;
+    for byte in encoded.bytes().take_while(|byte| *byte != b'=') {
+        let digit = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
         };
-        if project == self.state.current_project().id {
-            let files = list.files.clone();
-            picker.update(cx, |picker, cx| picker.set_files(files, cx));
+        bits = (bits << 6) | u32::from(digit);
+        count += 6;
+        if count >= 8 {
+            count -= 8;
+            output.push(u8::try_from((bits >> count) & 255).ok()?);
         }
     }
+    Some(output)
+}
 
-    /// Shows `project`'s files, listing them on its server when they are not
-    /// known or have changed: with ripgrep, or `git ls-files` without it.
-    fn load_file_list(&mut self, project: ProjectId, cx: &mut Context<Self>) {
-        self.show_file_list(project, cx);
+pub(crate) fn parse_rg_json(output: &str) -> Vec<FindMatch> {
+    let mut matches = Vec::new();
+    for record in output.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(record) else {
+            continue;
+        };
+        if value.get("type").and_then(serde_json::Value::as_str) != Some("match") {
+            continue;
+        }
+        let Some(data) = value.get("data") else {
+            continue;
+        };
+        let (Some(path), Some(lines), Some(line), Some(submatches)) = (
+            data.get("path").and_then(field_bytes),
+            data.get("lines").and_then(field_bytes),
+            data.get("line_number")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok()),
+            data.get("submatches").and_then(serde_json::Value::as_array),
+        ) else {
+            continue;
+        };
+        let mut line_starts = vec![0];
+        line_starts.extend(
+            lines
+                .iter()
+                .enumerate()
+                .filter_map(|(index, &byte)| (byte == b'\n').then_some(index + 1)),
+        );
+        for submatch in submatches {
+            let Some(start) = submatch
+                .get("start")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|n| usize::try_from(n).ok())
+                .filter(|&n| n <= lines.len())
+            else {
+                continue;
+            };
+            let extra_lines = line_starts.partition_point(|&offset| offset <= start) - 1;
+            let line_start = line_starts[extra_lines];
+            let line_end = line_starts
+                .get(extra_lines + 1)
+                .map_or(lines.len(), |n| n - 1);
+            let (Some(line), Some(column)) = (
+                u32::try_from(extra_lines)
+                    .ok()
+                    .and_then(|n| line.checked_add(n)),
+                u32::try_from(start - line_start)
+                    .ok()
+                    .and_then(|n| n.checked_add(1)),
+            ) else {
+                continue;
+            };
+            let preview_bytes = &lines[line_start..line_end];
+            let preview_bytes = preview_bytes.strip_suffix(b"\r").unwrap_or(preview_bytes);
+            matches.push(FindMatch {
+                path: String::from_utf8_lossy(&path).into_owned(),
+                line,
+                column,
+                preview: String::from_utf8_lossy(preview_bytes).into_owned(),
+            });
+        }
+    }
+    matches
+}
+
+impl AppModel {
+    /// `project`'s files, as last listed.
+    pub(crate) fn file_list(&self, project: ProjectId) -> Option<&FileList> {
+        self.native.file_lists.get(&project)
+    }
+
+    /// The last Find in Files results.
+    pub(crate) fn find_results(&self) -> &[FindMatch] {
+        &self.native.find_results
+    }
+
+    /// Whether a Find in Files search has not answered yet.
+    pub(crate) fn search_in_flight(&self) -> bool {
+        self.native.searched != self.native.search
+    }
+
+    /// Lists `project`'s files on its server when they are not known or have
+    /// changed: with ripgrep, or `git ls-files` without it.
+    pub(crate) fn load_file_list(&mut self, project: ProjectId, cx: &mut Context<Self>) {
         if self
             .native
             .file_lists
@@ -162,51 +253,11 @@ impl AppModel {
         list.loading = false;
         list.stale = false;
         list.files = files;
-        self.show_file_list(project, cx);
+        self.refresh_files_page(cx);
+        self.refresh_root_page(cx);
     }
 
-    /// Opens Find in Files over the current project, or closes it.
-    pub(crate) fn toggle_find_in_files(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.overlay, Some(Overlay::FindInFiles(_))) {
-            self.dismiss_overlay(cx);
-            return;
-        }
-        if self.close_prompt.is_some() {
-            return;
-        }
-        self.dismiss_overlay(cx);
-        let project = self.state.current_project().id;
-        let (theme, metrics) = (self.theme.clone(), self.metrics);
-        let picker = cx.new(|cx| FindInFiles::new(&theme, metrics, cx));
-        self.overlay_subscription =
-            Some(
-                cx.subscribe_in(&picker, window, move |model, _, event, _, cx| match event {
-                    FindEvent::Search {
-                        query,
-                        case_sensitive,
-                        regex,
-                    } => model.search_files(project, query, *case_sensitive, *regex, cx),
-                    FindEvent::Open { path, line } => {
-                        let column = model
-                            .native
-                            .find_results
-                            .iter()
-                            .find(|found| found.path == *path && found.line == *line)
-                            .map_or(1, |found| character_column(&found.preview, found.column));
-                        model.dismiss_overlay(cx);
-                        model.open_project_file(project, path, Some((*line, column)), cx);
-                    }
-                    FindEvent::Dismissed => model.dismiss_overlay(cx),
-                }),
-            );
-        picker.focus_handle(cx).focus(window);
-        self.native.find_results.clear();
-        self.overlay = Some(Overlay::FindInFiles(picker));
-        self.focus_requested = false;
-        cx.notify();
-    }
-
-    fn search_files(
+    pub(crate) fn search_files(
         &mut self,
         project: ProjectId,
         query: &str,
@@ -229,20 +280,13 @@ impl AppModel {
         });
     }
 
-    fn found(
-        &mut self,
-        search: u64,
-        found: Vec<crate::views::find_in_files::FindMatch>,
-        cx: &mut Context<Self>,
-    ) {
+    fn found(&mut self, search: u64, found: Vec<FindMatch>, cx: &mut Context<Self>) {
         if search != self.native.search {
             return;
         }
-        let Some(Overlay::FindInFiles(picker)) = &self.overlay else {
-            return;
-        };
-        self.native.find_results.clone_from(&found);
-        picker.update(cx, |picker, cx| picker.set_results(found, cx));
+        self.native.searched = search;
+        self.native.find_results = found;
+        self.refresh_find_page(cx);
     }
 }
 
@@ -262,5 +306,35 @@ mod tests {
         );
         assert_eq!(character_column("héllo", 4), 3);
         assert_eq!(character_column("abc", 99), 1);
+    }
+
+    #[test]
+    fn find_in_files_parses_multiple_submatches_and_multiline_offsets() {
+        let output = concat!(
+            "{\"type\":\"begin\"}\n",
+            "garbage\n",
+            r#"{"type":"match","data":{"path":{"text":"src/a.rs"},"lines":{"text":"foo foo\nbar foo\r\n"},"line_number":7,"submatches":[{"start":0},{"start":4},{"start":12},{"start":900}]}}"#
+        );
+        let found = parse_rg_json(output);
+        assert_eq!(
+            found
+                .iter()
+                .map(|m| (m.line, m.column, m.preview.as_str()))
+                .collect::<Vec<_>>(),
+            [(7, 1, "foo foo"), (7, 5, "foo foo"), (8, 5, "bar foo")]
+        );
+        assert!(found.iter().all(|m| m.path == "src/a.rs"));
+    }
+
+    #[test]
+    fn find_in_files_tolerates_binary_fields_and_incomplete_records() {
+        let found = parse_rg_json(
+            r#"{"type":"match","data":{"path":{"bytes":"Yf8="},"lines":{"bytes":"/2ZvbyA="},"line_number":1,"submatches":[{"start":1}]}}
+{"type":"match","data":{}}
+{"type":"summary"}"#,
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, "a�");
+        assert_eq!(found[0].preview, "�foo ");
     }
 }

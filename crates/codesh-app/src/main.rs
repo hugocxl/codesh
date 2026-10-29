@@ -11,6 +11,10 @@ mod instance;
 mod model;
 mod navigation;
 mod opener;
+#[allow(
+    dead_code,
+    reason = "The palette's Open Project page is rebuilt on this engine"
+)]
 mod picker;
 mod profiler;
 mod proxy;
@@ -32,24 +36,19 @@ mod views {
     pub(crate) mod disconnected;
     pub(crate) mod editor;
     pub(crate) mod files_panel;
-    pub(crate) mod find_in_files;
     pub(crate) mod font_picker;
     pub(crate) mod git;
     pub(crate) mod git_panel;
     pub(crate) mod menu;
     pub(crate) mod native_panels;
-    pub(crate) mod new_tab;
     pub(crate) mod overlays;
     pub(crate) mod project_editor;
     pub(crate) mod project_menu;
-    pub(crate) mod project_picker;
     pub(crate) mod proxy;
-    pub(crate) mod quick_open;
     pub(crate) mod remote_servers;
     pub(crate) mod server_menu;
     pub(crate) mod server_status;
     pub(crate) mod servers_tab;
-    pub(crate) mod session_picker;
     pub(crate) mod settings;
     pub(crate) mod shortcut_hints;
     pub(crate) mod sidebar;
@@ -59,7 +58,6 @@ mod views {
     pub(crate) mod tab_menu;
     pub(crate) mod tab_sidebar;
     pub(crate) mod tab_strip;
-    pub(crate) mod theme_picker;
     pub(crate) mod titlebar;
     pub(crate) mod updates;
     pub(crate) mod terminal {
@@ -79,7 +77,6 @@ mod views {
     }
     pub(crate) mod voice;
     pub(crate) mod workspace;
-    pub(crate) mod worktree_picker;
 }
 
 use std::cell::Cell;

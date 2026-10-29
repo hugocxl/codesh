@@ -118,7 +118,8 @@ pub(crate) struct AppModel {
     pub(crate) servers: servers::Servers,
     pub(crate) proxy: proxy::ProxyState,
     project_icons: project_icons::ProjectIcons,
-    pub(crate) existing_sessions: crate::views::session_picker::ExistingSessions,
+    pub(crate) existing_sessions: crate::views::command_palette::ExistingSessions,
+    pub(crate) command_palette: crate::views::command_palette::PaletteState,
     pub(crate) window: gpui::AnyWindowHandle,
     pub(crate) state: AppState,
     pub(crate) grids: HashMap<PaneId, PaneView>,
@@ -266,15 +267,12 @@ impl AppModel {
         }
         self.native_theme(cx);
         self.sync_preferences(cx);
-        if let Some(Overlay::Commands { palette, dark }) = &self.overlay {
-            let active = self.themes.active_name(&self.appearance, *dark);
+        if let Some(Overlay::Palette { palette, .. }) = &self.overlay {
             palette.update(cx, |palette, cx| {
                 palette.set_appearance(self.theme.clone(), self.metrics, cx);
-                if palette.is_page(crate::views::theme_picker::PAGE_ID) {
-                    palette.set_current(&active, cx);
-                }
             });
         }
+        self.refresh_themes_page(cx);
         cx.notify();
     }
 
@@ -444,7 +442,9 @@ impl AppModel {
         let activation = cx.observe_window_activation(window, Self::activation_changed);
         let panes = cx.observe(&cx.entity(), |model: &mut Self, _, cx| {
             model.sync_pane_focus(cx);
-            model.update_worktree_switcher(cx);
+            model.refresh_worktrees_page(cx);
+            model.refresh_projects_page(cx);
+            model.refresh_servers_page(cx);
         });
         let quit = cx.on_app_quit(|model: &mut Self, cx| {
             #[cfg(not(test))]
@@ -487,7 +487,8 @@ impl AppModel {
                     .with_file_name(format!("askpass-{}.sock", std::process::id())),
             ),
             proxy: proxy::ProxyState::load(boot.state_path.with_file_name("proxy.toml")),
-            existing_sessions: crate::views::session_picker::ExistingSessions::default(),
+            existing_sessions: crate::views::command_palette::ExistingSessions::default(),
+            command_palette: crate::views::command_palette::PaletteState::default(),
             window: window.window_handle(),
             state: boot.state,
             grids: HashMap::new(),
@@ -2482,7 +2483,7 @@ impl AppModel {
                     runtime.catalog.dirty = runtime.catalog.dirty.max(revision);
                 }
                 self.refresh_catalog(server, cx);
-                self.refresh_session_picker(cx);
+                self.refresh_terminals_page(cx);
             }
             ClientEvent::RemoteAccessChanged { .. } if local => self.remote_access_changed(cx),
             ClientEvent::Frame { channel, frame } => {
@@ -2497,7 +2498,7 @@ impl AppModel {
                     self.updates.sessions = self.updates.sessions.saturating_sub(1);
                 }
                 self.close_ended_session(server, session, cx);
-                self.refresh_session_picker(cx);
+                self.refresh_terminals_page(cx);
                 if local {
                     self.reconcile_server_update(cx);
                 }
@@ -2641,6 +2642,7 @@ mod tests {
     mod layout_drag;
     mod links;
     mod native;
+    mod palette;
     mod preferences;
     mod project_order;
     mod projects;

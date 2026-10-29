@@ -12,24 +12,18 @@ pub(crate) enum Overlay {
     Server,
     /// The tip popover beside the collapsed sidebar's tip button.
     Tip,
-    Commands {
-        palette:
-            Entity<codesh_ui::command_palette::CommandPalette<super::command_palette::Handler>>,
-        dark: bool,
+    /// The command palette; `add_project` is the folder browser behind its
+    /// Open Project page.
+    Palette {
+        palette: Entity<codesh_ui::command_palette::Palette<super::command_palette::Handler>>,
+        add_project: Option<Box<super::command_palette::add_project::AddProjectPage>>,
     },
     Git(super::git::GitPicker),
     GitForm(Box<super::git::Form>),
     AiProvider(super::git::AiProviderMenu),
     PullRequest(super::git::PullRequestPopover),
-    Sessions(super::session_picker::SessionPicker),
-    Worktrees(super::worktree_picker::WorktreePicker),
     Menu(Menu),
     ProjectEditor(super::project_editor::Editor),
-    Projects(Entity<super::project_picker::ProjectPicker>),
-    /// Go to File over the current project.
-    QuickOpen(Entity<super::quick_open::QuickOpen>),
-    /// Find in Files over the current project.
-    FindInFiles(Entity<super::find_in_files::FindInFiles>),
     /// The popover above the sidebar's Remote section.
     RemoteServers,
     Agents,
@@ -297,12 +291,7 @@ pub(crate) fn layer(model: &AppModel, window: &Window, cx: &mut Context<AppModel
         Some(Overlay::ProjectEditor(editor)) => {
             super::project_editor::render(editor, model, window, cx)
         }
-        Some(Overlay::Sessions(picker)) => picker.picker.clone().into_any_element(),
-        Some(Overlay::Worktrees(switcher)) => switcher.picker.clone().into_any_element(),
-        Some(Overlay::Projects(picker)) => picker.clone().into_any_element(),
-        Some(Overlay::QuickOpen(picker)) => picker.clone().into_any_element(),
-        Some(Overlay::FindInFiles(picker)) => picker.clone().into_any_element(),
-        Some(Overlay::Commands { palette, .. }) => palette.clone().into_any_element(),
+        Some(Overlay::Palette { palette, .. }) => palette.clone().into_any_element(),
     };
     div()
         .absolute()

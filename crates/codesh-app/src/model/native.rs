@@ -1,5 +1,6 @@
 //! Codesh's native Files and Source Control panels, editor and diff panes,
-//! and the Go to File and Find in Files pickers, with their server transport.
+//! and the files and searches behind the palette's Go to File and Find in
+//! Files pages, with their server transport.
 
 mod editors;
 mod panels;
@@ -16,11 +17,10 @@ use gpui::{Context, Entity, Subscription};
 
 pub(crate) use editors::{DiffPane, EditorContent, EditorPane};
 pub(crate) use panels::{FILES_PANEL, GIT_PANEL};
-pub(crate) use search::FileList;
+pub(crate) use search::{FileList, FindMatch};
 
 use super::AppModel;
 use crate::views::files_panel::FilesPanel;
-use crate::views::find_in_files::FindMatch;
 use crate::views::git_panel::GitPanel;
 
 /// Exec jobs share the side connection with other features, so these
@@ -45,6 +45,8 @@ pub(crate) struct Native {
     /// The Files panel entry whose context menu is open.
     menu_path: Option<String>,
     search: u64,
+    /// The last search that answered.
+    searched: u64,
     next_job: u64,
     #[cfg(test)]
     pub(crate) stub: Option<std::rc::Rc<Stub>>,
@@ -64,6 +66,7 @@ impl Native {
             find_results: Vec::new(),
             menu_path: None,
             search: 0,
+            searched: 0,
             next_job: 0,
             #[cfg(test)]
             stub: None,
@@ -324,15 +327,6 @@ impl AppModel {
                     view.set_terminal(&self.terminal, cx);
                 });
             }
-        }
-        match &self.overlay {
-            Some(crate::views::overlays::Overlay::QuickOpen(picker)) => {
-                picker.update(cx, |picker, cx| picker.set_theme(&theme, cx));
-            }
-            Some(crate::views::overlays::Overlay::FindInFiles(picker)) => {
-                picker.update(cx, |picker, cx| picker.set_theme(&theme, cx));
-            }
-            _ => {}
         }
     }
 

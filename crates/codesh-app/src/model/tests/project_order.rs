@@ -93,7 +93,7 @@ fn sidebar_saved_project_sort_updates_every_layout_navigation_and_new_tab_picker
             let tops: Vec<_> = expected
                 .iter()
                 .map(|id| {
-                    cx.debug_bounds(format!("picker-row-{id}").leak())
+                    cx.debug_bounds(format!("palette-row-{id}").leak())
                         .expect("project row")
                         .top()
                 })

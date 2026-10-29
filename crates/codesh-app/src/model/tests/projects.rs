@@ -444,10 +444,7 @@ fn command_o_opens_the_picker_and_existing_paths_select_the_project(cx: &mut Tes
         "ctrl-shift-o"
     });
     cx.run_until_parked();
-    assert!(view.read_with(cx, |model, _| matches!(
-        model.overlay,
-        Some(Overlay::Projects(_))
-    )));
+    assert!(view.read_with(cx, |model, _| model.add_project_page_id().is_some()));
     cx.simulate_input(&root.join("Alpha").to_string_lossy());
     cx.executor().advance_clock(Duration::from_millis(125));
     cx.run_until_parked();

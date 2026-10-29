@@ -31,18 +31,10 @@ const APP: [ShortcutId; 6] = [
 ];
 
 /// Whether the palette lists each command, and lists it disabled.
-fn listed(
-    model: &mut AppModel,
-    ids: &[ShortcutId],
-    cx: &mut Context<AppModel>,
-) -> Vec<Option<bool>> {
-    let registry = model.command_registry(true, cx);
+fn listed(model: &AppModel, ids: &[ShortcutId]) -> Vec<Option<bool>> {
+    let catalog = model.root_catalog();
     ids.iter()
-        .map(|id| {
-            registry
-                .command(id.name())
-                .map(codesh_ui::command_palette::Command::is_disabled)
-        })
+        .map(|id| catalog.command(id.name()).map(|command| command.disabled))
         .collect()
 }
 
@@ -51,16 +43,16 @@ fn the_palette_lists_the_commands_only_a_menu_bar_offered(cx: &mut TestAppContex
     let (boot, _requests) = stub_boot(AppState::bootstrap().expect("state"));
     let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
     view.update(cx, |model, cx| {
-        assert_eq!(listed(model, &APP, cx), [Some(false); 6]);
-        assert_eq!(listed(model, &TERMINAL, cx), [Some(true); 10]);
-        assert_eq!(listed(model, &PANE_FOCUS, cx), [Some(true); 4]);
+        assert_eq!(listed(model, &APP), [Some(false); 6]);
+        assert_eq!(listed(model, &TERMINAL), [Some(true); 10]);
+        assert_eq!(listed(model, &PANE_FOCUS), [Some(true); 4]);
 
         model.new_tab(cx);
-        assert_eq!(listed(model, &TERMINAL, cx), [Some(false); 10]);
-        assert_eq!(listed(model, &PANE_FOCUS, cx), [Some(true); 4]);
+        assert_eq!(listed(model, &TERMINAL), [Some(false); 10]);
+        assert_eq!(listed(model, &PANE_FOCUS), [Some(true); 4]);
 
         model.split_pane(Direction::Right, cx);
-        assert_eq!(listed(model, &PANE_FOCUS, cx), [Some(false); 4]);
+        assert_eq!(listed(model, &PANE_FOCUS), [Some(false); 4]);
     });
 }
 
@@ -69,20 +61,20 @@ fn the_palette_leaves_out_commands_this_build_cannot_run(cx: &mut TestAppContext
     let (boot, _requests) = stub_boot(AppState::bootstrap().expect("state"));
     let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
     let install = ShortcutId::InstallCommandLineTool.name();
-    view.update(cx, |model, cx| {
+    view.update(cx, |model, _| {
         for feature in [Feature::Updates, Feature::CommandLineTool] {
             model.capabilities.set(feature, Capability::Supported);
         }
-        let registry = model.command_registry(true, cx);
-        assert!(registry.command("check_for_updates").is_some());
-        assert!(registry.command(install).is_some());
+        let catalog = model.root_catalog();
+        assert!(catalog.command("check_for_updates").is_some());
+        assert!(catalog.command(install).is_some());
 
         for feature in [Feature::Updates, Feature::CommandLineTool] {
             model.capabilities.set(feature, Capability::Unsupported);
         }
-        let registry = model.command_registry(true, cx);
-        assert!(registry.command("check_for_updates").is_none());
-        assert!(registry.command(install).is_none());
+        let catalog = model.root_catalog();
+        assert!(catalog.command("check_for_updates").is_none());
+        assert!(catalog.command(install).is_none());
     });
 }
 

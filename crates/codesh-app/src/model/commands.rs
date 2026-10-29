@@ -1,9 +1,8 @@
 use codesh_app_core::settings::KeyChord;
-use codesh_ui::command_palette::{Command, Registry};
 use gpui::Context;
 
 use super::{AppModel, ConnectionState, ProjectStatus, Quitting};
-use crate::views::command_palette::Handler;
+use crate::views::command_palette::{Category, Handler, RootCommand};
 
 #[derive(Clone, PartialEq, gpui::Action)]
 #[action(namespace = codesh, no_json)]
@@ -108,19 +107,32 @@ impl AppModel {
         }
     }
 
-    pub(crate) fn register_custom_commands(&self, registry: &mut Registry<Handler>) {
-        for command in &self.settings.commands {
-            let id = command.id.clone();
-            let handler: Handler = std::rc::Rc::new(move |model, _, cx| {
-                model.run_custom_command(&id, cx);
-            });
-            let mut item = Command::new(command.shortcut_id(), command.name.clone(), handler)
+    /// The user's commands, for the palette's root page.
+    pub(crate) fn custom_commands(&self) -> Vec<RootCommand> {
+        let disabled = !self.can_run_custom_command();
+        self.settings
+            .commands
+            .iter()
+            .map(|command| {
+                let id = command.id.clone();
+                let handler: Handler = std::rc::Rc::new(move |model, _, cx| {
+                    model.run_custom_command(&id, cx);
+                });
+                let shortcut = self
+                    .settings
+                    .keymap
+                    .binding(&command.shortcut_id())
+                    .map(|chord| chord.as_str().to_owned().into());
+                RootCommand::run(
+                    command.shortcut_id(),
+                    command.name.clone(),
+                    Category::Custom,
+                    handler,
+                )
                 .keywords(format!("custom command terminal {}", command.command))
-                .disabled(!self.can_run_custom_command());
-            if let Some(chord) = self.settings.keymap.binding(&command.shortcut_id()) {
-                item = item.shortcut(chord.to_string());
-            }
-            registry.register(item);
-        }
+                .shortcut(shortcut)
+                .disabled(disabled)
+            })
+            .collect()
     }
 }

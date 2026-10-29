@@ -37,6 +37,7 @@ pub(crate) fn reveal_label() -> gpui::SharedString {
 }
 
 /// The action that picks a folder in the system's own dialog.
+#[allow(dead_code, reason = "The palette's Open Project page offers it")]
 pub(crate) fn browse_label() -> gpui::SharedString {
     if cfg!(target_os = "macos") {
         "Finder…".into()

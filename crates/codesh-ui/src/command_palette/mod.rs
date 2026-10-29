@@ -9,7 +9,6 @@
 mod actions_panel;
 pub mod keycaps;
 mod layout;
-mod legacy;
 mod model;
 mod row;
 #[cfg(test)]
@@ -25,7 +24,6 @@ use gpui::{
     Subscription, Window, actions, div, px,
 };
 
-pub use legacy::{Command, CommandPalette, CommandPaletteEvent, Registry};
 pub use model::{
     Accessory, ActionId, Item, ItemAction, ItemId, PageContent, PageId, PageSpec, Section, Status,
     Target,

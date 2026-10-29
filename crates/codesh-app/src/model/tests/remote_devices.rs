@@ -253,7 +253,7 @@ fn remote_add_project(cx: &mut TestAppContext) -> Result {
     wait(cx, &view, |model, _| {
         model.state.server_home(remote).is_some()
             && model.side_clients.client(remote).is_some()
-            && matches!(model.overlay, Some(Overlay::Projects(_)))
+            && model.add_project_page_id().is_some()
     })?;
     let (client, home) = view.read_with(cx, |model, _| {
         let home = model.state.server_home(remote).expect("Home");
@@ -279,10 +279,7 @@ fn remote_add_project(cx: &mut TestAppContext) -> Result {
     );
     picker::check_folder_operations(&folders, directory.path())?;
     assert!(
-        view.read_with(cx, |model, _| matches!(
-            model.overlay,
-            Some(Overlay::Projects(_))
-        )),
+        view.read_with(cx, |model, _| model.add_project_page_id().is_some()),
         "Add Project before connecting opened the picker once ready"
     );
     settle(cx);
@@ -293,7 +290,11 @@ fn remote_add_project(cx: &mut TestAppContext) -> Result {
     });
     cx.simulate_input(&folder.to_string_lossy());
     settle(cx);
-    cx.simulate_keystrokes("alt-enter");
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-enter"
+    } else {
+        "ctrl-shift-enter"
+    });
     settle(cx);
     view.read_with(cx, |model, _| assert!(model.overlay.is_none()));
     let expected = folder.to_string_lossy().into_owned().into_bytes();

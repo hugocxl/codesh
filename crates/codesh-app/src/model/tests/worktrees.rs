@@ -1,7 +1,8 @@
 use super::git::registered_current_project;
 use super::*;
+use crate::views::command_palette::{Handler, PaletteEntry};
 use codesh_protocol::{GitWorktree, ProjectMutation, ServerPath};
-use codesh_ui::picker::{Picker, PickerItem, PickerRow};
+use codesh_ui::command_palette::{Item, Palette};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
@@ -652,7 +653,7 @@ fn worktree_switcher_lists_this_projects_worktrees_by_recent_use_and_removes_thr
     cx: &mut TestAppContext,
 ) {
     use codesh_protocol::{GitAction, GitRequest};
-    use codesh_ui::picker::PickerEvent;
+    use codesh_ui::command_palette::PaletteEvent;
 
     let (state, root, _, _directory) = pruning_fixture();
     let (boot, requests) = stub_boot(state);
@@ -664,15 +665,16 @@ fn worktree_switcher_lists_this_projects_worktrees_by_recent_use_and_removes_thr
         model.servers.local.connection = ConnectionState::Ready;
     });
     let switcher = |view: &Entity<AppModel>, cx: &mut VisualTestContext| {
-        view.read_with(cx, |model, _| match &model.overlay {
-            Some(Overlay::Worktrees(switcher)) => Some(switcher.picker.clone()),
-            _ => None,
+        view.read_with(cx, |model, cx| {
+            matches!(model.palette_page(cx), Some(PaletteEntry::Worktrees(_)))
+                .then(|| model.palette_entity())
+                .flatten()
         })
     };
     let row_top = |id: ProjectId, cx: &mut VisualTestContext| {
         cx.update(|window, _| window.refresh());
         cx.run_until_parked();
-        cx.debug_bounds(format!("picker-row-{id}").leak())
+        cx.debug_bounds(format!("palette-row-{id}").leak())
             .map(|bounds| bounds.top())
     };
 
@@ -729,12 +731,22 @@ fn worktree_switcher_lists_this_projects_worktrees_by_recent_use_and_removes_thr
     });
 
     cx.simulate_keystrokes("cmd-alt-w");
-    let picker = switcher(&view, cx).expect("switcher");
+    let palette = switcher(&view, cx).expect("switcher");
     sent.take();
-    picker.update(cx, |_, cx| {
-        cx.emit(PickerEvent::RowAction {
-            row: removed.to_string().into(),
+    palette.update(cx, |palette, cx| {
+        let row = removed.to_string();
+        let payload = palette
+            .items()
+            .into_iter()
+            .find(|item| item.id == row)
+            .and_then(|item| item.target.payload().cloned())
+            .expect("removed worktree row");
+        let page = palette.page().clone();
+        cx.emit(PaletteEvent::RunAction {
+            page,
+            item: row.into(),
             action: "remove".into(),
+            payload,
         });
     });
     cx.run_until_parked();
@@ -761,28 +773,38 @@ fn worktree_switcher_lists_this_projects_worktrees_by_recent_use_and_removes_thr
     assert!(switcher(&view, cx).is_none(), "Home has no worktrees");
 }
 
-fn open_worktree_switcher(view: &Entity<AppModel>, cx: &mut VisualTestContext) -> Entity<Picker> {
+fn open_worktree_switcher(
+    view: &Entity<AppModel>,
+    cx: &mut VisualTestContext,
+) -> Entity<Palette<Handler>> {
     view.update_in(cx, |model, window, cx| {
         crate::views::workspace::bind_keys(&model.settings.keymap, cx);
         model.toggle_worktree_switcher(window, cx);
-        let Some(Overlay::Worktrees(switcher)) = &model.overlay else {
-            panic!("worktree switcher did not open");
-        };
-        switcher.picker.clone()
+        assert!(
+            matches!(model.palette_page(cx), Some(PaletteEntry::Worktrees(_))),
+            "worktree switcher did not open"
+        );
+        model.palette_entity().expect("palette")
     })
 }
 
 fn switcher_row(
-    picker: &Entity<Picker>,
+    palette: &Entity<Palette<Handler>>,
     id: ProjectId,
     cx: &mut VisualTestContext,
-) -> Option<PickerRow> {
-    picker.read_with(cx, |picker, _| {
-        picker.items().iter().find_map(|item| match item {
-            PickerItem::Row(row) if row.id == id.to_string() => Some(row.clone()),
-            _ => None,
-        })
+) -> Option<Item<Handler>> {
+    let id = id.to_string();
+    palette.read_with(cx, |palette, _| {
+        palette
+            .items()
+            .into_iter()
+            .find(|item| item.id == id)
+            .cloned()
     })
+}
+
+fn worktree_switcher_open(model: &AppModel, cx: &gpui::App) -> bool {
+    matches!(model.palette_page(cx), Some(PaletteEntry::Worktrees(_)))
 }
 
 #[gpui::test]
@@ -826,7 +848,7 @@ fn worktree_switcher_refreshes_progress_and_agent_activity_while_open(cx: &mut T
         assert_eq!(
             switcher_row(&picker, worktree, cx)
                 .expect("worktree")
-                .trailing
+                .kind
                 .as_ref()
                 .map(AsRef::as_ref),
             Some(expected)
@@ -856,7 +878,7 @@ fn worktree_switcher_refreshes_progress_and_agent_activity_while_open(cx: &mut T
         assert_eq!(
             switcher_row(&picker, worktree, cx)
                 .expect("worktree")
-                .trailing
+                .kind
                 .as_ref()
                 .map(AsRef::as_ref),
             expected
@@ -872,10 +894,9 @@ fn worktree_switcher_refreshes_catalog_without_losing_query_or_selection(cx: &mu
     let query = directory.path().to_string_lossy().into_owned();
     picker.update(cx, |picker, cx| picker.set_query(query.clone(), cx));
     cx.run_until_parked();
-    picker.update(cx, |picker, cx| {
-        picker
-            .select_row(&selected.to_string(), cx)
-            .expect("selected");
+    picker.update(cx, |palette, cx| {
+        let page = palette.page().clone();
+        assert!(palette.select(&page, &selected.to_string(), cx), "selected");
     });
     let added = view.update(cx, |model, cx| {
         let mut projects: Vec<_> = model
@@ -971,9 +992,7 @@ fn new_worktree_shortcut_branches_from_the_parent_and_skips_projects_without_wor
 
     cx.simulate_keystrokes("cmd-alt-w");
     cx.run_until_parked();
-    let create = cx
-        .debug_bounds("picker-footer-new-worktree")
-        .expect("create");
+    let create = cx.debug_bounds("palette-row-new-worktree").expect("create");
     cx.simulate_click(create.center(), Modifiers::default());
     cx.run_until_parked();
     assert_eq!(form(&view, cx), Some((root, true)));
@@ -1030,15 +1049,10 @@ fn new_worktree_form_stays_closed_when_the_parent_is_no_longer_a_repository(
     });
     open_worktree_switcher(&view, cx);
     cx.run_until_parked();
-    let create = cx
-        .debug_bounds("picker-footer-new-worktree")
-        .expect("create");
+    let create = cx.debug_bounds("palette-row-new-worktree").expect("create");
     cx.simulate_click(create.center(), Modifiers::default());
     cx.run_until_parked();
-    assert!(view.read_with(cx, |model, _| matches!(
-        model.overlay,
-        Some(Overlay::Worktrees(_))
-    )));
+    assert!(view.read_with(cx, worktree_switcher_open));
 }
 
 #[gpui::test]

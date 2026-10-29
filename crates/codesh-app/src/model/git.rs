@@ -190,6 +190,11 @@ impl AppModel {
         {
             actions.push(picker.kind.action());
         }
+        if let Some((page, action)) = self.palette_git_action(cx)
+            && page == project
+        {
+            actions.push(action);
+        }
         self.queue_git_refresh(project, actions, cx);
         self.resync_worktrees(project, cx);
     }
@@ -238,6 +243,7 @@ impl AppModel {
             } else if repository.mutation.is_none() && repository.queued.is_none() {
                 repository.queued = Some((action, context));
                 self.update_git_picker(cx);
+                self.refresh_git_pages(cx);
                 cx.notify();
             } else {
                 self.fail("A Git action is already pending".to_string(), cx);
@@ -263,6 +269,7 @@ impl AppModel {
             }
         }
         self.update_git_picker(cx);
+        self.refresh_git_pages(cx);
         cx.notify();
         sent
     }
@@ -341,6 +348,13 @@ impl AppModel {
                     vec![GitAction::Summary, picker.kind.action()],
                     cx,
                 );
+            }
+        }
+        if let Some((page, action)) = self.palette_git_action(cx) {
+            if page == current {
+                actions.push(action);
+            } else {
+                self.queue_git_refresh(page, vec![GitAction::Summary, action], cx);
             }
         }
         self.queue_git_refresh(current, actions, cx);
@@ -443,6 +457,7 @@ impl AppModel {
                 if context_matches {
                     self.update_worktree_default(request.project, cx);
                 }
+                self.refresh_root_page(cx);
             }
             Ok(GitReply::Changes(files)) => repository.files = files,
             Ok(GitReply::PullRequest(pr)) => repository.pull_request = pr.map(|pr| *pr),
@@ -543,6 +558,11 @@ impl AppModel {
                         && picker.project == request.project
                     {
                         actions.push(picker.kind.action());
+                    }
+                    if let Some((page, action)) = self.palette_git_action(cx)
+                        && page == request.project
+                    {
+                        actions.push(action);
                     }
                     self.queue_git_refresh(request.project, actions, cx);
                 }
@@ -674,6 +694,11 @@ impl AppModel {
                     {
                         actions.push(picker.kind.action());
                     }
+                    if let Some((page, action)) = self.palette_git_action(cx)
+                        && page == request.project
+                    {
+                        actions.push(action);
+                    }
                     self.queue_git_refresh(request.project, actions, cx);
                 }
             }
@@ -687,6 +712,7 @@ impl AppModel {
         }
         self.dispatch_git_refresh(request.project, cx);
         self.update_git_picker(cx);
+        self.refresh_git_pages(cx);
         if matches!(request.action, GitAction::Summary) {}
         cx.notify();
     }
