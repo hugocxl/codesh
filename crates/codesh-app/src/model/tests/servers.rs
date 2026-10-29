@@ -576,3 +576,61 @@ fn new_tab_from_a_remote_project_opens_local_home_and_remote_home_cards_stay_vis
             .is_some()
     );
 }
+
+#[gpui::test]
+fn server_palette_refreshes_connection_actions_and_runs_edit(cx: &mut TestAppContext) {
+    use crate::views::command_palette::PaletteEntry;
+    use codesh_ui::command_palette::Target;
+
+    let remote = ServerId::new();
+    let state = AppState::bootstrap().expect("state");
+    let (boot, _, _) = remote_boot(state, vec![entry(remote, "box")]);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update_in(cx, |model, window, cx| {
+        model.receive(from(remote, Update::Event(ClientEvent::Disconnected)), cx);
+        model.open_remote_servers(remote, window, cx);
+    });
+    cx.run_until_parked();
+    view.read_with(cx, |model, cx| {
+        assert_eq!(model.palette_page(cx), Some(PaletteEntry::Server(remote)));
+        let palette = model.palette_entity().expect("palette");
+        let palette = palette.read(cx);
+        let items = palette.items();
+        assert!(
+            items
+                .iter()
+                .all(|item| matches!(item.target, Target::Run(_)))
+        );
+        assert!(
+            items
+                .iter()
+                .any(|item| item.id == "connect" && item.title == "Connect")
+        );
+        assert!(!items.iter().any(|item| item.id == "disconnect"));
+    });
+    view.update(cx, |model, cx| {
+        model.servers.get_mut(remote).expect("server").connection = ConnectionState::Ready;
+        cx.notify();
+    });
+    cx.run_until_parked();
+    view.update(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        let items = palette.read(cx).items();
+        assert!(
+            items
+                .iter()
+                .any(|item| item.id == "connect" && item.title == "Reconnect")
+        );
+        assert!(items.iter().any(|item| item.id == "disconnect"));
+        palette.update(cx, |palette, cx| {
+            assert!(palette.select(&PaletteEntry::Server(remote).id(), "edit", cx));
+        });
+    });
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    view.read_with(cx, |model, _| {
+        assert!(model.palette_entity().is_none());
+        assert!(matches!(model.overlay, Some(Overlay::ServerForm(_))));
+    });
+}
