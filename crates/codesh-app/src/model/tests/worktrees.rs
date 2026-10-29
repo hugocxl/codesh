@@ -848,9 +848,9 @@ fn worktree_switcher_refreshes_progress_and_agent_activity_while_open(cx: &mut T
         assert_eq!(
             switcher_row(&picker, worktree, cx)
                 .expect("worktree")
-                .kind
-                .as_ref()
-                .map(AsRef::as_ref),
+                .subtitle
+                .as_deref()
+                .and_then(|subtitle| subtitle.rsplit_once(" · ").map(|(_, status)| status)),
             Some(expected)
         );
     }
@@ -878,9 +878,9 @@ fn worktree_switcher_refreshes_progress_and_agent_activity_while_open(cx: &mut T
         assert_eq!(
             switcher_row(&picker, worktree, cx)
                 .expect("worktree")
-                .kind
-                .as_ref()
-                .map(AsRef::as_ref),
+                .subtitle
+                .as_deref()
+                .and_then(|subtitle| subtitle.rsplit_once(" · ").map(|(_, status)| status)),
             expected
         );
     }
@@ -963,6 +963,56 @@ fn worktree_switcher_refreshes_catalog_without_losing_query_or_selection(cx: &mu
     });
     cx.run_until_parked();
     assert!(view.read_with(cx, |model, _| model.overlay.is_none()));
+}
+
+#[gpui::test]
+fn worktree_actions_open_rename_after_dismissing_the_palette(cx: &mut TestAppContext) {
+    let (state, _, [worktree, ..], _directory) = pruning_fixture();
+    let (view, cx, _sent) = connected(state, cx);
+    let palette = open_worktree_switcher(&view, cx);
+    palette.update(cx, |palette, cx| {
+        let page = palette.page().clone();
+        assert!(palette.select(&page, &worktree.to_string(), cx));
+    });
+    cx.simulate_keystrokes("cmd-k down enter");
+    cx.run_until_parked();
+    assert!(view.read_with(cx, |model, _| matches!(
+        model.overlay,
+        Some(Overlay::ProjectEditor(_))
+    )));
+}
+
+#[gpui::test]
+fn worktree_root_search_opens_the_same_worktree_as_the_page(cx: &mut TestAppContext) {
+    let (state, _, [worktree, ..], directory) = pruning_fixture();
+    let (view, cx, _sent) = connected(state, cx);
+    let page = open_worktree_switcher(&view, cx);
+    let row = switcher_row(&page, worktree, cx).expect("page row");
+    view.update_in(cx, |model, window, cx| {
+        model.open_palette(PaletteEntry::Root, window, cx);
+    });
+    let root = view.read_with(cx, |model, _| model.palette_entity().expect("root"));
+    root.update(cx, |palette, cx| {
+        palette.set_query(directory.path().to_string_lossy().into_owned(), cx);
+    });
+    cx.run_until_parked();
+    root.update(cx, |palette, cx| {
+        let hit = palette
+            .items()
+            .into_iter()
+            .find(|item| item.id == row.id)
+            .expect("worktree hit");
+        assert_eq!(hit.kind.as_ref().map(AsRef::as_ref), Some("Worktree"));
+        assert_eq!(hit.title, row.title);
+        assert_eq!(hit.subtitle, row.subtitle);
+        let page = palette.page().clone();
+        assert!(palette.select(&page, &row.id, cx));
+    });
+    cx.simulate_keystrokes("enter");
+    view.read_with(cx, |model, _| {
+        assert_eq!(model.state.current_project().id, worktree);
+        assert!(model.overlay.is_none());
+    });
 }
 
 #[gpui::test]
