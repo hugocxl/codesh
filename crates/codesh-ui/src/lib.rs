@@ -18,6 +18,7 @@ mod dialog_types;
 pub mod file_manager;
 pub mod font;
 pub mod form;
+pub mod fuzzy;
 pub mod icon;
 #[cfg(target_os = "macos")]
 pub mod keyboard;

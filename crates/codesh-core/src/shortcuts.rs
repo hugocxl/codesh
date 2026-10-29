@@ -206,6 +206,7 @@ pub enum ShortcutId {
     PreviousSettingsControl,
     InstallCommandLineTool,
     ToggleCommandPalette,
+    CommandPaletteActions,
     ToggleVoiceRecording,
     VoiceFinish,
     VoiceCancel,
@@ -1323,6 +1324,12 @@ pub const ALL: &[Shortcut] = &[
         keys: platform_keys!(&["cmd-shift-p"], &["ctrl-shift-p"]),
         contexts: &[Some("WorkspaceTabs")],
         key_contexts: &[&[Some("WorkspaceTabs")]],
+    },
+    Shortcut {
+        id: "command_palette.actions",
+        keys: platform_keys!(&["cmd-k"], &["ctrl-k"]),
+        contexts: &[Some("CommandPalette")],
+        key_contexts: &[&[Some("CommandPalette")]],
     },
     Shortcut {
         id: "toggle_voice_recording",
