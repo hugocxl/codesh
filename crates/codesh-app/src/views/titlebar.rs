@@ -95,6 +95,12 @@ fn background_click(event: &gpui::ClickEvent, window: &mut Window, cx: &mut App)
 
 /// Chrome icon buttons, sized like Notion's: an 18px glyph in a 28px box.
 const CHROME_BUTTON: f32 = 28.0;
+/// SF Symbols are drawn at their natural size for this point size, so wide and
+/// round symbols keep the optical balance Apple designed; 14pt draws about as
+/// wide as the square 18px SVGs used elsewhere.
+#[cfg(target_os = "macos")]
+const CHROME_ICON: f32 = 14.0;
+#[cfg(not(target_os = "macos"))]
 const CHROME_ICON: f32 = 18.0;
 const CHROME_RADIUS: f32 = 8.0;
 /// Pane header buttons keep the chrome proportions at 80% of the size.
@@ -172,19 +178,16 @@ pub(super) fn compact_icon_button(
     shortcut: Option<ShortcutId>,
     model: &AppModel,
 ) -> Stateful<Div> {
-    sized_button(id, tooltip, shortcut, COMPACT, model).child(
-        IconGlyph::new(
-            icon,
-            model.metrics.scaled(CHROME_ICON * COMPACT),
-            model.theme.fg_muted,
-        )
-        .fit(),
-    )
+    sized_button(id, tooltip, shortcut, COMPACT, model).child(IconGlyph::new(
+        icon,
+        model.metrics.scaled(CHROME_ICON * COMPACT),
+        model.theme.fg_muted,
+    ))
 }
 
-/// The glyph every chrome button draws, so icons measure the same everywhere.
+/// The glyph every chrome button draws, at one point size everywhere.
 pub(crate) fn chrome_glyph(icon: Icon, color: gpui::Hsla, model: &AppModel) -> IconGlyph {
-    IconGlyph::new(icon, model.metrics.scaled(CHROME_ICON), color).fit()
+    IconGlyph::new(icon, model.metrics.scaled(CHROME_ICON), color)
 }
 
 pub(crate) fn navigation(
