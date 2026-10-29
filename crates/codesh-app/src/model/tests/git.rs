@@ -234,3 +234,154 @@ fn worktree_form_reviews_hooks_validates_templates_and_saves_the_submitted_locat
         "../trees/{branch}"
     );
 }
+
+#[gpui::test]
+fn palette_branches_switches_the_selected_branch_with_enter(cx: &mut TestAppContext) {
+    use crate::views::command_palette::PaletteEntry;
+    use codesh_protocol::GitBranch;
+
+    let (state, project) = registered_current_project();
+    let (boot, requests) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    cx.run_until_parked();
+    view.update_in(cx, |model, window, cx| {
+        model.servers.local.connection = ConnectionState::Ready;
+        model.git.projects.entry(project).or_default().disconnect();
+        requests.try_iter().for_each(drop);
+        model.open_palette(PaletteEntry::Branches(project), window, cx);
+        assert!(requests.try_iter().any(|(_, work)| {
+            matches!(work, Work::Git(GitRequest { project: id, action: GitAction::Summary }) if id == project)
+        }));
+        model.git.projects.get_mut(&project).expect("repository").disconnect();
+        model.receive_git(
+            &GitRequest { project, action: GitAction::Branches },
+            Ok(GitReply::Branches(vec![
+                GitBranch { name: "main".into(), current: true, checked_out: true, default: true },
+                GitBranch { name: "feature/palette".into(), current: false, checked_out: false, default: false },
+            ])),
+            cx,
+        );
+        let palette = model.palette_entity().expect("palette");
+        let items = palette.read(cx).items();
+        assert_eq!(items[0].id, "new-branch");
+        let main = items.iter().find(|item| item.id == "main").expect("main");
+        assert!(main.current && main.disabled);
+        assert_eq!(main.subtitle.as_ref().map(AsRef::as_ref), Some("Checked out"));
+    });
+    cx.run_until_parked();
+    cx.simulate_input("feature");
+    cx.run_until_parked();
+    requests.try_iter().for_each(drop);
+    cx.simulate_keystrokes("down enter");
+    cx.run_until_parked();
+    assert!(requests.try_iter().any(|(_, work)| {
+        matches!(work, Work::Git(GitRequest { project: id, action: GitAction::SwitchBranch(name) }) if id == project && name == "feature/palette")
+    }));
+    assert!(view.read_with(cx, |model, _| model.overlay.is_none()));
+}
+
+#[gpui::test]
+fn palette_changes_stages_with_keyboard_actions_and_refreshes_in_place(cx: &mut TestAppContext) {
+    use crate::views::command_palette::PaletteEntry;
+    use codesh_protocol::GitFile;
+
+    let (state, project) = registered_current_project();
+    let (boot, requests) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    cx.run_until_parked();
+    let mut file = GitFile {
+        path: ServerPath(b"src/main.rs".to_vec()),
+        original_path: None,
+        index: b' ',
+        worktree: b'M',
+        added: Some(3),
+        removed: Some(1),
+    };
+    view.update_in(cx, |model, window, cx| {
+        model.servers.local.connection = ConnectionState::Ready;
+        model.git.projects.entry(project).or_default().disconnect();
+        model.open_palette(PaletteEntry::Changes(project), window, cx);
+        model
+            .git
+            .projects
+            .get_mut(&project)
+            .expect("repository")
+            .disconnect();
+        model.receive_git(
+            &GitRequest {
+                project,
+                action: GitAction::Changes,
+            },
+            Ok(GitReply::Changes(vec![file.clone()])),
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    cx.simulate_input("main");
+    cx.run_until_parked();
+    let palette = view.read_with(cx, |model, _| model.palette_entity().expect("palette"));
+    let selected = palette.read_with(cx, |palette, _| palette.selected_item().cloned());
+    requests.try_iter().for_each(drop);
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-k"
+    } else {
+        "ctrl-k"
+    });
+    cx.simulate_keystrokes("down enter");
+    cx.run_until_parked();
+    let request = requests
+        .try_iter()
+        .find_map(|(_, work)| match work {
+            Work::Git(request) if request.action == GitAction::Stage(vec![file.path.clone()]) => {
+                Some(request)
+            }
+            _ => None,
+        })
+        .expect("stage request");
+    view.read_with(cx, |model, cx| {
+        assert_eq!(model.palette_page(cx), Some(PaletteEntry::Changes(project)));
+        assert_eq!(model.palette_entity(), Some(palette.clone()));
+        assert!(palette.read(cx).items()[0].disabled);
+    });
+    file.index = b'M';
+    file.worktree = b' ';
+    view.update(cx, |model, cx| {
+        model.receive_git(&request, Ok(GitReply::Done), cx);
+        model
+            .git
+            .projects
+            .get_mut(&project)
+            .expect("repository")
+            .disconnect();
+        model.receive_git(
+            &GitRequest {
+                project,
+                action: GitAction::Changes,
+            },
+            Ok(GitReply::Changes(vec![file.clone()])),
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    palette.read_with(cx, |palette, _| {
+        assert_eq!(palette.query(), "main");
+        assert_eq!(palette.selected_item(), selected.as_ref());
+        let items = palette.items();
+        assert_eq!(
+            items[0].subtitle.as_ref().map(AsRef::as_ref),
+            Some("Staged")
+        );
+        assert_eq!(items[0].badge.as_ref().map(AsRef::as_ref), Some("+3 −1"));
+        assert!(!items[0].disabled);
+        assert_eq!(
+            items[0]
+                .actions
+                .iter()
+                .map(|action| action.id.as_ref())
+                .collect::<Vec<_>>(),
+            ["open", "unstage"]
+        );
+    });
+}
