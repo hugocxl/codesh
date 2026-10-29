@@ -11,7 +11,6 @@ use std::sync::Arc;
 use codesh_app_core::browser::BrowserPane;
 use codesh_app_core::{PaneContent, PaneId, ProjectId, Tab};
 use codesh_ui::browser::polybrowser::ProfileManager;
-use codesh_ui::tr;
 use gpui::{Context, Entity, Pixels, Point, Subscription, Window};
 
 use super::AppModel;
@@ -110,7 +109,7 @@ impl AppModel {
     /// Why a browser pane shows no page, if it can't.
     pub(crate) fn browser_unavailable(&self, pane: PaneId) -> Option<String> {
         if !self.browser_enabled() {
-            return Some(tr!("Built-in browser is disabled").into());
+            return Some("Built-in browser is disabled".into());
         }
         self.browsers.failures.get(&pane).cloned()
     }
@@ -299,7 +298,7 @@ impl AppModel {
                 }
             }
             BrowserViewEvent::External(url) => self.open_externally(url.clone(), None, cx),
-            BrowserViewEvent::Copied => self.show_notice(tr!("Copied!").to_string(), cx),
+            BrowserViewEvent::Copied => self.show_notice("Copied!".to_string(), cx),
             BrowserViewEvent::Favicon(url) => self.load_favicon(pane, url.clone(), cx),
             BrowserViewEvent::Menu(menu, position) => {
                 self.open_browser_menu(pane, *menu, *position, window, cx);
@@ -445,7 +444,7 @@ impl AppModel {
         let pane = opened.map_err(|error| error.to_string())?;
         if !self.save(cx) {
             self.state = previous;
-            return Err(tr!("Could not save tabs").into());
+            return Err("Could not save tabs".into());
         }
         if focus_address {
             self.browsers.focus_address.insert(pane);
@@ -488,18 +487,12 @@ impl AppModel {
                 .spawn(async move |model, cx| {
                     if let Ok(Err(error)) = result.recv().await {
                         let _ = model.update(cx, |model, cx| {
-                            model.fail(
-                                tr!("Could not open link: %@", error.to_string()).to_string(),
-                                cx,
-                            );
+                            model.fail(format!("Could not open link: {error}"), cx);
                         });
                     }
                 })
                 .detach(),
-            Err(error) => self.fail(
-                tr!("Could not open link: %@", error.to_string()).to_string(),
-                cx,
-            ),
+            Err(error) => self.fail(format!("Could not open link: {error}"), cx),
         }
     }
 
@@ -537,17 +530,14 @@ impl AppModel {
     ) {
         use crate::views::menu::{Command, Item};
         let items = match menu {
-            Menu::Page => vec![Item::action(
-                tr!("Web Inspector"),
-                Command::BrowserInspect(pane),
-            )],
+            Menu::Page => vec![Item::action("Web Inspector", Command::BrowserInspect(pane))],
             Menu::External => {
                 let url = self
                     .browser_view(pane)
                     .map(|view| view.read(cx).page.url.clone())
                     .unwrap_or_default();
                 let mut items = vec![Item::action(
-                    tr!("Open in Default Browser"),
+                    "Open in Default Browser",
                     Command::OpenInBrowser(pane, None),
                 )];
                 for (index, app) in crate::opener::web_browsers().iter().enumerate() {
@@ -576,8 +566,7 @@ impl AppModel {
                     })
                     .collect();
                 items.push(
-                    Item::action(tr!("Manage Profiles…"), Command::ManageBrowserProfiles)
-                        .separated(),
+                    Item::action("Manage Profiles…", Command::ManageBrowserProfiles).separated(),
                 );
                 items
             }

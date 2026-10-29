@@ -8,10 +8,8 @@ use codesh_app_core::agent_sessions::{Catalog, Listing, PROVIDERS, Roots, Sessio
 use codesh_app_core::settings::AgentSessionsPosition;
 use codesh_app_core::{ProjectId, ProjectStatus};
 use codesh_protocol::AgentProvider;
-use codesh_ui::l10n::tr_key;
 use codesh_ui::panel::{PanelId, PanelMode, PanelPlacement, PanelPosition, PanelResizeState};
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
-use codesh_ui::tr;
 use gpui::{AppContext, Context, Entity, FocusHandle, Focusable, Subscription, Task, Window};
 
 use super::{AppModel, ConnectionState, Quitting};
@@ -115,7 +113,7 @@ impl AppModel {
             if self.agent_sessions.input.is_none() {
                 let input = cx.new(|cx| {
                     TextInput::new(InputStyle::compact(&self.theme, &self.metrics), cx)
-                        .with_placeholder_key(tr_key!("Search sessions…"))
+                        .with_placeholder("Search sessions…")
                         .with_key_context(codesh_ui::text_input::BARE_CONTEXT)
                 });
                 self.agent_sessions.subscription =
@@ -370,7 +368,7 @@ impl AppModel {
         };
         if !session.path.is_file() {
             self.fail(
-                tr!("This session is no longer available. Refresh the session list.").to_string(),
+                "This session is no longer available. Refresh the session list.".to_string(),
                 cx,
             );
             return;

@@ -4,7 +4,6 @@ use codesh_protocol::{
     GitAction, GitBaseSwitch, GitBranch, GitFile, GitPullRequest, GitPullRequestAction, GitReply,
     GitRequest, GitSummary, ProjectId, WorktreeAction, WorktreeIntent,
 };
-use codesh_ui::tr;
 use gpui::Context;
 use std::collections::{HashMap, VecDeque};
 
@@ -219,7 +218,7 @@ impl AppModel {
         }
         if read_slot(&action).is_none() && self.ai.running(project) {
             self.fail(
-                tr!("Wait for the AI repository action to finish").to_string(),
+                "Wait for the AI repository action to finish".to_string(),
                 cx,
             );
             return false;
@@ -241,7 +240,7 @@ impl AppModel {
                 self.update_git_picker(cx);
                 cx.notify();
             } else {
-                self.fail(tr!("A Git action is already pending").to_string(), cx);
+                self.fail("A Git action is already pending".to_string(), cx);
                 return false;
             }
             return true;
@@ -502,21 +501,21 @@ impl AppModel {
                         match &request.action {
                             GitAction::PullRequest(GitPullRequestAction::Merge {
                                 number, ..
-                            }) if follow_up.is_none() => Some(tr!("Merged PR #%lld", *number)),
+                            }) if follow_up.is_none() => Some(format!("Merged PR #{}", *number)),
                             GitAction::PullRequest(GitPullRequestAction::Close { number }) => {
-                                Some(tr!("Closed PR #%lld", *number))
+                                Some(format!("Closed PR #{}", *number))
                             }
                             GitAction::PullRequest(GitPullRequestAction::UpdateBranch {
                                 number,
                                 ..
-                            }) => Some(tr!("Updated branch for PR #%lld", *number)),
+                            }) => Some(format!("Updated branch for PR #{}", *number)),
                             _ => None,
                         }
                     } else {
                         None
                     };
                 if let Some(notice) = notice {
-                    self.show_notice(notice.to_string(), cx);
+                    self.show_notice(notice.clone(), cx);
                 }
                 if context_matches && matches!(self.overlay, Some(Overlay::GitForm(_))) {
                     self.dismiss_overlay(cx);
@@ -555,16 +554,15 @@ impl AppModel {
                 {
                     let detail = match result {
                         GitBaseSwitch::Updated => {
-                            tr!("Switched to %@ and brought it up to date.", &base)
+                            format!("Switched to {base} and brought it up to date.")
                         }
-                        GitBaseSwitch::CheckedOutElsewhere(_) => tr!(
-                            "%@ is checked out in another worktree, so this one stays on its branch.",
-                            &base
+                        GitBaseSwitch::CheckedOutElsewhere(_) => format!(
+                            "{base} is checked out in another worktree, so this one stays on its branch."
                         ),
                     };
                     self.show_toast(
-                        tr!("Merged PR #%lld into %@", number, &base).to_string(),
-                        Some(detail.to_string()),
+                        format!("Merged PR #{number} into {base}"),
+                        Some(detail.clone()),
                         cx,
                     );
                 }
@@ -623,31 +621,31 @@ impl AppModel {
                     let failed = match &request.action {
                         GitAction::SwitchToBase(base) => {
                             repository.post_merge.take().map(|(number, _)| {
-                                tr!("Merged PR #%lld, but couldn't update %@", number, base)
+                                format!("Merged PR #{number}, but couldn't update {base}")
                                     .to_string()
                             })
                         }
                         GitAction::PullRequest(GitPullRequestAction::Merge { number, .. }) => {
-                            Some(tr!("Couldn't merge PR #%lld", *number).to_string())
+                            Some(format!("Couldn't merge PR #{}", *number))
                         }
                         GitAction::PullRequest(GitPullRequestAction::Close { number }) => {
-                            Some(tr!("Couldn't close PR #%lld", *number).to_string())
+                            Some(format!("Couldn't close PR #{}", *number))
                         }
                         GitAction::PullRequest(GitPullRequestAction::UpdateBranch {
                             number,
                             ..
-                        }) => Some(tr!("Couldn't update PR #%lld", *number).to_string()),
+                        }) => Some(format!("Couldn't update PR #{}", *number)),
                         GitAction::InspectRemoval if removing_after_merge => {
-                            Some(tr!("Merged, but couldn't remove the worktree").to_string())
+                            Some("Merged, but couldn't remove the worktree".to_string())
                         }
                         GitAction::Worktree(WorktreeIntent {
                             action: WorktreeAction::Create { .. },
                             ..
-                        }) => Some(tr!("Couldn't create worktree").to_string()),
+                        }) => Some("Couldn't create worktree".to_string()),
                         GitAction::Worktree(WorktreeIntent {
                             action: WorktreeAction::Remove { .. },
                             ..
-                        }) => Some(tr!("Couldn't remove worktree").to_string()),
+                        }) => Some("Couldn't remove worktree".to_string()),
                         _ => None,
                     };
                     repository.error = Some(failed.clone().unwrap_or_else(|| error.to_string()));
@@ -682,7 +680,7 @@ impl AppModel {
         }
         if let Some(message) = setup_error {
             self.fail_detail(
-                tr!("Worktree created, but setup failed").to_string(),
+                "Worktree created, but setup failed".to_string(),
                 &message,
                 cx,
             );

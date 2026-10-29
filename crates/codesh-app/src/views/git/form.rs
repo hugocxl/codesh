@@ -1,6 +1,5 @@
 use codesh_ui::components::ButtonInteraction;
 use codesh_ui::controls::{self, Choice, Style};
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, Corner, FontWeight, InteractiveElement, IntoElement, ParentElement,
@@ -49,20 +48,20 @@ pub(crate) fn render(
                 .text_size(m.font_headline())
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(if form.worktree {
-                    tr!("New Worktree")
+                    "New Worktree"
                 } else {
-                    tr!("New Branch")
+                    "New Branch"
                 }),
         );
     if form.worktree {
         view = view.child(field(
-            &tr!("Name"),
+            "Name",
             controls::text_field(style, "git-name", &form.name, None),
             model,
         ));
         let mut choices = [
-            Choice::new("new", tr!("Create new branch")),
-            Choice::new("existing", tr!("Use existing branch")),
+            Choice::new("new", "Create new branch"),
+            Choice::new("existing", "Use existing branch"),
         ];
         for choice in &mut choices {
             choice.enabled = !busy;
@@ -81,7 +80,7 @@ pub(crate) fn render(
         view = view.child(branch_picker(form, false, model, cx));
     } else {
         view = view.child(field(
-            &tr!("Branch name"),
+            "Branch name",
             controls::text_field(style, "git-branch", &form.branch, None),
             model,
         ));
@@ -111,14 +110,14 @@ pub(crate) fn render(
             div()
                 .text_size(m.font_footnote())
                 .text_color(theme.fg_muted)
-                .child(tr!("Connect to the server to create.")),
+                .child("Connect to the server to create."),
         );
     } else if busy && form.worktree {
         view = view.child(
             div()
                 .text_size(m.font_footnote())
                 .text_color(theme.fg_muted)
-                .child(tr!("Wait for the running Git action to finish.")),
+                .child("Wait for the running Git action to finish."),
         );
     }
     view.child(
@@ -131,7 +130,7 @@ pub(crate) fn render(
                 controls::button(
                     style,
                     "git-cancel",
-                    &tr!("Cancel"),
+                    "Cancel",
                     true,
                     cx.listener(|model, _, _, cx| model.dismiss_overlay(cx)),
                 )
@@ -162,9 +161,9 @@ pub(crate) fn render(
                             )
                     })
                     .child(if busy && !form.worktree {
-                        tr!("Creating…")
+                        "Creating…"
                     } else {
-                        tr!("Create")
+                        "Create"
                     }),
             ),
     )
@@ -207,9 +206,9 @@ fn branch_picker(
         form.existing_branch.read(cx).text()
     };
     let placeholder = if loading {
-        Some(tr!("Loading branches…"))
+        Some("Loading branches…")
     } else if value.is_empty() {
-        Some(tr!("Choose a branch…"))
+        Some("Choose a branch…")
     } else {
         None
     };
@@ -219,17 +218,13 @@ fn branch_picker(
             metrics: &m,
         },
         if base { "git-base" } else { "git-existing" },
-        placeholder.as_ref().map_or(value, SharedString::as_str),
+        placeholder.unwrap_or(value),
         None,
         form.chooser.is_some(),
         cx.listener(move |model, _, _, cx| model.choose_worktree_branch(base, cx)),
     );
-    let label = if base {
-        tr!("Base branch")
-    } else {
-        tr!("Branch")
-    };
-    let mut field = field(&label, control, model).relative();
+    let label = if base { "Base branch" } else { "Branch" };
+    let mut field = field(label, control, model).relative();
     if let Some(chooser) = &form.chooser {
         field = field.child(
             deferred(

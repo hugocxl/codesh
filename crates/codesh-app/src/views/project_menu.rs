@@ -1,7 +1,5 @@
 use codesh_app_core::{AppState, Project, ProjectId, ProjectStatus};
 use codesh_ui::dialog::ConfirmationResponse;
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::{AnyWindowHandle, AsyncApp, Context};
 
 use super::menu::{Command, Item};
@@ -17,13 +15,13 @@ pub(crate) fn items(state: &AppState, project: &Project, worktrees: Option<bool>
     let mut items = terminal_items(id);
     // Another computer's Home goes by its server's name.
     if !project.is_remote_home() {
-        items.push(Item::action(tr!("Rename…"), Command::EditProject(id)).separated());
+        items.push(Item::action("Rename…", Command::EditProject(id)).separated());
     }
     if !project.home {
-        items.push(Item::submenu(tr!("Workspaces"), workspace_items(state, id)));
+        items.push(Item::submenu("Workspaces", workspace_items(state, id)));
         if let Some(visible) = worktrees {
             items.push(
-                Item::action(tr!("Show Worktrees"), Command::Worktrees(id))
+                Item::action("Show Worktrees", Command::Worktrees(id))
                     .checked_if(visible)
                     .separated(),
             );
@@ -36,7 +34,7 @@ pub(crate) fn items(state: &AppState, project: &Project, worktrees: Option<bool>
 
 /// A folder on another computer can't be revealed here, but its path can be copied.
 fn path_items(project: &Project) -> Vec<Item> {
-    let copy = Item::action(tr!("Copy Path"), Command::CopyPath(project.id));
+    let copy = Item::action("Copy Path", Command::CopyPath(project.id));
     if project.server_id.is_local() {
         vec![
             Item::action(
@@ -56,7 +54,7 @@ fn removal(project: &Project) -> Vec<Item> {
         Vec::new()
     } else {
         vec![Item::action(
-            tr!("Remove Project…"),
+            "Remove Project…",
             Command::RemoveProject(project.id),
         )]
     }
@@ -65,8 +63,8 @@ fn removal(project: &Project) -> Vec<Item> {
 /// A single-tab project opens terminals as splits of its one tab.
 fn terminal_items(id: ProjectId) -> Vec<Item> {
     vec![
-        Item::action(tr!("New Terminal"), Command::NewProjectTab(id)),
-        Item::action(tr!("Existing Terminals…"), Command::ExistingSessions(id)),
+        Item::action("New Terminal", Command::NewProjectTab(id)),
+        Item::action("Existing Terminals…", Command::ExistingSessions(id)),
     ]
 }
 
@@ -82,7 +80,7 @@ pub(crate) fn workspace_items(state: &AppState, project: ProjectId) -> Vec<Item>
             .checked_if(workspace.projects.contains(&project))
         })
         .collect();
-    let create = Item::action(tr!("New Workspace…"), Command::NewWorkspace(Some(project)));
+    let create = Item::action("New Workspace…", Command::NewWorkspace(Some(project)));
     items.push(if items.is_empty() {
         create
     } else {
@@ -99,24 +97,17 @@ pub(crate) fn worktree_items(project: &Project, primary: bool) -> Vec<Item> {
         return if primary {
             Vec::new()
         } else {
-            vec![Item::action(
-                tr!("Remove Worktree…"),
-                Command::RemoveProject(id),
-            )]
+            vec![Item::action("Remove Worktree…", Command::RemoveProject(id))]
         };
     }
     let mut items = terminal_items(id);
     if !primary {
-        items.push(Item::action(tr!("Rename Worktree…"), Command::EditProject(id)).separated());
+        items.push(Item::action("Rename Worktree…", Command::EditProject(id)).separated());
     }
     items.extend(path_items(project));
     if !primary {
         items.push(
-            Item::action(
-                tr!("Remove Worktree and Files…"),
-                Command::RemoveWorktree(id),
-            )
-            .separated(),
+            Item::action("Remove Worktree and Files…", Command::RemoveWorktree(id)).separated(),
         );
     }
     items
@@ -169,25 +160,18 @@ impl AppModel {
         };
         let gone = record.parent_id.is_some() && record.status() != ProjectStatus::Available;
         let message = if gone {
-            tr!(
-                "Remove “%@” from every client? Its folder is already gone. All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded.",
-                &record.name
-            )
+            format!("Remove “{}” from every client? Its folder is already gone. All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded.", &record.name)
         } else {
-            tr!(
-                "Remove “%@” from every client? All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded. The folder and its files will stay on disk.",
-                &record.name
-            )
-        }
-        .to_string();
+            format!("Remove “{}” from every client? All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded. The folder and its files will stay on disk.", &record.name)
+        }.clone();
         self.confirm(
             if gone {
-                tr_key!("Remove Worktree?")
+                "Remove Worktree?"
             } else {
-                tr_key!("Remove Project?")
+                "Remove Project?"
             },
             message,
-            tr_key!("Remove"),
+            "Remove",
             cx,
             move |model, cx| {
                 if gone {
@@ -222,10 +206,7 @@ impl AppModel {
                     Ok(ConfirmationResponse::Confirmed { .. }) => confirmed(model, cx),
                     Ok(ConfirmationResponse::Cancelled) => {}
                     Err(error) => {
-                        model.fail(
-                            tr!("Could not show confirmation: %@", error).to_string(),
-                            cx,
-                        );
+                        model.fail(format!("Could not show confirmation: {error}"), cx);
                     }
                 }
                 cx.notify();
@@ -245,17 +226,9 @@ async fn prompt(
     let (sender, receiver) = async_channel::bounded(1);
     let _dialog = window
         .update(cx, |_, window, cx| {
-            codesh_ui::dialog::confirm(
-                window,
-                cx,
-                &codesh_ui::l10n::translate(title),
-                &message,
-                &codesh_ui::l10n::translate(action),
-                None,
-                move |response| {
-                    let _ = sender.try_send(response);
-                },
-            )
+            codesh_ui::dialog::confirm(window, cx, title, &message, action, None, move |response| {
+                let _ = sender.try_send(response);
+            })
         })
         .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())?;

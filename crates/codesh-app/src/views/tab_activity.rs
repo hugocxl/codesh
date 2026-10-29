@@ -5,10 +5,8 @@ use codesh_app_core::{
 };
 use codesh_protocol::{AgentProvider, ProgressState, SessionId, TerminalProgress};
 use codesh_ui::components::Tooltip;
-use codesh_ui::l10n::{tr_key, translate};
 #[cfg(target_os = "macos")]
 use codesh_ui::spinner::NativeSpinner;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, Bounds, Hsla, IntoElement, ParentElement, PathBuilder, Pixels, SharedString,
     StatefulInteractiveElement, Styled, canvas, div, point, px, svg,
@@ -171,8 +169,8 @@ pub(super) fn worktree_dot(
     }
 }
 
-pub(super) const CREATING: &str = tr_key!("Creating worktree");
-const REMOVING: &str = tr_key!("Removing worktree");
+pub(super) const CREATING: &str = "Creating worktree";
+const REMOVING: &str = "Removing worktree";
 
 /// Worktrees `id` is creating, or the removal of `id` or, with
 /// `include_children`, of one of its worktrees.
@@ -487,16 +485,16 @@ pub(super) fn status_glyph(
         Status::None => return div().into_any_element(),
         Status::Busy(key) => (
             "busy",
-            translate(key).to_string(),
+            key.to_string(),
             model.spinners.glyph(id.clone(), size, theme.accent),
         ),
         Status::Progress(progress) => {
             let tooltip = match progress.state {
-                ProgressState::Error => tr!("Work reported an error."),
-                ProgressState::Paused => tr!("Work is paused."),
+                ProgressState::Error => "Work reported an error.",
+                ProgressState::Paused => "Work is paused.",
                 ProgressState::Running
                 | ProgressState::Indeterminate
-                | ProgressState::Unrecognized(_) => tr!("Work is in progress."),
+                | ProgressState::Unrecognized(_) => "Work is in progress.",
             };
             (
                 "progress",
@@ -508,9 +506,9 @@ pub(super) fn status_glyph(
             let blocked = status == Status::Blocked;
             let color = if blocked { theme.warning } else { theme.accent };
             let tooltip = if blocked {
-                tr!("An agent is waiting for your attention.")
+                "An agent is waiting for your attention."
             } else {
-                tr!("Work finished and is ready to review.")
+                "Work finished and is ready to review."
             };
             (
                 if blocked { "blocked" } else { "completion" },
@@ -529,9 +527,9 @@ pub(super) fn status_glyph(
         Status::Unread(count) => (
             "unread",
             if count == 1 {
-                tr!("1 unread notification").to_string()
+                "1 unread notification".to_string()
             } else {
-                tr!("%lld unread notifications", count).to_string()
+                format!("{count} unread notifications")
             },
             div()
                 .size(model.metrics.scaled(8.0))

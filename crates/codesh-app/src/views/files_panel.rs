@@ -580,11 +580,7 @@ impl Render for FilesPanel {
                 },
             )
             .when(!self.tree.loaded("") && self.error.is_none(), |view| {
-                view.child(
-                    div()
-                        .text_color(self.theme.fg_muted)
-                        .child(codesh_ui::tr!("Loading…")),
-                )
+                view.child(div().text_color(self.theme.fg_muted).child("Loading…"))
             })
             .when_some(self.error.clone(), |view, error| {
                 view.child(div().text_color(self.theme.danger).child(error))

@@ -4,7 +4,6 @@ use codesh_ui::icon::Icon;
 use codesh_ui::panel::{PanelFrame, PanelSizeBounds, PanelSizing, PanelStyle};
 use codesh_ui::picker::{Confirm, Dismiss, SelectNext, SelectPrevious};
 use codesh_ui::theme::contrasting_foreground;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, DispatchPhase, FontWeight, Hsla, InteractiveElement, IntoElement,
@@ -26,10 +25,10 @@ const FLOATING_GROUP: &str = "agents-panel-floating";
 
 fn status_label(status: AgentStatus) -> SharedString {
     match status {
-        AgentStatus::Blocked => tr!("Needs input"),
-        AgentStatus::Working => tr!("Working"),
-        AgentStatus::Completed => tr!("Completed"),
-        AgentStatus::Idle => tr!("Idle"),
+        AgentStatus::Blocked => "Needs input".into(),
+        AgentStatus::Working => "Working".into(),
+        AgentStatus::Completed => "Completed".into(),
+        AgentStatus::Idle => "Idle".into(),
     }
 }
 
@@ -247,7 +246,7 @@ fn rows(
                     .py(m.spacing3())
                     .text_size(m.font_footnote())
                     .text_color(theme.fg_muted)
-                    .child(tr!("No agents running")),
+                    .child("No agents running"),
             )
             .into_any_element();
     }
@@ -304,9 +303,9 @@ fn header_buttons(detached: bool, model: &AppModel, cx: &mut Context<AppModel>) 
             Icon::PanelRight
         },
         if right {
-            tr!("Move to Left Sidebar")
+            "Move to Left Sidebar".into()
         } else {
-            tr!("Move to Right")
+            "Move to Right".into()
         },
     )
     .on_click(cx.listener(move |model, _, window, cx| {
@@ -338,19 +337,19 @@ fn header_buttons(detached: bool, model: &AppModel, cx: &mut Context<AppModel>) 
         },
         if detached {
             if right {
-                tr!("Reattach to Right Panel")
+                "Reattach to Right Panel".into()
             } else {
-                tr!("Reattach to Sidebar")
+                "Reattach to Sidebar".into()
             }
         } else {
-            tr!("Detach")
+            "Detach".into()
         },
     )
     .on_click(cx.listener(move |model, _, window, cx| {
         cx.stop_propagation();
         model.set_agents_panel_detached(!detached, window, cx);
     }));
-    let close = button("agents-panel-hide", Icon::X, tr!("Hide")).on_click(cx.listener(
+    let close = button("agents-panel-hide", Icon::X, "Hide".into()).on_click(cx.listener(
         |model, _, window, cx| {
             cx.stop_propagation();
             model.hide_agents_panel(window, cx);
@@ -381,16 +380,16 @@ fn header(
     let summary = [
         (
             AgentStatus::Blocked,
-            tr!("%lld need input", count(AgentStatus::Blocked)),
+            format!("{} need input", count(AgentStatus::Blocked)),
         ),
         (
             AgentStatus::Working,
-            tr!("%lld working", count(AgentStatus::Working)),
+            format!("{} working", count(AgentStatus::Working)),
         ),
     ]
     .into_iter()
     .filter(|(status, _)| count(*status) > 0)
-    .map(|(_, label)| label.to_string())
+    .map(|(_, label)| label.clone())
     .collect::<Vec<_>>()
     .join(" · ");
     let detached = placement == Placement::Floating;
@@ -421,7 +420,7 @@ fn header(
                 .text_size(m.font_caption())
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(theme.fg_muted)
-                .child(tr!("Agents")),
+                .child("Agents"),
         )
         .child(
             div()
@@ -741,7 +740,7 @@ pub(crate) fn collapsed_button(model: &AppModel, cx: &mut Context<AppModel>) -> 
             .bg(if open { theme.hover } else { theme.surface })
             .cursor_pointer()
             .hover(|style| style.bg(theme.hover))
-            .tooltip(super::status_bar::tooltip(tr!("Agents").to_string(), model))
+            .tooltip(super::status_bar::tooltip("Agents".to_string(), model))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(|model, _, window, cx| {
                 if matches!(model.overlay, Some(super::overlays::Overlay::Agents)) {

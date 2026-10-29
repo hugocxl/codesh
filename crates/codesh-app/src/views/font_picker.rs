@@ -1,6 +1,5 @@
 use codesh_ui::picker::{Picker, PickerConfig, PickerEvent, PickerItem, PickerRow, PickerStatus};
 use codesh_ui::theme::{Metrics, Theme};
-use codesh_ui::tr;
 use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     Subscription,
@@ -39,7 +38,7 @@ impl FontPicker {
         names.dedup();
         let picker = cx.new(|cx| {
             Picker::new(
-                PickerConfig::dropdown("font-browser", tr!("Search fonts…")),
+                PickerConfig::dropdown("font-browser", "Search fonts…"),
                 theme,
                 metrics,
                 cx,
@@ -89,7 +88,7 @@ impl FontPicker {
             })
             .collect();
         let status = if items.is_empty() {
-            PickerStatus::Empty(tr!("No fonts found"))
+            PickerStatus::Empty("No fonts found".into())
         } else {
             PickerStatus::Ready
         };

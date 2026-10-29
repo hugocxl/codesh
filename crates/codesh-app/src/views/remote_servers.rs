@@ -8,9 +8,7 @@ use codesh_ui::command_palette::{Command, Registry};
 use codesh_ui::components::{ButtonInteraction, IconButton, IconGlyph};
 use codesh_ui::controls::{self, Style};
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::tr_key;
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, Context, Entity, Focusable, FontWeight, Hsla, InteractiveElement,
@@ -118,11 +116,11 @@ pub(crate) fn status_color(server: &RemoteServer, model: &AppModel) -> Hsla {
 
 pub(crate) fn status_label(server: &RemoteServer) -> SharedString {
     if server.needs_password && server.status == ServerStatus::Disconnected {
-        tr!("Password needed")
+        "Password needed".into()
     } else if server.install == Some(crate::model::Install::Running) {
-        tr!("Installing…")
+        "Installing…".into()
     } else {
-        codesh_ui::l10n::translate(server.status.label())
+        server.status.label().into()
     }
 }
 
@@ -143,13 +141,11 @@ fn server_row(server: &RemoteServer, model: &AppModel, cx: &mut Context<AppModel
     let id = server.entry.id;
     let group = SharedString::from(format!("remote-server-{id}"));
     let error = match &server.install {
-        Some(crate::model::Install::Failed(error)) => {
-            Some(tr!("Install failed: %@", error).to_string())
-        }
+        Some(crate::model::Install::Failed(error)) => Some(format!("Install failed: {error}")),
         _ => server.error.clone(),
     };
     let hint = (server.missing && crate::model::released_version().is_none())
-        .then(|| tr!("Install a Linux build there by hand, from scripts/build-linux-dev.sh."));
+        .then_some("Install a Linux build there by hand, from scripts/build-linux-dev.sh.");
     div()
         .flex()
         .flex_col()
@@ -241,13 +237,7 @@ fn edit_button(
                 theme.fg_muted,
                 theme.fg,
             )
-            .tooltip(
-                tr!("Edit…"),
-                theme.raised(),
-                theme.fg,
-                theme.border,
-                theme.bg,
-            )
+            .tooltip("Edit…", theme.raised(), theme.fg, theme.border, theme.bg)
             .on_click(cx.listener(move |model, _, _, cx| {
                 cx.stop_propagation();
                 model.open_server_form(Some(id), cx);
@@ -271,7 +261,7 @@ fn group_heading(group: Option<&str>, model: &AppModel, cx: &mut Context<AppMode
                 cx.stop_propagation();
             }),
         )
-        .child(group.map_or_else(|| tr!("Ungrouped"), |group| group.to_owned().into()))
+        .child(group.map_or_else(|| "Ungrouped".to_owned(), ToOwned::to_owned))
         .into_any_element()
 }
 
@@ -325,27 +315,27 @@ pub(crate) fn list(
         .w(width)
         .max_h((window.viewport_size().height - m.status_bar_height() - px(16.0)).max(px(0.0)))
         .overflow_y_scroll()
-        .child(codesh_ui::popover::header(theme, m).child(tr!("Remote Servers")))
+        .child(codesh_ui::popover::header(theme, m).child("Remote Servers"))
         .when(servers.is_empty(), |list| {
             list.child(
                 div()
                     .px(m.scaled(codesh_ui::popover::ROW_PADDING))
                     .pb(m.spacing2())
                     .text_color(theme.fg_muted)
-                    .child(tr!("No remote servers yet.")),
+                    .child("No remote servers yet."),
             )
         })
         .children(rows)
         .child(codesh_ui::popover::divider(theme, m))
         .child(
-            action("remote-add-server", Icon::Plus, tr!("Add Server…"))
+            action("remote-add-server", Icon::Plus, "Add Server…".into())
                 .on_click(cx.listener(|model, _, _, cx| model.open_server_form(None, cx))),
         )
         .child(
             action(
                 "remote-manage-servers",
                 Icon::Settings,
-                tr!("Manage Servers…"),
+                "Manage Servers…".into(),
             )
             .on_click(cx.listener(|model, _, window, cx| {
                 model.open_servers_tab(window, cx);
@@ -357,15 +347,14 @@ pub(crate) fn list(
 pub(crate) fn command(model: &AppModel, cx: &Context<AppModel>) -> Command<Handler> {
     let _ = model;
     let model = cx.weak_entity();
-    Command::list("remote_servers", tr!("Remote Servers…"), move |cx| {
+    Command::list("remote_servers", "Remote Servers…", move |cx| {
         let mut servers = Registry::default();
         let add: Handler = Rc::new(|model, _, cx| model.open_server_form(None, cx));
-        servers.register(
-            Command::new("remote-add-server", tr!("Add Server…"), add).keywords("Add Server"),
-        );
+        servers
+            .register(Command::new("remote-add-server", "Add Server…", add).keywords("Add Server"));
         let manage: Handler = Rc::new(AppModel::open_servers_tab);
         servers.register(
-            Command::new("remote-manage-servers", tr!("Manage Servers…"), manage)
+            Command::new("remote-manage-servers", "Manage Servers…", manage)
                 .keywords("Manage Servers"),
         );
         let Some(model) = model.upgrade() else {
@@ -405,7 +394,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
         actions.register(
             Command::new(
                 "new-tab",
-                tr!("New Terminal"),
+                "New Terminal",
                 handler(|model, id, _, cx| model.new_remote_home_tab(id, cx)),
             )
             .keywords("New Terminal"),
@@ -413,7 +402,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
         actions.register(
             Command::new(
                 "add-project",
-                tr!("Add Project…"),
+                "Add Project…",
                 handler(|model, id, _, cx| model.open_remote_project_picker(id, cx)),
             )
             .keywords("Add Project"),
@@ -425,11 +414,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
         actions.register(
             Command::new(
                 "connect",
-                if connected {
-                    tr!("Reconnect")
-                } else {
-                    tr!("Connect")
-                },
+                if connected { "Reconnect" } else { "Connect" },
                 handler(|model, id, _, cx| model.reconnect_remote_server(id, cx)),
             )
             .keywords(if connected { "Reconnect" } else { "Connect" }),
@@ -438,7 +423,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
             actions.register(
                 Command::new(
                     "disconnect",
-                    tr!("Disconnect"),
+                    "Disconnect",
                     handler(|model, id, _, cx| model.disconnect_remote_servers(&[id], cx)),
                 )
                 .keywords("Disconnect"),
@@ -447,7 +432,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
         actions.register(
             Command::new(
                 "edit",
-                tr!("Edit…"),
+                "Edit…",
                 handler(|model, id, _, cx| model.open_server_form(Some(id), cx)),
             )
             .keywords("Edit"),
@@ -456,7 +441,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
             actions.register(
                 Command::new(
                     "install",
-                    tr!("Install Codesh…"),
+                    "Install Codesh…",
                     handler(|model, id, window, cx| {
                         model.confirm_install_server(id, window.window_handle(), cx);
                     }),
@@ -468,7 +453,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
             actions.register(
                 Command::new(
                     "copy-update-command",
-                    tr!("Copy Update Command"),
+                    "Copy Update Command",
                     handler(|model, _, _, cx| model.copy_update_command(cx)),
                 )
                 .keywords("Copy Update Command"),
@@ -477,7 +462,7 @@ fn server_command(server: &RemoteServer, model: gpui::WeakEntity<AppModel>) -> C
         actions.register(
             Command::new(
                 "remove",
-                tr!("Remove…"),
+                "Remove…",
                 handler(|model, id, window, cx| {
                     model.confirm_forget_servers(vec![id], window.window_handle(), cx);
                 }),
@@ -505,7 +490,7 @@ fn input(
     let text = text.to_owned();
     cx.new(|cx| {
         TextInput::new(style, cx)
-            .with_placeholder_key(placeholder)
+            .with_placeholder(placeholder)
             .with_text(text)
     })
 }
@@ -584,24 +569,19 @@ impl AppModel {
         let name = input(
             self,
             cx,
-            tr_key!("Shown in the sidebar"),
+            "Shown in the sidebar",
             entry.as_ref().map_or("", |entry| &entry.name),
         );
         let group = input(
             self,
             cx,
-            tr_key!("optional"),
+            "optional",
             entry
                 .as_ref()
                 .and_then(|entry| entry.group.as_deref())
                 .unwrap_or_default(),
         );
-        let host = input(
-            self,
-            cx,
-            tr_key!("host, address, or ~/.ssh/config alias"),
-            &host,
-        );
+        let host = input(self, cx, "host, address, or ~/.ssh/config alias", &host);
         let command = input(
             self,
             cx,
@@ -611,7 +591,7 @@ impl AppModel {
                 .and_then(|entry| entry.ssh_command.as_deref())
                 .unwrap_or_default(),
         );
-        let user = input(self, cx, tr_key!("optional"), &user);
+        let user = input(self, cx, "optional", &user);
         let port = input(self, cx, "22", &port);
         let default_identity = automatic_identity
             .then(|| std::env::home_dir().and_then(|home| default_identity(&home)))
@@ -620,7 +600,7 @@ impl AppModel {
         let identity = input(
             self,
             cx,
-            tr_key!("Use SSH config or agent"),
+            "Use SSH config or agent",
             entry
                 .as_ref()
                 .and_then(|entry| entry.identity_file.as_deref())
@@ -630,7 +610,7 @@ impl AppModel {
         let password = cx.new(|cx| {
             TextInput::new(style, cx)
                 .secure()
-                .with_placeholder_key(tr_key!("Asked when connecting if empty"))
+                .with_placeholder("Asked when connecting if empty")
         });
         let subscriptions = [
             &name, &group, &host, &command, &user, &port, &identity, &password,
@@ -870,20 +850,15 @@ impl AppModel {
     fn choose_server_identity(&mut self, cx: &mut Context<Self>) {
         let (sender, receiver) = async_channel::bounded(1);
         let directory = std::env::home_dir().unwrap_or_default().join(".ssh");
-        let dialog = codesh_ui::dialog::choose_file(
-            cx,
-            &tr!("Choose a private key"),
-            &directory,
-            move |path| {
+        let dialog =
+            codesh_ui::dialog::choose_file(cx, "Choose a private key", &directory, move |path| {
                 let _ = sender.try_send(path);
-            },
-        );
+            });
         let dialog = match dialog {
             Ok(dialog) => dialog,
             Err(error) => {
                 if let Some(Overlay::ServerForm(form)) = &mut self.overlay {
-                    form.error =
-                        Some(tr!("Could not choose a key file: %@", error.to_string()).to_string());
+                    form.error = Some(format!("Could not choose a key file: {error}"));
                 }
                 cx.notify();
                 return;
@@ -897,9 +872,7 @@ impl AppModel {
                 Ok(None) => {}
                 Err(error) => {
                     if let Some(Overlay::ServerForm(form)) = &mut model.overlay {
-                        form.error = Some(
-                            tr!("Could not choose a key file: %@", error.to_string()).to_string(),
-                        );
+                        form.error = Some(format!("Could not choose a key file: {error}"));
                     }
                     cx.notify();
                 }
@@ -1032,46 +1005,41 @@ fn connection_status(
     theme: &codesh_ui::theme::Theme,
 ) -> (SharedString, Hsla) {
     match probe {
-        None if finding_identity => (tr!("Finding SSH key…"), theme.fg_muted),
+        None if finding_identity => ("Finding SSH key…".into(), theme.fg_muted),
         None if custom_command => (
-            tr!(
-                "Runs a local program with Codesh's remote command appended. It must connect without prompts or a TTY. Use an absolute program path if it isn't on Codesh's PATH."
-            ),
+            "Runs a local program with Codesh's remote command appended. It must connect without prompts or a TTY. Use an absolute program path if it isn't on Codesh's PATH.".into(),
             theme.fg_muted,
         ),
         None => (
-            tr!("Codesh uses your SSH config, keys, and agent. A password is never saved."),
+            "Codesh uses your SSH config, keys, and agent. A password is never saved.".into(),
             theme.fg_muted,
         ),
-        Some(ConnectionTest::Testing) => (tr!("Testing connection…"), theme.fg_muted),
+        Some(ConnectionTest::Testing) => ("Testing connection…".into(), theme.fg_muted),
         Some(ConnectionTest::UntrustedHost(prompt)) => {
             let details = prompt
                 .split("\nAre you sure you want to continue connecting")
                 .next()
                 .unwrap_or(prompt);
             (
-                tr!(
-                    "%@\n\nVerify this fingerprint with your server administrator before trusting it.",
-                    details
-                ),
+                format!("{details}\n\nVerify this fingerprint with your server administrator before trusting it.").into(),
                 theme.warning,
             )
         }
         Some(ConnectionTest::Installing) => (
-            tr!("Installing codesh-server, then testing connection…"),
+            "Installing codesh-server, then testing connection…".into(),
             theme.fg_muted,
         ),
         Some(ConnectionTest::Succeeded(version)) => (
-            tr!("Connection succeeded · Codesh %@", version),
+            format!("Connection succeeded · Codesh {version}").into(),
             theme.accent,
         ),
         Some(ConnectionTest::NotInstalled(_)) => (
-            tr!("SSH connected. Install codesh-server to finish setting up this server."),
+            "SSH connected. Install codesh-server to finish setting up this server.".into(),
             theme.fg_muted,
         ),
         Some(ConnectionTest::Failed(error)) => (error.clone().into(), theme.danger),
         Some(ConnectionTest::InstallFailed(error)) => {
-            (tr!("Install failed: %@", error), theme.danger)
+            (format!("Install failed: {error}").into(), theme.danger)
         }
     }
 }
@@ -1126,19 +1094,15 @@ pub(crate) fn render_form(
             }),
         )
         .child(title(
-            &if form.device.is_some() {
-                tr!("Edit Remote Server")
+            if form.device.is_some() {
+                "Edit Remote Server"
             } else {
-                tr!("Add Remote Server")
+                "Add Remote Server"
             },
             model,
         ))
-        .child(field(&tr!("Name"), text("server-name", &form.name), model))
-        .child(field(
-            &tr!("Group"),
-            text("server-group", &form.group),
-            model,
-        ))
+        .child(field("Name", text("server-name", &form.name), model))
+        .child(field("Group", text("server-group", &form.group), model))
         .child(connection_fields(form, model, cx))
         .child(
             div()
@@ -1162,7 +1126,7 @@ pub(crate) fn render_form(
                     controls::button(
                         style,
                         "server-trust",
-                        &tr!("Trust & Test"),
+                        "Trust & Test",
                         true,
                         cx.listener(|model, _, _, cx| model.trust_server_form(cx)),
                     )
@@ -1186,7 +1150,7 @@ fn install_offer(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
             metrics: &model.metrics,
         },
         "server-install",
-        &tr!("Install codesh-server & Test Connection"),
+        "Install codesh-server & Test Connection",
         true,
         cx.listener(|model, _, window, cx| model.confirm_install_server_form(window, cx)),
     )
@@ -1216,26 +1180,18 @@ fn connection_fields(form: &ServerForm, model: &AppModel, cx: &mut Context<AppMo
                     form.custom_command,
                     cx.listener(|model, _, _, cx| model.toggle_custom_command(cx)),
                 ))
-                .child(
-                    div()
-                        .text_size(m.font_footnote())
-                        .child(tr!("Custom command")),
-                ),
+                .child(div().text_size(m.font_footnote()).child("Custom command")),
         )
         .when(form.custom_command, |view| {
             view.child(field(
-                &tr!("SSH command"),
+                "SSH command",
                 text("server-command", &form.command),
                 model,
             ))
         })
         .when(!form.custom_command, |view| {
-            view.child(field(
-                &tr!("SSH host"),
-                text("server-host", &form.host),
-                model,
-            ))
-            .child(login(form, model, cx))
+            view.child(field("SSH host", text("server-host", &form.host), model))
+                .child(login(form, model, cx))
         })
 }
 
@@ -1253,16 +1209,14 @@ fn login(form: &ServerForm, model: &AppModel, cx: &mut Context<AppModel>) -> gpu
             div()
                 .flex()
                 .gap(m.spacing4())
-                .child(field(&tr!("User"), text("server-user", &form.user), model).flex_1())
-                .child(
-                    field(&tr!("Port"), text("server-port", &form.port), model).w(m.scaled(96.0)),
-                ),
+                .child(field("User", text("server-user", &form.user), model).flex_1())
+                .child(field("Port", text("server-port", &form.port), model).w(m.scaled(96.0))),
         )
         .child(field(
-            &if form.automatic_identity {
-                tr!("Identity file (automatic)")
+            if form.automatic_identity {
+                "Identity file (automatic)"
             } else {
-                tr!("Identity file")
+                "Identity file"
             },
             div()
                 .flex()
@@ -1276,7 +1230,7 @@ fn login(form: &ServerForm, model: &AppModel, cx: &mut Context<AppModel>) -> gpu
                 .child(controls::button(
                     style,
                     "server-identity-browse",
-                    &tr!("Browse…"),
+                    "Browse…",
                     true,
                     cx.listener(|model, _, _, cx| model.choose_server_identity(cx)),
                 ))
@@ -1288,9 +1242,9 @@ fn login(form: &ServerForm, model: &AppModel, cx: &mut Context<AppModel>) -> gpu
                 div()
                     .text_size(m.font_footnote())
                     .text_color(theme.fg_muted)
-                    .child(tr!(
-                        "SSH can also try your other keys. Edit or browse to use a specific key."
-                    )),
+                    .child(
+                        "SSH can also try your other keys. Edit or browse to use a specific key.",
+                    ),
             )
         })
         .child(
@@ -1307,12 +1261,12 @@ fn login(form: &ServerForm, model: &AppModel, cx: &mut Context<AppModel>) -> gpu
                 .child(
                     div()
                         .text_size(m.font_footnote())
-                        .child(tr!("Log in with a password")),
+                        .child("Log in with a password"),
                 ),
         )
         .when(form.password_login, |view| {
             view.child(field(
-                &tr!("Password"),
+                "Password",
                 text("server-password", &form.password),
                 model,
             ))
@@ -1340,7 +1294,7 @@ fn form_actions(
             controls::button(
                 style,
                 "server-test",
-                &tr!("Test Connection"),
+                "Test Connection",
                 testable,
                 cx.listener(|model, _, _, cx| model.test_server_form(cx)),
             )
@@ -1350,13 +1304,13 @@ fn form_actions(
         .child(controls::button(
             style,
             "server-cancel",
-            &tr!("Cancel"),
+            "Cancel",
             true,
             cx.listener(|model, _, _, cx| model.dismiss_overlay(cx)),
         ))
         .child(primary(
             "server-save",
-            tr!("Save"),
+            "Save".into(),
             savable,
             model,
             cx.listener(|model, _, _, cx| model.submit_server_form(cx)),
@@ -1384,14 +1338,13 @@ pub(crate) fn render_password(
         .and_then(|server| server.error)
         .filter(|_| model.server_failed_login(prompt.server));
     modal(model, window, "server-password")
-        .child(title(&tr!("Password for %@", &name), model))
+        .child(title(&format!("Password for {name}"), model))
         .child(
             div()
                 .text_size(m.font_footnote())
                 .text_color(theme.fg_muted)
-                .child(tr!(
-                    "%@ · Codesh keeps it in memory until it quits.",
-                    &destination
+                .child(format!(
+                    "{destination} · Codesh keeps it in memory until it quits."
                 )),
         )
         .child(controls::text_field(
@@ -1415,13 +1368,13 @@ pub(crate) fn render_password(
                 .child(controls::button(
                     style,
                     "server-password-cancel",
-                    &tr!("Cancel"),
+                    "Cancel",
                     true,
                     cx.listener(|model, _, _, cx| model.dismiss_overlay(cx)),
                 ))
                 .child(primary(
                     "server-password-connect",
-                    tr!("Connect"),
+                    "Connect".into(),
                     true,
                     model,
                     cx.listener(|model, _, _, cx| model.submit_password(cx)),

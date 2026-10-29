@@ -54,7 +54,6 @@ use crate::views::terminal::colors::Palette;
 use crate::views::terminal::pane::{PaneEvent, PaneState, TerminalPane};
 use crate::views::terminal::scroll::{Scroll, output_changed};
 use codesh_ui::theme::{Metrics, Theme};
-use codesh_ui::tr;
 
 pub(crate) struct PaneView {
     pub(crate) view: Entity<TerminalPane>,
@@ -313,9 +312,9 @@ impl AppModel {
                 self.refresh_theme(cx);
             }
             Err(error) => {
-                self.set_configuration_error(Some(
-                    tr!("Could not reload configuration: %@", error.to_string()).to_string(),
-                ));
+                self.set_configuration_error(Some(format!(
+                    "Could not reload configuration: {error}"
+                )));
                 cx.notify();
             }
         }
@@ -337,10 +336,7 @@ impl AppModel {
             .settings
             .set_project_search_root(root, &self.path.with_file_name("settings.toml"))
         {
-            self.fail(
-                tr!("Could not save search location: %@", error.to_string()).to_string(),
-                cx,
-            );
+            self.fail(format!("Could not save search location: {error}"), cx);
         }
     }
 
@@ -365,10 +361,7 @@ impl AppModel {
             Err(error) => {
                 self.appearance = self.settings.appearance.clone();
                 self.refresh_theme(cx);
-                self.fail(
-                    tr!("Could not save appearance: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not save appearance: {error}"), cx);
             }
         }
         self.sync_preferences(cx);
@@ -1220,11 +1213,8 @@ impl AppModel {
                     )
                 {
                     self.fail(
-                        tr!(
-                            "Could not save close confirmation preference: %@",
-                            error.to_string()
-                        )
-                        .to_string(),
+                        format!("Could not save close confirmation preference: {error}")
+                            .to_string(),
                         cx,
                     );
                 }
@@ -1238,10 +1228,7 @@ impl AppModel {
             }
             Err(error) => {
                 self.close_request = None;
-                self.fail(
-                    tr!("Could not show close confirmation: %@", &error).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not show close confirmation: {error}"), cx);
             }
         }
         cx.notify();
@@ -1372,7 +1359,7 @@ impl AppModel {
         let local = ServerId::local();
         if !self.ready(local) {
             self.fail(
-                tr!("Connect to the server before ending all sessions").to_string(),
+                "Connect to the server before ending all sessions".to_string(),
                 cx,
             );
             return;
@@ -1487,10 +1474,7 @@ impl AppModel {
         match store::save(&self.path, &self.state) {
             Ok(()) => true,
             Err(error) => {
-                self.fail(
-                    tr!("Could not save tabs: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not save tabs: {error}"), cx);
                 false
             }
         }
@@ -1667,7 +1651,7 @@ impl AppModel {
                 model.terminal_menu(id, *position, cx);
             }
             PaneEvent::SelectionCopied => {
-                model.show_notice(tr!("Copied to clipboard").to_string(), cx);
+                model.show_notice("Copied to clipboard".to_string(), cx);
             }
             PaneEvent::Bell => cx.notify(),
             PaneEvent::Focused => {
@@ -2160,7 +2144,7 @@ impl AppModel {
                 self.disconnect(server, cx);
                 self.server_problem(
                     server,
-                    tr!("Could not register open terminals: %@", error.to_string()).to_string(),
+                    format!("Could not register open terminals: {error}"),
                     cx,
                 );
             }
@@ -2349,10 +2333,7 @@ impl AppModel {
             Err(error) if missing_session(&error) => self.advance_close(cx),
             Err(error) => {
                 self.close_request = None;
-                self.fail(
-                    tr!("Could not check the running process: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not check the running process: {error}"), cx);
             }
         }
     }
@@ -2390,11 +2371,7 @@ impl AppModel {
                     });
                     if !matches!(&error, codesh_client::ClientError::Server(reply) if reply.code == codesh_protocol::ErrorCode::SavedContentUnavailable)
                     {
-                        self.fail(
-                            tr!("Could not restore terminal output: %@", error.to_string())
-                                .to_string(),
-                            cx,
-                        );
+                        self.fail(format!("Could not restore terminal output: {error}"), cx);
                     }
                 }
             }
@@ -2613,10 +2590,7 @@ impl AppModel {
     ) {
         self.quitting = Quitting::Idle;
         if let Err(error) = result {
-            self.fail(
-                tr!("Could not end all sessions: %@", error.to_string()).to_string(),
-                cx,
-            );
+            self.fail(format!("Could not end all sessions: {error}"), cx);
             self.ensure_visible(cx);
             return;
         }
@@ -2624,10 +2598,7 @@ impl AppModel {
         let previous = self.state.clone();
         if let Err(error) = self.state.clear_terminal_panes(local) {
             self.state = previous;
-            self.fail(
-                tr!("Could not clear terminal panes: %@", error.to_string()).to_string(),
-                cx,
-            );
+            self.fail(format!("Could not clear terminal panes: {error}"), cx);
             return;
         }
         for session in self.state.pending_discards(local).to_vec() {

@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 
 use crate::model::AppModel;
 use codesh_core::capability::{Capability, Feature};
-use codesh_ui::tr;
 use gpui::{Context, SharedString};
 
 /// The installer links the `codesh` that was installed with the running app.
@@ -22,13 +21,7 @@ impl AppModel {
             let result = cx.background_executor().spawn(async { install() }).await;
             let response = window.update(cx, |_, window, cx| {
                 let (title, message) = installation_message(result);
-                window.prompt(
-                    gpui::PromptLevel::Info,
-                    &title,
-                    Some(&message),
-                    &[tr!("OK").as_ref()],
-                    cx,
-                )
+                window.prompt(gpui::PromptLevel::Info, &title, Some(&message), &["OK"], cx)
             });
             if let Ok(answer) = response {
                 let _ = answer.await;
@@ -45,19 +38,17 @@ fn installation_message(result: io::Result<PathBuf>) -> (SharedString, String) {
                 std::env::split_paths(&value).any(|entry| Some(entry.as_path()) == path.parent())
             });
             let guidance = if on_path {
-                tr!("Run codesh --help in your terminal.")
+                "Run codesh --help in your terminal."
             } else {
-                tr!(
-                    "Add ~/.local/bin to your PATH. For this shell, run:\nexport PATH=\"$HOME/.local/bin:$PATH\""
-                )
+                "Add ~/.local/bin to your PATH. For this shell, run:\nexport PATH=\"$HOME/.local/bin:$PATH\""
             };
             (
-                tr!("Command Line Tool Installed"),
-                tr!("Installed %@.\n\n%@", path.display().to_string(), &guidance).to_string(),
+                "Command Line Tool Installed".into(),
+                format!("Installed {}.\n\n{}", path.display(), &guidance),
             )
         }
         Err(error) => (
-            tr!("Could Not Install Command Line Tool"),
+            "Could Not Install Command Line Tool".into(),
             error.to_string(),
         ),
     }
@@ -69,15 +60,13 @@ fn install() -> io::Result<PathBuf> {
     for executable in [&target, &target.with_file_name("codesh-server")] {
         if crate::server::read_build_info(executable)? != codesh_protocol::BuildInfo::current() {
             return Err(io::Error::other(
-                tr!(
-                    "The installed app changed. Reopen it before installing the command line tool."
-                )
-                .to_string(),
+                "The installed app changed. Reopen it before installing the command line tool."
+                    .to_string(),
             ));
         }
     }
     let home = std::env::home_dir()
-        .ok_or_else(|| io::Error::other(tr!("Home directory unavailable").to_string()))?;
+        .ok_or_else(|| io::Error::other("Home directory unavailable".to_string()))?;
     let destination = home.join(".local/bin/codesh");
     if target != destination {
         install_link(&target, &destination)?;
@@ -94,10 +83,8 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
     if let Some(root) = codesh_core::bundle::linux_root(executable) {
         if root.join("current/codesh-app").canonicalize()? != executable {
             return Err(io::Error::other(
-                tr!(
-                    "The installed app changed. Reopen it before installing the command line tool."
-                )
-                .to_string(),
+                "The installed app changed. Reopen it before installing the command line tool."
+                    .to_string(),
             ));
         }
         return Ok(root.join("current/codesh"));
@@ -113,9 +100,8 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
             .is_none_or(|name| name != "codesh-app")
     {
         return Err(io::Error::other(
-            tr!(
-                "Install %@ and open it from there before installing its command line tool.",
-                app_name
+            format!(
+                "Install {app_name} and open it from there before installing its command line tool."
             )
             .to_string(),
         ));
@@ -134,11 +120,8 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
         .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
         .ok_or_else(|| {
             io::Error::other(
-                tr!(
-                    "Install and open %@.app before installing its command line tool.",
-                    app_name
-                )
-                .to_string(),
+                format!("Install and open {app_name}.app before installing its command line tool.")
+                    .to_string(),
             )
         })?;
     if executable
@@ -161,10 +144,7 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
             .is_some_and(|name| name == "previous.app")
     {
         return Err(io::Error::other(
-            tr!(
-                "Move %@.app to Applications and reopen it before installing its command line tool.",
-                app_name
-            )
+            format!("Move {app_name}.app to Applications and reopen it before installing its command line tool.")
             .to_string(),
         ));
     }
@@ -174,12 +154,12 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
 fn install_link(target: &Path, destination: &Path) -> io::Result<()> {
     if !target.is_absolute() || !target.is_file() {
         return Err(io::Error::other(
-            tr!("Bundled codesh executable is missing").to_string(),
+            "Bundled codesh executable is missing".to_string(),
         ));
     }
     let parent = destination
         .parent()
-        .ok_or_else(|| io::Error::other(tr!("Missing installation directory").to_string()))?;
+        .ok_or_else(|| io::Error::other("Missing installation directory".to_string()))?;
     fs::create_dir_all(parent)?;
     let _lock = codesh_client::local::try_lock(&parent.join(".codesh-cli-install.lock"))?;
     let receipt = parent.join(".codesh-cli-link.json");
@@ -197,9 +177,9 @@ fn install_link(target: &Path, destination: &Path) -> io::Result<()> {
                     .any(|value| value == previous.as_os_str().as_bytes())
             {
                 return Err(io::Error::other(
-                    tr!(
-                        "%@ is an unrelated link; move it before installing Codesh.",
-                        destination.display().to_string()
+                    format!(
+                        "{} is an unrelated link; move it before installing Codesh.",
+                        destination.display()
                     )
                     .to_string(),
                 ));
@@ -208,9 +188,9 @@ fn install_link(target: &Path, destination: &Path) -> io::Result<()> {
         }
         Ok(_) => {
             return Err(io::Error::other(
-                tr!(
-                    "%@ already exists; move it before installing Codesh.",
-                    destination.display().to_string()
+                format!(
+                    "{} already exists; move it before installing Codesh.",
+                    destination.display()
                 )
                 .to_string(),
             ));
@@ -244,7 +224,7 @@ fn install_link(target: &Path, destination: &Path) -> io::Result<()> {
     };
     if !unchanged {
         return Err(io::Error::other(
-            tr!("The command path changed during installation; try again.").to_string(),
+            "The command path changed during installation; try again.".to_string(),
         ));
     }
     fs::rename(&record, receipt)?;

@@ -28,7 +28,6 @@ codesh-protocol = { path = "../codesh-protocol" }
 gpui = { version = "=0.2.2", default-features = false, features = ["x11", "wayland"] }
 
 [dev-dependencies]
-codesh-core = { path = "../codesh-core", features = ["test-support"] }
 codesh-ui = { path = "../codesh-ui", features = ["test-support"] }
 codesh-server = { path = "../codesh-server" }
 codesh-terminal = { path = "../codesh-terminal" }

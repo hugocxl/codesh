@@ -1,8 +1,10 @@
 use codesh_app_core::settings::{FontMap, KeyChord, TerminalAction, TerminalEdit};
-use codesh_ui::l10n::{tr_key, translate};
-use codesh_ui::{controls, form, tr};
+use codesh_ui::{controls, form};
 use gpui::prelude::FluentBuilder;
-use gpui::{AnyElement, Context, Focusable, IntoElement, ParentElement, Styled, Window, div, px};
+use gpui::{
+    AnyElement, Context, Focusable, IntoElement, ParentElement, SharedString, Styled, Window, div,
+    px,
+};
 
 use super::pickers::FontSlot;
 use super::terminal::change_button;
@@ -15,23 +17,23 @@ const CODEPOINT_RANGE: &str = "codepoint-range";
 pub(super) const EDITOR_FIELDS: [&str; 2] = [CODEPOINT_RANGE, BINDING_PARAMETER];
 
 const ACTIONS: [(&str, &str); 17] = [
-    ("text", tr_key!("Send text")),
-    ("esc", tr_key!("Send Escape sequence")),
-    ("csi", tr_key!("Send CSI sequence")),
-    ("copy_to_clipboard", tr_key!("Copy")),
-    ("paste_from_clipboard", tr_key!("Paste")),
-    ("select_all", tr_key!("Select all")),
-    ("clear_screen", tr_key!("Clear screen")),
-    ("scroll_to_top", tr_key!("Scroll to top")),
-    ("scroll_to_bottom", tr_key!("Scroll to bottom")),
-    ("scroll_page_up", tr_key!("Scroll page up")),
-    ("scroll_page_down", tr_key!("Scroll page down")),
-    ("increase_font_size", tr_key!("Increase font size")),
-    ("decrease_font_size", tr_key!("Decrease font size")),
-    ("reset_font_size", tr_key!("Reset font size")),
-    ("reload_config", tr_key!("Reload terminal settings")),
-    ("ignore", tr_key!("Ignore key")),
-    ("unbind", tr_key!("Remove built-in binding")),
+    ("text", "Send text"),
+    ("esc", "Send Escape sequence"),
+    ("csi", "Send CSI sequence"),
+    ("copy_to_clipboard", "Copy"),
+    ("paste_from_clipboard", "Paste"),
+    ("select_all", "Select all"),
+    ("clear_screen", "Clear screen"),
+    ("scroll_to_top", "Scroll to top"),
+    ("scroll_to_bottom", "Scroll to bottom"),
+    ("scroll_page_up", "Scroll page up"),
+    ("scroll_page_down", "Scroll page down"),
+    ("increase_font_size", "Increase font size"),
+    ("decrease_font_size", "Decrease font size"),
+    ("reset_font_size", "Reset font size"),
+    ("reload_config", "Reload terminal settings"),
+    ("ignore", "Ignore key"),
+    ("unbind", "Remove built-in binding"),
 ];
 
 pub(super) struct CodepointEditor {
@@ -58,11 +60,11 @@ fn takes_parameter(action: &str) -> bool {
     )
 }
 
-fn action_label(action: &str) -> gpui::SharedString {
+fn action_label(action: &str) -> SharedString {
     ACTIONS
         .iter()
         .find(|(id, _)| *id == action)
-        .map_or_else(|| action.to_owned().into(), |(_, label)| translate(label))
+        .map_or_else(|| action.to_owned().into(), |(_, label)| (*label).into())
 }
 
 fn split_action(action: &TerminalAction) -> (&'static str, String) {
@@ -92,7 +94,7 @@ pub(super) fn action_choices(pane: &SettingsView) -> (String, Vec<(&'static str,
             .to_owned(),
         ACTIONS
             .iter()
-            .map(|(id, label)| (*id, translate(label).to_string()))
+            .map(|(id, label)| (*id, label.to_string()))
             .collect(),
     )
 }
@@ -117,14 +119,14 @@ fn editor_buttons(
         .child(controls::button(
             pane.style(),
             &format!("{field}-save"),
-            &tr!("Save"),
+            "Save",
             true,
             cx.listener(move |pane, _, _, cx| pane.save_terminal_editor(field, cx)),
         ))
         .child(controls::button(
             pane.style(),
             &format!("{field}-cancel"),
-            &tr!("Cancel"),
+            "Cancel",
             true,
             cx.listener(move |pane, _, _, cx| pane.cancel_terminal_editor(field, cx)),
         ))
@@ -172,7 +174,7 @@ pub(super) fn fallbacks(pane: &SettingsView, cx: &mut Context<SettingsView>) -> 
                     change_button(
                         pane,
                         &format!("fallback-remove-{index}"),
-                        &tr!("Remove"),
+                        "Remove",
                         true,
                         Change::TerminalEdit(TerminalEdit::Fallbacks(removed)),
                         cx,
@@ -188,7 +190,7 @@ pub(super) fn fallbacks(pane: &SettingsView, cx: &mut Context<SettingsView>) -> 
         .children(rows)
         .child(div().flex().child(pane.picker(
             PickerKind::Font(FontSlot::Fallback),
-            &tr!("Add Font…"),
+            "Add Font…",
             cx,
         )))
         .into_any_element()
@@ -211,7 +213,7 @@ pub(super) fn codepoint_maps(pane: &SettingsView, cx: &mut Context<SettingsView>
                     controls::button(
                         pane.style(),
                         &format!("codepoint-edit-{index}"),
-                        &tr!("Edit"),
+                        "Edit",
                         !editing,
                         cx.listener(move |pane, _, window, cx| {
                             pane.edit_codepoint_map(Some(edit.clone()), window, cx);
@@ -221,7 +223,7 @@ pub(super) fn codepoint_maps(pane: &SettingsView, cx: &mut Context<SettingsView>
                     change_button(
                         pane,
                         &format!("codepoint-delete-{index}"),
-                        &tr!("Delete"),
+                        "Delete",
                         !editing,
                         Change::TerminalEdit(TerminalEdit::CodepointMap {
                             previous: Some(map.clone()),
@@ -246,7 +248,7 @@ pub(super) fn codepoint_maps(pane: &SettingsView, cx: &mut Context<SettingsView>
                 .child(controls::button(
                     pane.style(),
                     "codepoint-add",
-                    &tr!("Add Map"),
+                    "Add Map",
                     true,
                     cx.listener(|pane, _, window, cx| pane.edit_codepoint_map(None, window, cx)),
                 ))
@@ -260,24 +262,24 @@ fn codepoint_editor(pane: &SettingsView, cx: &mut Context<SettingsView>) -> AnyE
         .codepoint_editor
         .as_ref()
         .map_or("", |editor| editor.family.as_str());
-    let choose = tr!("Choose Font…");
+    let choose = "Choose Font…";
     div()
         .flex()
         .flex_col()
         .child(form::row(
             pane.layout_style(),
-            &tr!("Range"),
-            Some(tr!("A Unicode range, such as U+E000-U+F8FF.").as_ref()),
+            "Range",
+            Some("A Unicode range, such as U+E000-U+F8FF."),
             pane.field(CODEPOINT_RANGE),
             pane.compact,
         ))
         .child(form::row(
             pane.layout_style(),
-            &tr!("Font"),
+            "Font",
             None,
             pane.picker(
                 PickerKind::Font(FontSlot::Codepoint),
-                if family.is_empty() { &choose } else { family },
+                if family.is_empty() { choose } else { family },
                 cx,
             ),
             pane.compact,
@@ -307,7 +309,7 @@ pub(super) fn bindings(pane: &SettingsView, cx: &mut Context<SettingsView>) -> A
                     controls::button(
                         pane.style(),
                         &format!("keybind-edit-{index}"),
-                        &tr!("Edit"),
+                        "Edit",
                         !editing,
                         cx.listener(move |pane, _, window, cx| {
                             pane.edit_binding(Some(edit.clone()), window, cx);
@@ -317,7 +319,7 @@ pub(super) fn bindings(pane: &SettingsView, cx: &mut Context<SettingsView>) -> A
                     change_button(
                         pane,
                         &format!("keybind-delete-{index}"),
-                        &tr!("Delete"),
+                        "Delete",
                         !editing,
                         Change::TerminalEdit(TerminalEdit::Binding {
                             previous: Some(chord.clone()),
@@ -334,7 +336,7 @@ pub(super) fn bindings(pane: &SettingsView, cx: &mut Context<SettingsView>) -> A
         .flex_col()
         .gap(px(6.0))
         .when(bindings.is_empty() && !editing, |list| {
-            list.child(pane.note(&tr!("No custom key bindings yet."), false))
+            list.child(pane.note("No custom key bindings yet.", false))
         })
         .children(rows)
         .child(if editing {
@@ -345,7 +347,7 @@ pub(super) fn bindings(pane: &SettingsView, cx: &mut Context<SettingsView>) -> A
                 .child(controls::button(
                     pane.style(),
                     "keybind-add",
-                    &tr!("Add Binding"),
+                    "Add Binding",
                     true,
                     cx.listener(|pane, _, window, cx| pane.edit_binding(None, window, cx)),
                 ))
@@ -358,27 +360,25 @@ fn binding_editor(pane: &SettingsView, cx: &mut Context<SettingsView>) -> AnyEle
     let Some(editor) = &pane.binding_editor else {
         return div().into_any_element();
     };
-    let key = if pane.recording.as_deref() == Some(BINDING_CHORD) {
-        tr!("Press a key…")
+    let key: SharedString = if pane.recording.as_deref() == Some(BINDING_CHORD) {
+        "Press a key…".into()
     } else {
         editor.chord.as_ref().map_or_else(
-            || tr!("Record Key"),
+            || "Record Key".into(),
             |chord| chord.as_str().to_owned().into(),
         )
     };
     let hint = if editor.action.ends_with("font_size") {
-        tr!("Points to change the font size by, such as 1.")
+        "Points to change the font size by, such as 1."
     } else {
-        tr!(
-            "Text to send. Write special keys as escapes, such as \\e for Escape or \\x01 for Control-A."
-        )
+        "Text to send. Write special keys as escapes, such as \\e for Escape or \\x01 for Control-A."
     };
     div()
         .flex()
         .flex_col()
         .child(form::row(
             pane.layout_style(),
-            &tr!("Key"),
+            "Key",
             None,
             controls::button(
                 pane.style(),
@@ -392,7 +392,7 @@ fn binding_editor(pane: &SettingsView, cx: &mut Context<SettingsView>) -> AnyEle
         ))
         .child(form::row(
             pane.layout_style(),
-            &tr!("Action"),
+            "Action",
             None,
             pane.picker(
                 PickerKind::Terminal(BINDING_ACTION),
@@ -404,8 +404,8 @@ fn binding_editor(pane: &SettingsView, cx: &mut Context<SettingsView>) -> AnyEle
         .when(takes_parameter(editor.action), |body| {
             body.child(form::row(
                 pane.layout_style(),
-                &tr!("Value"),
-                Some(hint.as_ref()),
+                "Value",
+                Some(hint),
                 pane.field(BINDING_PARAMETER),
                 pane.compact,
             ))
@@ -526,7 +526,7 @@ impl SettingsView {
             };
             let Some(chord) = editor.chord.clone() else {
                 self.errors
-                    .insert(BINDING_CHORD.into(), tr!("Record a key first.").to_string());
+                    .insert(BINDING_CHORD.into(), "Record a key first.".to_string());
                 self.results.dirty = true;
                 cx.notify();
                 return;

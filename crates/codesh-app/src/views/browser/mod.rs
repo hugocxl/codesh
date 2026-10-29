@@ -16,7 +16,6 @@ use codesh_ui::browser::polybrowser::{
     BrowserEvent, FindOptions, History, HistoryOrder, HistoryQuery, Profile,
 };
 use codesh_ui::browser::{Event, NativeBrowser, Options};
-use codesh_ui::l10n::tr_key;
 use codesh_ui::text_input::{InputEvent, InputStyle, SEARCH_CONTEXT, TextInput};
 use codesh_ui::theme::{Metrics, Theme};
 use gpui::prelude::FluentBuilder;
@@ -167,7 +166,7 @@ impl BrowserView {
                 .detach();
             let address = cx.new(|cx| {
                 TextInput::new(InputStyle::compact(theme, &metrics), cx)
-                    .with_placeholder_key(tr_key!("Search or enter address"))
+                    .with_placeholder("Search or enter address")
                     .with_text(display_address(&url))
             });
             let mut subscriptions = vec![cx.subscribe_in(&address, window, Self::address_event)];
@@ -621,7 +620,7 @@ impl BrowserView {
         let (theme, metrics) = (&self.theme, self.metrics);
         let input = cx.new(|cx| {
             TextInput::new(InputStyle::compact(theme, &metrics), cx)
-                .with_placeholder_key(tr_key!("Find on page"))
+                .with_placeholder("Find on page")
                 .with_key_context(SEARCH_CONTEXT)
         });
         let subscription =
@@ -1062,7 +1061,7 @@ pub(crate) fn placeholder(
                 div()
                     .text_color(theme.fg_muted)
                     .text_size(metrics.font_body())
-                    .child(codesh_ui::tr!("Enable it in Settings → Browser.")),
+                    .child("Enable it in Settings → Browser."),
             )
         })
         .into_any_element()

@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use codesh_core::release;
-use codesh_ui::tr;
 
 use super::{Release, Result, client, download, latest};
 
@@ -28,7 +27,7 @@ impl Installation {
     pub(crate) fn detect() -> Result<Self> {
         let executable = codesh_core::executable::current_path()?;
         let root = codesh_core::bundle::linux_root(&executable).ok_or_else(|| {
-            tr!("Automatic updates require a user-installed Linux desktop release").to_string()
+            "Automatic updates require a user-installed Linux desktop release".to_string()
         })?;
         let installation = Self {
             root: root.to_owned(),
@@ -37,7 +36,7 @@ impl Installation {
         if installation.verify(env!("CARGO_PKG_VERSION"))? != codesh_protocol::BuildInfo::current()
             || root.join("current/codesh-app").canonicalize()? != executable
         {
-            return Err(tr!("The installed app changed. Reopen it before updating.")
+            return Err("The installed app changed. Reopen it before updating."
                 .to_string()
                 .into());
         }
@@ -75,7 +74,7 @@ impl Installation {
         download(&client()?, &release, &archive)?;
         let checksum = release
             .sha256
-            .ok_or_else(|| tr!("Missing desktop update checksum").to_string())?;
+            .ok_or_else(|| "Missing desktop update checksum".to_string())?;
         run(self
             .command("stage")
             .args(["--version", &release.version, "--sha256", &checksum])
@@ -97,13 +96,13 @@ impl Installation {
         let record: serde_json::Value = serde_json::from_slice(&bytes)?;
         let version = record["version"]
             .as_str()
-            .ok_or_else(|| tr!("Invalid pending update").to_string())?;
+            .ok_or_else(|| "Invalid pending update".to_string())?;
         if !release::is_newer(version, env!("CARGO_PKG_VERSION")) {
             std::fs::remove_file(path)?;
             return Ok(None);
         }
         if record["root"].as_str() != self.root.to_str() {
-            return Err(tr!("Pending update belongs to another installation")
+            return Err("Pending update belongs to another installation"
                 .to_string()
                 .into());
         }
@@ -155,7 +154,7 @@ impl PreparedUpdate {
                 != codesh_core::executable::current_path()?
         {
             return Err(
-                tr!("The installed or staged update changed. Check for updates again.")
+                "The installed or staged update changed. Check for updates again."
                     .to_string()
                     .into(),
             );
@@ -167,7 +166,7 @@ impl PreparedUpdate {
         use std::io::Write;
         let directory = path
             .parent()
-            .ok_or_else(|| tr!("Missing update directory").to_string())?;
+            .ok_or_else(|| "Missing update directory".to_string())?;
         let mut file = tempfile::NamedTempFile::new_in(directory)?;
         serde_json::to_writer(
             file.as_file_mut(),

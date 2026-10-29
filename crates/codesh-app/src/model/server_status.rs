@@ -1,6 +1,4 @@
 use codesh_app_core::ServerId;
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::{Context, Window};
 
 use super::{AppModel, ConnectionState, Quitting};
@@ -18,11 +16,11 @@ pub(crate) enum ServerStatus {
 impl ServerStatus {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Connected => tr_key!("Connected"),
-            Self::Connecting => tr_key!("Connecting…"),
-            Self::Disconnected => tr_key!("Disconnected"),
-            Self::Restarting => tr_key!("Restarting…"),
-            Self::Stopping => tr_key!("Stopping…"),
+            Self::Connected => "Connected",
+            Self::Connecting => "Connecting…",
+            Self::Disconnected => "Disconnected",
+            Self::Restarting => "Restarting…",
+            Self::Stopping => "Stopping…",
         }
     }
 }
@@ -37,8 +35,8 @@ impl AppModel {
     pub(crate) fn server_label(&self, server: ServerId) -> String {
         match self.server_name(server) {
             Some(name) if !server.is_local() => name.to_owned(),
-            _ if cfg!(target_os = "macos") => tr!("This Mac").to_string(),
-            _ => tr!("This Computer").to_string(),
+            _ if cfg!(target_os = "macos") => "This Mac".to_string(),
+            _ => "This Computer".to_string(),
         }
     }
 

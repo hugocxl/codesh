@@ -1,12 +1,10 @@
 use codesh_app_core::{Project, ProjectId, ProjectStatus};
 use codesh_protocol::ProgressState;
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::translate;
 use codesh_ui::picker::{
     Picker, PickerAction, PickerConfig, PickerEvent, PickerItem, PickerLeading, PickerRow,
     PickerStatus,
 };
-use codesh_ui::tr;
 use gpui::{AppContext, Context, Focusable, Window, point, px};
 
 use super::overlays::Overlay;
@@ -47,7 +45,7 @@ impl AppModel {
         };
         let picker = cx.new(|cx| {
             Picker::new(
-                PickerConfig::new("worktree-switcher", tr!("Search worktrees…")),
+                PickerConfig::new("worktree-switcher", "Search worktrees…"),
                 self.theme.clone(),
                 self.metrics,
                 cx,
@@ -123,18 +121,18 @@ impl AppModel {
                     let mut row =
                         PickerRow::new(format!("creating-{index}"), creation.name.clone());
                     row.leading = Some(PickerLeading::Icon(Icon::GitBranch));
-                    row.trailing = Some(translate(tab_activity::CREATING));
+                    row.trailing = Some(tab_activity::CREATING.into());
                     row.disabled = true;
                     PickerItem::Row(row)
                 }),
         );
         let status = if items.is_empty() {
-            PickerStatus::Empty(tr!("No matching worktrees"))
+            PickerStatus::Empty("No matching worktrees".into())
         } else {
             PickerStatus::Ready
         };
         let footer = vec![
-            PickerAction::new(NEW_WORKTREE, tr!("New Worktree…"))
+            PickerAction::new(NEW_WORKTREE, "New Worktree…")
                 .icon(PickerLeading::Icon(Icon::Plus))
                 .disabled(self.new_worktree_target().is_none()),
         ];
@@ -184,26 +182,26 @@ impl AppModel {
         } else {
             Icon::GitBranch
         }));
-        row.badge = primary.then(|| tr!("PRIMARY"));
+        row.badge = primary.then(|| "PRIMARY".into());
         row.current = current;
         row.trailing = match tab_activity::worktree_status(id, self) {
-            Status::Busy(key) => Some(translate(key)),
-            Status::Blocked => Some(tr!("Blocked")),
+            Status::Busy(key) => Some(key.into()),
+            Status::Blocked => Some("Blocked".into()),
             Status::Progress(progress) => Some(match progress.state {
-                ProgressState::Error => tr!("Work reported an error."),
-                ProgressState::Paused => tr!("Work is paused."),
+                ProgressState::Error => "Work reported an error.".into(),
+                ProgressState::Paused => "Work is paused.".into(),
                 ProgressState::Running
                 | ProgressState::Indeterminate
-                | ProgressState::Unrecognized(_) => tr!("Working"),
+                | ProgressState::Unrecognized(_) => "Working".into(),
             }),
-            Status::Unread(_) | Status::Completed => Some(tr!("Finished working")),
+            Status::Unread(_) | Status::Completed => Some("Finished working".into()),
             Status::None => None,
         };
         row.disabled = removing || (missing && primary);
         if !primary {
             row.actions = vec![
-                PickerAction::new(RENAME, tr!("Rename…")).disabled(missing || removing),
-                PickerAction::new(REMOVE, tr!("Remove…"))
+                PickerAction::new(RENAME, "Rename…").disabled(missing || removing),
+                PickerAction::new(REMOVE, "Remove…")
                     .destructive(true)
                     .disabled(removing),
             ];

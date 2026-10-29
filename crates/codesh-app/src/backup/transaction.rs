@@ -3,7 +3,6 @@ use std::io::Write;
 use std::path::Path;
 
 use codesh_app_core::backup::Result;
-use codesh_ui::tr;
 
 use super::{PENDING, PreparedImport, ROOTS, Restore, archive, validate_effective};
 
@@ -36,10 +35,7 @@ pub(crate) fn apply_pending(profile: &Path) -> Result<Option<String>> {
     if let Err(error) = restore(profile, &pending) {
         recover(profile)?;
         return Ok(Some(
-            tr!(
-                "Could not restore backup: %@. Your previous configuration was kept. Cancel or replace the pending import in Settings → Backup & Restore, or reopen Codesh to retry.",
-                error.to_string()
-            )
+            format!("Could not restore backup: {error}. Your previous configuration was kept. Cancel or replace the pending import in Settings → Backup & Restore, or reopen Codesh to retry.")
             .to_string(),
         ));
     }
@@ -133,12 +129,12 @@ fn recover(profile: &Path) -> Result<()> {
     let recovery: std::path::PathBuf = serde_json::from_slice(&archive::read_file(&marker)?)?;
     let backups = fs::canonicalize(profile.join("Backups"))?;
     if fs::canonicalize(&recovery)?.parent() != Some(backups.as_path()) {
-        return Err(tr!("Invalid recovery directory").to_string().into());
+        return Err("Invalid recovery directory".into());
     }
     let roots: Vec<String> =
         serde_json::from_slice(&archive::read_file(&recovery.join("roots.json"))?)?;
     if roots.iter().any(|root| !ROOTS.contains(&root.as_str())) {
-        return Err(tr!("Invalid recovery entry").to_string().into());
+        return Err("Invalid recovery entry".into());
     }
     let names: Vec<_> = roots.iter().map(String::as_str).collect();
     let original = archive::collect(&recovery, &names)?;

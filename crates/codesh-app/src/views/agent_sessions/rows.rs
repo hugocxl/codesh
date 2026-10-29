@@ -1,4 +1,3 @@
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, Div, Focusable, FontWeight, InteractiveElement, IntoElement,
@@ -60,9 +59,9 @@ pub(super) fn list(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
 fn section(recency: Recency, model: &AppModel) -> Div {
     let m = model.metrics;
     let label = match recency {
-        Recency::Recent => tr!("Last 24 hours"),
-        Recency::Week => tr!("Previous 7 days"),
-        Recency::Older => tr!("Older sessions"),
+        Recency::Recent => "Last 24 hours",
+        Recency::Week => "Previous 7 days",
+        Recency::Older => "Older sessions",
     };
     div()
         .px(m.spacing2())
@@ -81,10 +80,10 @@ fn section(recency: Recency, model: &AppModel) -> Div {
 fn age(session: &Session) -> SharedString {
     let age = session.modified.elapsed().unwrap_or_default().as_secs();
     match age {
-        0..60 => tr!("Just now"),
-        60..3600 => tr!("%lldm ago", age / 60),
-        3600..86_400 => tr!("%lldh ago", age / 3600),
-        _ => tr!("%lldd ago", age / 86_400),
+        0..60 => "Just now".into(),
+        60..3600 => format!("{}m ago", age / 60).into(),
+        3600..86_400 => format!("{}h ago", age / 3600).into(),
+        _ => format!("{}d ago", age / 86_400).into(),
     }
 }
 
@@ -98,7 +97,7 @@ fn row(
     let m = model.metrics;
     let theme = &model.theme;
     let title: SharedString = if session.title == session.id {
-        tr!("Untitled session")
+        "Untitled session".into()
     } else {
         session.title.clone().into()
     };
@@ -107,7 +106,7 @@ fn row(
             "{title}\n{} · {}\n{}",
             session.provider.name(),
             session.id,
-            tr!("Resume in a new terminal")
+            "Resume in a new terminal"
         ),
         model,
     );

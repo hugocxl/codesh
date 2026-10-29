@@ -7,20 +7,15 @@ pub(super) async fn prompt(
     has_hooks: bool,
     cx: &mut AsyncApp,
 ) -> Option<bool> {
-    use codesh_ui::tr;
-
     let (send, receive) = async_channel::bounded(1);
     let dialog = window.update(cx, |_, window, cx| {
         codesh_ui::dialog::confirm(
             window,
             cx,
-            &tr!("Confirm Git Operation"),
+            "Confirm Git Operation",
             message,
-            &tr!("Confirm"),
-            has_hooks
-                .then(|| tr!("Run the teardown commands shown above"))
-                .as_ref()
-                .map(gpui::SharedString::as_str),
+            "Confirm",
+            has_hooks.then_some("Run the teardown commands shown above"),
             move |answer| {
                 let _ = send.try_send(answer);
             },

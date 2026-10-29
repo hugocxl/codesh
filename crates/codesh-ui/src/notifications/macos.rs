@@ -62,8 +62,7 @@ impl Permission {
     fn capability(denied: bool) -> Capability {
         if denied {
             Capability::Unavailable(
-                crate::tr!("Notifications are turned off for Codesh in System Settings.")
-                    .to_string(),
+                "Notifications are turned off for Codesh in System Settings.".to_string(),
             )
         } else {
             Capability::Supported
@@ -144,8 +143,7 @@ impl Service {
     pub(super) fn start() -> Result<(Self, Receiver<Event>), Capability> {
         if NSBundle::mainBundle().bundleIdentifier().is_none() {
             return Err(Capability::Unavailable(
-                crate::tr!("Desktop notifications need Codesh to run from its app bundle.")
-                    .to_string(),
+                "Desktop notifications need Codesh to run from its app bundle.".to_string(),
             ));
         }
         let (sender, receiver) = async_channel::bounded(32);

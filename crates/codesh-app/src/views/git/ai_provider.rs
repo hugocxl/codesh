@@ -1,10 +1,8 @@
 use codesh_protocol::ProjectId;
 use codesh_ui::components::{ButtonInteraction, SymbolGlyph};
 use codesh_ui::controls::{self, Style};
-use codesh_ui::l10n::translate;
 use codesh_ui::popover;
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, Context, Entity, Focusable, FontWeight, InteractiveElement,
@@ -168,7 +166,10 @@ fn provider_row(
         || {
             (
                 "",
-                selected.map_or_else(|| tr!("Auto"), |provider| tr!("Auto · %@", provider.name)),
+                selected.map_or_else(
+                    || "Auto".to_string(),
+                    |provider| format!("Auto · {}", provider.name),
+                ),
             )
         },
         |provider| {
@@ -177,7 +178,7 @@ fn provider_row(
                 if model.ai.installed.contains(&provider) {
                     provider.name.into()
                 } else {
-                    tr!("%@ · Not installed", provider.name)
+                    format!("{} · Not installed", provider.name)
                 },
             )
         },
@@ -266,7 +267,7 @@ pub(crate) fn render_provider_menu(
                     .child(
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(tr!("Create PR Prompt")),
+                            .child("Create PR Prompt"),
                     )
                     .child(
                         div()
@@ -285,9 +286,7 @@ pub(crate) fn render_provider_menu(
                 div()
                     .text_size(m.font_caption())
                     .text_color(theme.fg_muted)
-                    .child(tr!(
-                        "This prompt overrides Settings → AI only for this project."
-                    )),
+                    .child("This prompt overrides Settings → AI only for this project."),
             )
             .child(
                 popover::footer(theme, m)
@@ -295,7 +294,7 @@ pub(crate) fn render_provider_menu(
                         controls::button(
                             style,
                             "ai-project-prompt-reset",
-                            &tr!("Use Global Prompt"),
+                            "Use Global Prompt",
                             overridden,
                             cx.listener(|model, _, _, cx| model.save_project_pr_prompt(true, cx)),
                         )
@@ -305,7 +304,7 @@ pub(crate) fn render_provider_menu(
                     .child(controls::button(
                         style,
                         "ai-project-prompt-cancel",
-                        &tr!("Cancel"),
+                        "Cancel",
                         true,
                         cx.listener(|model, _, window, cx| {
                             model.cancel_project_pr_prompt(window, cx);
@@ -314,14 +313,14 @@ pub(crate) fn render_provider_menu(
                     .child(controls::button(
                         style,
                         "ai-project-prompt-save",
-                        &tr!("Save"),
+                        "Save",
                         !input.read(cx).text().trim().is_empty(),
                         cx.listener(|model, _, _, cx| model.save_project_pr_prompt(false, cx)),
                     )),
             );
     } else {
         view = view
-            .child(popover::header(theme, m).child(translate(menu.action.settings_title())))
+            .child(popover::header(theme, m).child(menu.action.settings_title()))
             .child(provider_row(0, None, menu, model, cx))
             .child(popover::divider(theme, m));
         for (index, provider) in PROVIDERS.iter().enumerate() {
@@ -348,7 +347,7 @@ pub(crate) fn render_provider_menu(
                         .flex()
                         .flex_col()
                         .gap(m.spacing1())
-                        .child(tr!("Edit Project Prompt…"))
+                        .child("Edit Project Prompt…")
                         .child(
                             div()
                                 .text_size(m.font_caption())

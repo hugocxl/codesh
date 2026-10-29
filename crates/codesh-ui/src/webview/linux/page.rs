@@ -23,7 +23,6 @@ use super::ffi::{
     GdkEventSelection, GdkKeymapKey, GdkRGBA, GdkRectangle, TRUE, gboolean, gpointer,
 };
 use super::{Events, Job, Shared};
-use crate::tr;
 use crate::webview::{Event, MenuOption, OptionMenu, Pointer, Snapshot};
 
 /// Casts a handler to the type `GObject` stores, checking it has the signature
@@ -127,7 +126,7 @@ impl Runtime {
             g.g_set_prgname(c"codesh-app".as_ptr());
             g.gtk_disable_setlocale();
             if g.gtk_init_check(ptr::null_mut(), ptr::null_mut()) == FALSE {
-                return Err(tr!("Browser pages need a desktop session to render in.").into());
+                return Err("Browser pages need a desktop session to render in.".into());
             }
             // On X11, GTK asks the server about windows that are on no
             // screen, and GDK ends the whole app over the server's refusal
@@ -1065,7 +1064,7 @@ pub(super) fn quoted(text: &str) -> String {
 
 /// What the app shows in place of a page whose files could not be read.
 fn unloadable() -> String {
-    tr!("The browser page could not be loaded.").to_string()
+    "The browser page could not be loaded.".to_string()
 }
 
 fn cstring(text: &str) -> CString {
@@ -1339,11 +1338,11 @@ unsafe extern "C" fn on_terminated(_view: gpointer, _reason: c_int, data: gpoint
     page.retire(runtime.g);
     page.events.browser(polybrowser::BrowserEvent::LoadFailed {
         url: page.browser_url(runtime.g),
-        error: tr!("Web content process terminated").to_string(),
+        error: "Web content process terminated".to_string(),
     });
-    let _ = page.events.try_send(Event::Failed(
-        tr!("Web content process terminated").to_string(),
-    ));
+    let _ = page
+        .events
+        .try_send(Event::Failed("Web content process terminated".to_string()));
 }
 
 unsafe extern "C" fn on_create(_view: gpointer, _action: gpointer, _data: gpointer) -> gpointer {

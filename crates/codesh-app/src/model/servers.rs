@@ -8,7 +8,6 @@ use codesh_app_core::settings::ServerEntry;
 use codesh_app_core::{PaneId, Project, ServerId};
 use codesh_client::SshTarget;
 use codesh_protocol::{ChannelId, SessionId, SessionProgress};
-use codesh_ui::tr;
 use gpui::Context;
 
 use super::{AppModel, ConnectionState, Quitting, activity, catalog};
@@ -429,7 +428,7 @@ impl AppModel {
         if !sent {
             self.disconnect(server, cx);
             if server.is_local() {
-                self.fail(tr!("The server connection worker stopped").to_string(), cx);
+                self.fail("The server connection worker stopped".to_string(), cx);
             }
         }
     }
@@ -503,12 +502,10 @@ impl AppModel {
         self.forget_server_icons(server);
         if server.is_local() {
             if self.server_preferences.busy || !self.server_preferences.pending.is_empty() {
-                let message = tr!(
-                    "Disconnected before settings were confirmed. Reconnect and reload before retrying."
-                );
-                self.preference_result("server", Some(&message), cx);
+                let message = "Disconnected before settings were confirmed. Reconnect and reload before retrying.";
+                self.preference_result("server", Some(message), cx);
                 for id in self.pending_server_fields() {
-                    self.preference_result(&id, Some(&message), cx);
+                    self.preference_result(&id, Some(message), cx);
                 }
             }
             self.server_preferences.busy = false;
@@ -526,7 +523,7 @@ impl AppModel {
     pub(super) fn send(&mut self, server: ServerId, work: Work, cx: &mut Context<Self>) -> bool {
         let Some(runtime) = self.servers.get(server) else {
             if server.is_local() {
-                self.fail(tr!("Server disconnected").to_string(), cx);
+                self.fail("Server disconnected".to_string(), cx);
             }
             return false;
         };
@@ -551,7 +548,7 @@ impl AppModel {
         }
         if runtime.connection != ConnectionState::Ready && !matches!(work, Work::Flush) {
             if server.is_local() {
-                self.fail(tr!("Server disconnected").to_string(), cx);
+                self.fail("Server disconnected".to_string(), cx);
             }
             return false;
         }
@@ -563,7 +560,7 @@ impl AppModel {
             self.disconnect(server, cx);
             self.server_problem(
                 server,
-                tr!("The server connection worker stopped").to_string(),
+                "The server connection worker stopped".to_string(),
                 cx,
             );
         }

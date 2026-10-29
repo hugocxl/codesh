@@ -5,9 +5,7 @@ use codesh_app_core::{PaneId, ServerId};
 use codesh_ui::components::{IconButton, IconGlyph};
 use codesh_ui::controls::{self, Style};
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::tr_key;
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, ClickEvent, Context, Entity, FocusHandle, FontWeight,
@@ -83,8 +81,7 @@ impl AppModel {
             return;
         }
         let style = InputStyle::compact(&self.theme, &self.metrics);
-        let input =
-            cx.new(|cx| TextInput::new(style, cx).with_placeholder_key(tr_key!("Search servers…")));
+        let input = cx.new(|cx| TextInput::new(style, cx).with_placeholder("Search servers…"));
         let subscription = cx.subscribe(&input, |model, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
                 let shown = model.shown_server_ids(cx);
@@ -315,14 +312,14 @@ fn header(model: &AppModel, cx: &Context<AppModel>) -> AnyElement {
                     div()
                         .text_size(m.font_title())
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child(tr!("Remote Servers")),
+                        .child("Remote Servers"),
                 ),
         )
         .child(
             controls::button(
                 style(model),
                 "servers-add",
-                &tr!("Add Server…"),
+                "Add Server…",
                 true,
                 cx.listener(|model, _, _, cx| model.open_server_form(None, cx)),
             )
@@ -433,21 +430,21 @@ fn select_bar(
                         .on_click(cx.listener(|model, _, _, cx| model.tick_all_servers(cx)))
                 })
                 .child(if any {
-                    tr!("%lld selected", selected.len())
+                    format!("{} selected", selected.len())
                 } else {
-                    tr!("Select all")
+                    "Select all".to_string()
                 }),
         )
         .when(any, |bar| {
             bar.child(button(
                 "servers-connect",
-                tr!("Connect"),
+                "Connect".into(),
                 offline,
                 Action::Connect,
             ))
             .child(button(
                 "servers-disconnect",
-                tr!("Disconnect"),
+                "Disconnect".into(),
                 connected,
                 Action::Disconnect,
             ))
@@ -455,7 +452,7 @@ fn select_bar(
                 controls::button(
                     style(model),
                     "servers-move",
-                    &tr!("Move to Group…"),
+                    "Move to Group…",
                     true,
                     cx.listener(|model, _, window, cx| {
                         let position = window.mouse_position();
@@ -466,7 +463,7 @@ fn select_bar(
             )
             .child(button(
                 "servers-remove",
-                tr!("Remove…"),
+                "Remove…".into(),
                 true,
                 Action::Remove,
             ))
@@ -480,13 +477,13 @@ fn empty_state(model: &AppModel, cx: &Context<AppModel>) -> AnyElement {
     let none = model.settings.servers.is_empty();
     let (title, description) = if none {
         (
-            tr!("No remote servers yet"),
-            tr!("Add a computer you reach over SSH to work with its projects here."),
+            "No remote servers yet",
+            "Add a computer you reach over SSH to work with its projects here.",
         )
     } else {
         (
-            tr!("No matching servers"),
-            tr!("Try a different name or clear your search."),
+            "No matching servers",
+            "Try a different name or clear your search.",
         )
     };
     card(model)
@@ -505,7 +502,7 @@ fn empty_state(model: &AppModel, cx: &Context<AppModel>) -> AnyElement {
             empty.child(controls::button(
                 style(model),
                 "servers-empty-add",
-                &tr!("Add Server…"),
+                "Add Server…",
                 true,
                 cx.listener(|model, _, _, cx| model.open_server_form(None, cx)),
             ))
@@ -549,9 +546,9 @@ fn heading(section: &Section<'_>, model: &AppModel, cx: &Context<AppModel>) -> A
     let servers = model.group_servers(group).unwrap_or(Servers::Group(None));
     let (_, action) = connect_choice(section.whole);
     let connect = if matches!(action, Action::Reconnect) {
-        tr!("Reconnect")
+        "Reconnect"
     } else {
-        tr!("Connect")
+        "Connect"
     };
     let (menu_name, more_name) = (group.map(str::to_owned), group.map(str::to_owned));
     div()
@@ -576,7 +573,7 @@ fn heading(section: &Section<'_>, model: &AppModel, cx: &Context<AppModel>) -> A
                 .truncate()
                 .text_size(m.font_emphasis())
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(group.map_or_else(|| tr!("Ungrouped"), |group| group.to_owned().into())),
+                .child(group.map_or_else(|| "Ungrouped".to_owned(), ToOwned::to_owned)),
         )
         .child(
             div()
@@ -596,7 +593,7 @@ fn heading(section: &Section<'_>, model: &AppModel, cx: &Context<AppModel>) -> A
                 .child(controls::button(
                     style(model),
                     &format!("servers-group-connect-{key}"),
-                    &connect,
+                    connect,
                     !section.whole.is_empty(),
                     cx.listener(move |model, _, window, cx| {
                         let position = window.mouse_position();
@@ -606,7 +603,7 @@ fn heading(section: &Section<'_>, model: &AppModel, cx: &Context<AppModel>) -> A
                 .child(icon_button(
                     format!("servers-group-more-{key}"),
                     Icon::Ellipsis,
-                    tr!("Group Actions"),
+                    "Group Actions".into(),
                     model,
                     cx.listener(move |model, _, window, cx| {
                         let position = window.mouse_position();
@@ -675,9 +672,7 @@ fn row_text(server: &RemoteServer, model: &AppModel) -> AnyElement {
     let m = model.metrics;
     let theme = &model.theme;
     let error = match &server.install {
-        Some(crate::model::Install::Failed(error)) => {
-            Some(tr!("Install failed: %@", error).to_string())
-        }
+        Some(crate::model::Install::Failed(error)) => Some(format!("Install failed: {error}")),
         _ => server.error.clone(),
     };
     div()
@@ -737,21 +732,21 @@ fn row_actions(
         .child(icon_button(
             format!("servers-new-tab-{id}"),
             Icon::Terminal,
-            tr!("New Terminal"),
+            "New Terminal".into(),
             model,
             cx.listener(move |model, _, _, cx| model.new_remote_home_tab(id, cx)),
         ))
         .child(icon_button(
             format!("servers-edit-{id}"),
             Icon::Pencil,
-            tr!("Edit…"),
+            "Edit…".into(),
             model,
             cx.listener(move |model, _, _, cx| model.open_server_form(Some(id), cx)),
         ))
         .child(icon_button(
             format!("servers-more-{id}"),
             Icon::Ellipsis,
-            tr!("More Actions"),
+            "More Actions".into(),
             model,
             cx.listener(move |model, _, window, cx| {
                 let position = window.mouse_position();

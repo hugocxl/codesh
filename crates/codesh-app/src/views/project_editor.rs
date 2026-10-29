@@ -1,6 +1,5 @@
 use codesh_app_core::{ProjectId, ProjectStatus, TabId};
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
-use codesh_ui::tr;
 use gpui::{
     AnyElement, AppContext, Context, Entity, Focusable, InteractiveElement, IntoElement,
     ParentElement, Pixels, Point, StatefulInteractiveElement, Styled, Window, div, px, size,
@@ -182,11 +181,11 @@ pub(crate) fn render(
         .child(model.webview_occlusion())
         .child(
             codesh_ui::popover::header(theme, m).child(match editor.target {
-                Target::Tab(_) => tr!("Rename Tab"),
-                Target::Project(_) => tr!("Rename Project"),
-                Target::NewWorkspace(_) => tr!("New Workspace"),
-                Target::NewServerGroup(_) => tr!("New Group"),
-                Target::ServerGroup(_) => tr!("Rename Group"),
+                Target::Tab(_) => "Rename Tab",
+                Target::Project(_) => "Rename Project",
+                Target::NewWorkspace(_) => "New Workspace",
+                Target::NewServerGroup(_) => "New Group",
+                Target::ServerGroup(_) => "Rename Group",
             }),
         )
         .child(
@@ -209,7 +208,7 @@ pub(crate) fn render(
                 .child(codesh_ui::controls::button(
                     codesh_ui::controls::Style { theme, metrics: &m },
                     "project-editor-cancel",
-                    &tr!("Cancel"),
+                    "Cancel",
                     true,
                     cx.listener(|model, _, _, cx| model.dismiss_overlay(cx)),
                 ))
@@ -231,9 +230,9 @@ pub(crate) fn render(
                                 editor.target,
                                 Target::NewWorkspace(_) | Target::NewServerGroup(_)
                             ) {
-                                tr!("Create")
+                                "Create"
                             } else {
-                                tr!("Save")
+                                "Save"
                             },
                         )
                         .on_click(cx.listener(|model, _, _, cx| model.submit_project_editor(cx))),

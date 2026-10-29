@@ -12,7 +12,6 @@ use codesh_protocol::{
     ExecRequest, ExecResult, FileChanges, FilesAction, FilesReply, FilesRequest, ServerPath,
 };
 use codesh_ui::panel::PanelResizeState;
-use codesh_ui::tr;
 use gpui::{Context, Entity, Subscription};
 
 pub(crate) use editors::{DiffPane, EditorContent, EditorPane};
@@ -127,16 +126,16 @@ pub(crate) fn friendly_error(error: &str, folder: bool) -> String {
         || lower.contains("not a git repository")
         || lower.contains("not a repository")
     {
-        return tr!("Not a Git repository").to_string();
+        return "Not a Git repository".to_string();
     }
     if lower.contains("badpath")
         || lower.contains("no such file or directory")
         || lower.contains("not found")
     {
         return if folder {
-            tr!("Folder not found")
+            "Folder not found"
         } else {
-            tr!("File not found")
+            "File not found"
         }
         .to_string();
     }
@@ -176,14 +175,14 @@ impl AppModel {
         let server = self
             .state
             .project_server(project)
-            .ok_or_else(|| tr!("The project is no longer available.").to_string())?;
+            .ok_or_else(|| "The project is no longer available.".to_string())?;
         let name = self.server_label(server);
         if !self.ready(server) {
-            return Err(tr!("%@ isn't connected.", &name).to_string());
+            return Err(format!("{name} isn't connected."));
         }
         self.side_client(server, cx)
             .map(Transport::Client)
-            .ok_or_else(|| tr!("Still connecting to %@. Try again in a moment.", &name).to_string())
+            .ok_or_else(|| format!("Still connecting to {name}. Try again in a moment."))
     }
 
     /// Runs a files request for `project` off the UI thread and hands its

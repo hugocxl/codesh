@@ -2,7 +2,6 @@ use codesh_protocol::AgentProvider;
 use codesh_ui::components::IconGlyph;
 use codesh_ui::controls::{Style, button as text_button};
 use codesh_ui::icon::Icon;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, Div, InteractiveElement, IntoElement, MouseButton, ParentElement,
@@ -36,7 +35,7 @@ pub(super) fn button(model: &AppModel, cx: &mut Context<AppModel>) -> Div {
             icon_button(
                 "session-provider-filter",
                 Icon::Filter,
-                tr!("Filter providers"),
+                "Filter providers".into(),
                 if filtered {
                     theme.accent
                 } else {
@@ -104,7 +103,7 @@ pub(crate) fn providers(
                 }
             }),
         )
-        .child(popover::header(theme, m).child(tr!("Include providers")));
+        .child(popover::header(theme, m).child("Include providers"));
     for (index, provider) in supported_providers().into_iter().enumerate() {
         menu = menu.child(provider_row(index, provider, model, cx));
     }
@@ -121,7 +120,7 @@ pub(crate) fn providers(
                     m.icon_sm(),
                     theme.fg_dim,
                 ))
-                .child(tr!("Unavailable providers"))
+                .child("Unavailable providers")
                 .on_click(cx.listener(|model, _, _, cx| {
                     model.agent_sessions.show_unsupported = !model.agent_sessions.show_unsupported;
                     cx.notify();
@@ -136,7 +135,7 @@ pub(crate) fn providers(
                     text_button(
                         style,
                         "session-select-none",
-                        &tr!("Clear"),
+                        "Clear",
                         !model.appearance.agent_sessions_providers.is_empty(),
                         cx.listener(|model, _, _, cx| model.set_session_providers(Vec::new(), cx)),
                     )
@@ -146,7 +145,7 @@ pub(crate) fn providers(
                     text_button(
                         style,
                         "session-select-all",
-                        &tr!("Select all"),
+                        "Select all",
                         !all_selected(model),
                         cx.listener(|model, _, _, cx| model.all_session_providers(cx)),
                     )
@@ -213,11 +212,7 @@ fn unsupported(model: &AppModel) -> Div {
                 .child(div().flex_none().w(m.icon_sm()))
                 .child(provider_icon(provider, m.icon_sm(), model))
                 .child(div().flex_1().child(provider.name()))
-                .child(
-                    div()
-                        .text_size(m.font_footnote())
-                        .child(tr!("Not supported")),
-                )
+                .child(div().text_size(m.font_footnote()).child("Not supported"))
             }),
     )
 }

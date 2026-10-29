@@ -9,7 +9,7 @@ fn without(model: &mut AppModel, features: &[Feature]) {
 }
 
 fn reason(feature: Feature) -> String {
-    feature.unsupported_reason().into_owned()
+    feature.unsupported_reason().to_owned()
 }
 
 #[gpui::test]

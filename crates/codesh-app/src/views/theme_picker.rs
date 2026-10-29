@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use codesh_ui::command_palette::{Command, Registry};
-use codesh_ui::tr;
 use gpui::Context;
 
 use super::command_palette::Handler;
@@ -14,7 +13,7 @@ pub(crate) fn command(model: &AppModel, dark: bool, cx: &Context<AppModel>) -> C
     let mut entries = model.themes.entries.clone();
     entries.sort_by_cached_key(|entry| (entry.name.to_lowercase(), entry.name.clone()));
     let model = cx.weak_entity();
-    Command::list(PAGE_ID, tr!("Change Theme…"), move |cx| {
+    Command::list(PAGE_ID, "Change Theme…", move |cx| {
         let mut themes = Registry::default();
         let Some(model) = model.upgrade() else {
             return themes;

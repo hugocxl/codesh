@@ -11,7 +11,6 @@ use zbus::blocking::{Connection, Proxy, proxy::SignalIterator};
 use zbus::zvariant::Value;
 
 use super::Event;
-use crate::tr;
 
 pub const CAPABILITY: Capability = Capability::Supported;
 
@@ -86,9 +85,7 @@ fn availability(connection: &Connection) -> Capability {
     if crate::dbus::offers(connection, SERVICE) {
         Capability::Supported
     } else {
-        Capability::Unavailable(
-            tr!("No notification service is running on this desktop.").to_string(),
-        )
+        Capability::Unavailable("No notification service is running on this desktop.".to_string())
     }
 }
 
@@ -98,8 +95,8 @@ impl Service {
     pub(super) fn start() -> Result<(Self, Receiver<Event>), Capability> {
         let unreachable = |error: &dyn std::fmt::Display| {
             Capability::Unavailable(
-                tr!(
-                    "Desktop notifications need the session's D-Bus: %@",
+                format!(
+                    "Desktop notifications need the session's D-Bus: {}",
                     error.to_string()
                 )
                 .to_string(),
@@ -199,7 +196,7 @@ impl Worker {
 
     fn deliver(&self, id: String, title: &str, body: &str, opens: bool) {
         let name = codesh_core::release::Channel::current().app_name();
-        let open = tr!("Show");
+        let open = "Show";
         let body = if self.reads_markup() {
             escaped(body)
         } else {
@@ -231,7 +228,8 @@ impl Worker {
             Err(error) => {
                 drop(shown);
                 self.report(Capability::Unavailable(
-                    tr!("The desktop refused a notification: %@", error.to_string()).to_string(),
+                    format!("The desktop refused a notification: {}", error.to_string())
+                        .to_string(),
                 ));
             }
         }

@@ -11,8 +11,6 @@ use objc2_app_kit::{
 };
 use objc2_foundation::NSString;
 
-use crate::tr;
-
 #[allow(
     unsafe_code,
     reason = "AppKit text delegates and target/action use Objective-C FFI."
@@ -76,13 +74,13 @@ pub fn confirm(
     suppression_label: Option<&str>,
     on_complete: impl FnOnce(ConfirmationResponse) + 'static,
 ) -> io::Result<Confirmation> {
-    let cancel = tr!("Cancel");
+    let cancel = "Cancel";
     two_button_alert(
         window,
         NSAlertStyle::Warning,
         title,
         message,
-        [confirm_label, &cancel],
+        [confirm_label, cancel],
         suppression_label,
         move |response, dont_ask_again| on_complete(classify(response, dont_ask_again)),
     )

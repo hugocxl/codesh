@@ -9,7 +9,6 @@ use crate::popover;
 use crate::scrollbar::{MINIMUM_THUMB_LENGTH, ThumbGeometry};
 use crate::text_input::{self, InputEvent, InputStyle, TextInput};
 use crate::theme::{Metrics, Theme};
-use crate::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
@@ -700,7 +699,7 @@ impl PickerConfig {
         Self {
             id: id.into(),
             presentation: PickerPresentation::Modal,
-            tabs: vec![PickerTab::new("items", tr!("Items"))],
+            tabs: vec![PickerTab::new("items", "Items")],
             placeholder: placeholder.into(),
             footer_actions: Vec::new(),
             width: None,
@@ -1473,11 +1472,11 @@ impl Picker {
             .actions
             .iter()
             .find(|action| action.id == action_id)
-            .map_or_else(|| tr!("Confirm"), |action| action.label.clone());
+            .map_or_else(|| "Confirm".into(), |action| action.label.clone());
         let message = self
             .confirmation_message
             .clone()
-            .unwrap_or_else(|| tr!("%@?", &label));
+            .unwrap_or_else(|| format!("{label}?").into());
         let row_id = row.id.clone();
         let confirmed_action = SharedString::from(format!("confirm:{action_id}"));
         let content = if self.config.presentation == PickerPresentation::Popover {
@@ -1521,7 +1520,7 @@ impl Picker {
                     .rounded(self.metrics.radius_sm())
                     .cursor_pointer()
                     .hover(|style| style.bg(self.theme.hover))
-                    .child(tr!("Cancel"))
+                    .child("Cancel")
                     .on_click(cx.listener(|popover, _, _, cx| {
                         let _ = popover.state.escape();
                         popover.confirmation_message = None;
@@ -2002,7 +2001,7 @@ impl Render for Picker {
         panel = match self.state.status() {
             PickerStatus::Ready if self.state.item_count() > 0 => panel.child(list),
             PickerStatus::Ready => panel.child(status_message(
-                tr!("No matches"),
+                "No matches",
                 self.theme.fg_muted,
                 self.metrics,
             )),

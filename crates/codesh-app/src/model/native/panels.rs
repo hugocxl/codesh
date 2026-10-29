@@ -2,7 +2,6 @@ use codesh_app_core::ProjectId;
 use codesh_app_core::settings::SidePanel;
 use codesh_protocol::{FilesAction, FilesReply, GitAction, GitReply, GitRequest};
 use codesh_ui::panel::{PanelId, PanelMode, PanelPlacement, PanelPosition};
-use codesh_ui::tr;
 use gpui::{AppContext, Context, Entity, Focusable, Pixels, Point, Window};
 
 use super::{path_string, server_path};
@@ -268,7 +267,7 @@ impl AppModel {
             };
             panel.update(cx, |panel, cx| match result {
                 Ok(FilesReply::Entries(entries)) => panel.set_entries(&path, entries, cx),
-                Ok(_) => panel.set_error(Some(tr!("Unexpected reply").to_string()), cx),
+                Ok(_) => panel.set_error(Some("Unexpected reply".to_string()), cx),
                 Err(error) => panel.set_error(Some(error), cx),
             });
         });
@@ -348,24 +347,18 @@ impl AppModel {
         let command = |action| Command::FilesEntry(project, action);
         let mut items = Vec::new();
         if !directory {
-            items.push(Item::action(tr!("Open"), command(FilesMenu::Open)));
+            items.push(Item::action("Open", command(FilesMenu::Open)));
         }
         items.extend([
-            Item::action(tr!("New File…"), command(FilesMenu::NewFile)).separated(),
-            Item::action(tr!("New Folder…"), command(FilesMenu::NewFolder)),
-            Item::action(tr!("Rename…"), command(FilesMenu::Rename)).separated(),
-            Item::action(tr!("Delete"), command(FilesMenu::Delete)),
-            Item::action(tr!("Copy Path"), command(FilesMenu::CopyPath)).separated(),
-            Item::action(
-                tr!("Copy Relative Path"),
-                command(FilesMenu::CopyRelativePath),
-            ),
+            Item::action("New File…", command(FilesMenu::NewFile)).separated(),
+            Item::action("New Folder…", command(FilesMenu::NewFolder)),
+            Item::action("Rename…", command(FilesMenu::Rename)).separated(),
+            Item::action("Delete", command(FilesMenu::Delete)),
+            Item::action("Copy Path", command(FilesMenu::CopyPath)).separated(),
+            Item::action("Copy Relative Path", command(FilesMenu::CopyRelativePath)),
         ]);
         if local {
-            items.push(Item::action(
-                tr!("Reveal in Finder"),
-                command(FilesMenu::Reveal),
-            ));
+            items.push(Item::action("Reveal in Finder", command(FilesMenu::Reveal)));
         }
         self.native.menu_path = Some(path);
         let model = cx.entity().downgrade();
@@ -449,19 +442,18 @@ impl AppModel {
             }
             GitPanelEvent::Discard(files) => {
                 let message = match files.as_slice() {
-                    [file] => tr!(
-                        "Discard changes to “%@”? Untracked files will be permanently deleted; staged changes are preserved.",
-                        file
+                    [file] => format!(
+                        "Discard changes to “{file}”? Untracked files will be permanently deleted; staged changes are preserved."
                     ),
-                    _ => tr!(
-                        "Discard changes to %lld files? Untracked files will be permanently deleted; staged changes are preserved.",
+                    _ => format!(
+                        "Discard changes to {} files? Untracked files will be permanently deleted; staged changes are preserved.",
                         files.len()
                     ),
                 };
                 self.confirm_git_action(
                     project,
                     GitAction::Discard(paths(files)),
-                    message.to_string(),
+                    message.clone(),
                     cx,
                 );
             }

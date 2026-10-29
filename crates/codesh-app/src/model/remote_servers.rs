@@ -5,8 +5,6 @@
 use codesh_app_core::ServerId;
 use codesh_app_core::settings::ServerEntry;
 use codesh_client::SshTarget;
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::{AnyWindowHandle, Context};
 
 use super::{AppModel, ConnectionState, Quitting, ServerStatus};
@@ -93,30 +91,21 @@ const VERSION_COMMAND: &str =
 pub(crate) fn incompatible_guidance(name: &str, there: Option<&str>) -> String {
     let here = env!("CARGO_PKG_VERSION");
     if there == Some(here) {
-        return tr!(
-            "Codesh on %@ is %@, but its running server is another version. Restart it there, which ends its terminals: pkill -x codesh-server",
-            name,
-            here
-        )
+        return format!("Codesh on {name} is {here}, but its running server is another version. Restart it there, which ends its terminals: pkill -x codesh-server")
         .to_string();
     }
     let there = there.map_or_else(
-        || tr!("Codesh on %@ is another version", name),
-        |version| tr!("Codesh on %@ is %@", name, version),
+        || format!("Codesh on {name} is another version"),
+        |version| format!("Codesh on {name} is {version}"),
     );
     let protocol = codesh_protocol::CURRENT.0;
     let fix = released_version().map_or_else(
-        || tr!("Install a matching build there by hand, from scripts/build-linux-dev.sh."),
-        |version| tr!("Update Codesh on %@: %@", name, update_command(version)),
+        || "Install a matching build there by hand, from scripts/build-linux-dev.sh.".to_string(),
+        |version| format!("Update Codesh on {}: {}", name, update_command(version)),
     );
-    tr!(
-        "%@; this app needs a version that speaks protocol V%lld, like %@. %@",
-        &there,
-        protocol,
-        here,
-        &fix
+    format!(
+        "{there}; this app needs a version that speaks protocol V{protocol}, like {here}. {fix}"
     )
-    .to_string()
 }
 
 /// What the server form submits.
@@ -203,17 +192,17 @@ fn group_name(typed: &str) -> Option<String> {
 pub(crate) fn join_destination(host: &str, user: &str, port: &str) -> Result<String, String> {
     let (host, user, port) = (host.trim(), user.trim(), port.trim());
     let invalid =
-        || tr!("Enter an SSH host: a ~/.ssh/config alias, a host name, or an address").to_string();
+        || "Enter an SSH host: a ~/.ssh/config alias, a host name, or an address".to_string();
     let destination = if user.is_empty() && port.is_empty() {
         host.to_owned()
     } else {
         if host.contains('@') || host.starts_with("ssh://") {
             return Err(
-                tr!("Put the user and port either in the host or in their own fields").to_string(),
+                "Put the user and port either in the host or in their own fields".to_string(),
             );
         }
         if user.contains('@') || user.contains(':') {
-            return Err(tr!("Enter a user name without @ or :").to_string());
+            return Err("Enter a user name without @ or :".to_string());
         }
         let login = if user.is_empty() {
             host.to_owned()
@@ -227,7 +216,7 @@ pub(crate) fn join_destination(host: &str, user: &str, port: &str) -> Result<Str
                 .parse()
                 .ok()
                 .filter(|port| *port > 0)
-                .ok_or_else(|| tr!("Use a port from 1 to 65535").to_string())?;
+                .ok_or_else(|| "Use a port from 1 to 65535".to_string())?;
             let login = if host.contains(':') && !host.starts_with('[') {
                 login.replacen(host, &format!("[{host}]"), 1)
             } else {
@@ -314,10 +303,10 @@ impl AppModel {
         cx: &mut Context<Self>,
     ) -> Result<ServerId, String> {
         if self.quitting != Quitting::Idle {
-            return Err(tr!("Codesh is quitting").to_string());
+            return Err("Codesh is quitting".to_string());
         }
         if id.is_some_and(|id| self.settings.server(id).is_none()) {
-            return Err(tr!("This remote server is no longer listed").to_string());
+            return Err("This remote server is no longer listed".to_string());
         }
         let entry = form.entry(id)?;
         let server = entry.id;
@@ -532,7 +521,7 @@ impl AppModel {
             } else {
                 Some(form.password.clone())
             }
-            .ok_or_else(|| tr!("Enter the password to test logging in with it.").to_string())?;
+            .ok_or_else(|| "Enter the password to test logging in with it.".to_string())?;
             (
                 Some(password),
                 Some(target.login().map_err(|error| error.to_string())?),
@@ -596,7 +585,7 @@ impl AppModel {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if self.quitting != Quitting::Idle {
-            return Err(tr!("Codesh is quitting").to_string());
+            return Err("Codesh is quitting".to_string());
         }
         let path = self.path.with_file_name("settings.toml");
         self.settings
@@ -630,7 +619,7 @@ impl AppModel {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if self.quitting != Quitting::Idle {
-            return Err(tr!("Codesh is quitting").to_string());
+            return Err("Codesh is quitting".to_string());
         }
         let group = group.and_then(group_name);
         let listed = &self.settings.servers;
@@ -659,7 +648,7 @@ impl AppModel {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if self.quitting != Quitting::Idle {
-            return Err(tr!("Codesh is quitting").to_string());
+            return Err("Codesh is quitting".to_string());
         }
         let group = group.and_then(group_name);
         let path = self.path.with_file_name("settings.toml");
@@ -677,18 +666,12 @@ impl AppModel {
         group: &str,
         cx: &mut Context<Self>,
     ) {
-        let message = tr!("Delete “%@”? Its servers will not be removed.", group).to_string();
-        self.confirm(
-            tr_key!("Delete Group?"),
-            message,
-            tr_key!("Delete"),
-            cx,
-            move |model, cx| {
-                if let Err(error) = model.regroup_remote_servers(&servers, None, cx) {
-                    model.fail(error, cx);
-                }
-            },
-        );
+        let message = format!("Delete “{group}”? Its servers will not be removed.");
+        self.confirm("Delete Group?", message, "Delete", cx, move |model, cx| {
+            if let Err(error) = model.regroup_remote_servers(&servers, None, cx) {
+                model.fail(error, cx);
+            }
+        });
     }
 
     /// Hangs up on the remote servers that are connected or connecting.
@@ -854,7 +837,7 @@ impl AppModel {
     pub(crate) fn copy_update_command(&mut self, cx: &mut Context<Self>) {
         if let Some(version) = released_version() {
             cx.write_to_clipboard(gpui::ClipboardItem::new_string(update_command(version)));
-            self.show_notice(tr!("Copied the update command").to_string(), cx);
+            self.show_notice("Copied the update command".to_string(), cx);
         }
     }
 
@@ -864,7 +847,7 @@ impl AppModel {
         self.ensure_servers_search(cx);
         let previous = self.state.clone();
         let project = self.state.current_project().id;
-        if let Err(error) = self.state.show_servers_tab(project, &tr!("Remote Servers")) {
+        if let Err(error) = self.state.show_servers_tab(project, "Remote Servers") {
             self.fail(error.to_string(), cx);
             return;
         }
@@ -964,8 +947,7 @@ impl AppModel {
             Ok(()) => self.connect_remote_server(server, cx),
             Err(error) => {
                 if let Some(runtime) = self.servers.get_mut(server) {
-                    runtime.error =
-                        Some(tr!("Could not take the password: %@", error.to_string()).to_string());
+                    runtime.error = Some(format!("Could not take the password: {error}"));
                 }
                 self.sync_preferences(cx);
                 cx.notify();

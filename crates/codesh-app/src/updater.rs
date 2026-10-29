@@ -18,8 +18,6 @@ use codesh_core::release;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use codesh_core::release::Channel;
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
-use codesh_ui::tr;
-
 #[cfg(target_os = "linux")]
 pub(crate) use linux::{CAPABILITY, Installation, PreparedUpdate};
 #[cfg(target_os = "macos")]
@@ -67,39 +65,37 @@ impl Release {
     fn parse(bytes: &[u8], current: &str, platform: &str, arch: &str) -> Result<Option<Self>> {
         let metadata: serde_json::Value = serde_json::from_slice(bytes)?;
         if metadata["schema"].as_u64() != Some(1) {
-            return Err(tr!("Unsupported update feed").to_string().into());
+            return Err("Unsupported update feed".into());
         }
         let version = metadata["version"]
             .as_str()
-            .ok_or_else(|| tr!("Missing update version").to_string())?;
-        let next = release::Version::parse(version)
-            .ok_or_else(|| tr!("Invalid update version").to_string())?;
+            .ok_or_else(|| "Missing update version".to_string())?;
+        let next =
+            release::Version::parse(version).ok_or_else(|| "Invalid update version".to_string())?;
         let current = release::Version::parse(current)
-            .ok_or_else(|| tr!("This is not a released version").to_string())?;
+            .ok_or_else(|| "This is not a released version".to_string())?;
         if !next.is_newer_than(current) {
             return Ok(None);
         }
         let asset = &metadata["platforms"][platform];
         let url = asset["url"]
             .as_str()
-            .ok_or_else(|| tr!("No update for this platform").to_string())?;
+            .ok_or_else(|| "No update for this platform".to_string())?;
         let filename = match platform {
             "macos-aarch64" | "macos-x86_64" => format!("Codesh-{version}-{arch}.dmg"),
             "linux-aarch64" | "linux-x86_64" => {
                 format!("codesh-desktop-{version}-linux-{arch}.tar.gz")
             }
-            _ => return Err(tr!("No update for this platform").to_string().into()),
+            _ => return Err("No update for this platform".into()),
         };
         if url != format!("{RELEASES}/v{version}/{filename}") {
-            return Err(tr!("Unexpected update download location")
-                .to_string()
-                .into());
+            return Err("Unexpected update download location".into());
         }
         let size = asset["size"]
             .as_u64()
-            .ok_or_else(|| tr!("Missing update size").to_string())?;
+            .ok_or_else(|| "Missing update size".to_string())?;
         if size == 0 || size > MAX_DOWNLOAD {
-            return Err(tr!("Invalid update download size").to_string().into());
+            return Err("Invalid update download size".into());
         }
         let sha256 = asset["sha256"].as_str().map(str::to_ascii_lowercase);
         if (platform.starts_with("linux-") && sha256.is_none())
@@ -107,7 +103,7 @@ impl Release {
                 hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit())
             })
         {
-            return Err(tr!("Invalid update checksum").to_string().into());
+            return Err("Invalid update checksum".into());
         }
         Ok(Some(Self {
             version: version.into(),
@@ -145,7 +141,7 @@ fn latest(
         .take(65_537)
         .read_to_end(&mut bytes)?;
     if bytes.len() > 65_536 {
-        return Err(tr!("Update feed is too large").to_string().into());
+        return Err("Update feed is too large".into());
     }
     Release::parse(&bytes, env!("CARGO_PKG_VERSION"), platform, arch)
 }
@@ -161,7 +157,7 @@ fn download(
     let count = std::io::copy(&mut response.take(release.size + 1), &mut output)?;
     if count != release.size {
         return Err(
-            tr!("The update download is incomplete or has an unexpected size")
+            "The update download is incomplete or has an unexpected size"
                 .to_string()
                 .into(),
         );
@@ -182,7 +178,7 @@ fn download(
                 .next()
                 .is_none_or(|hash| !hash.eq_ignore_ascii_case(expected))
         {
-            return Err(tr!("Update download checksum mismatch").to_string().into());
+            return Err("Update download checksum mismatch".into());
         }
     }
     Ok(())

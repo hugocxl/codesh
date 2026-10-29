@@ -197,7 +197,7 @@ pub fn confirm(
         cx,
         title,
         message,
-        &[confirm_label.into(), tr!("Cancel").to_string()],
+        &[confirm_label.into(), "Cancel".to_string()],
         Request {
             choices,
             cancel: Some(1),
@@ -266,10 +266,10 @@ pub fn confirm_with_prompt(
         cx,
         title,
         message,
-        &[confirm_label.into(), tr!("Cancel").to_string()],
+        &[confirm_label.into(), "Cancel".to_string()],
         Request {
             choices: choices.clone(),
-            input: Some((String::new(), tr!("Additional instructions").to_string())),
+            input: Some((String::new(), "Additional instructions".to_string())),
             input_limit: Some(ADDITIONAL_PROMPT_LIMIT),
             cancel: Some(1),
             default: Some(0),

@@ -10,7 +10,6 @@ use crate::picker::{
     Picker, PickerConfig, PickerEvent, PickerItem, PickerRow, PickerSelectionStyle, PickerStatus,
 };
 use crate::theme::{Metrics, Theme};
-use crate::tr;
 
 type ListProvider<A> = Rc<dyn Fn(&App) -> Registry<A>>;
 
@@ -247,7 +246,7 @@ impl<A: Clone + 'static> CommandPalette<A> {
     ) -> Self {
         Self::with_config(
             commands,
-            PickerConfig::new("command-palette", tr!("Search commands…")),
+            PickerConfig::new("command-palette", "Search commands…"),
             theme,
             metrics,
             cx,
@@ -262,7 +261,7 @@ impl<A: Clone + 'static> CommandPalette<A> {
     ) -> Self {
         Self::with_config(
             commands,
-            PickerConfig::dropdown("command-palette", tr!("Search commands…")),
+            PickerConfig::dropdown("command-palette", "Search commands…"),
             theme,
             metrics,
             cx,
@@ -296,7 +295,7 @@ impl<A: Clone + 'static> CommandPalette<A> {
             page: Page {
                 id: None,
                 registry: commands,
-                title: tr!("Search commands…"),
+                title: "Search commands…".into(),
                 query: String::new(),
                 selected: None,
             },
@@ -352,7 +351,7 @@ impl<A: Clone + 'static> CommandPalette<A> {
     fn refresh(&mut self, cx: &mut Context<Self>) {
         let items = self.page.registry.items(&self.page.query);
         let status = if items.is_empty() {
-            PickerStatus::Empty(tr!("No matching commands"))
+            PickerStatus::Empty("No matching commands".into())
         } else {
             PickerStatus::Ready
         };

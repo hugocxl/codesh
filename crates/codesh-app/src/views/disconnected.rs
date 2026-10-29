@@ -1,5 +1,4 @@
 use codesh_protocol::ExitReason;
-use codesh_ui::tr;
 use gpui::{Context, ParentElement, Styled, div};
 
 use super::terminal::pane::PaneState;
@@ -8,24 +7,19 @@ use crate::model::AppModel;
 pub(crate) fn label(state: PaneState) -> Option<String> {
     match state {
         PaneState::Live => None,
-        PaneState::Connecting => Some(tr!("Connecting…").to_string()),
-        PaneState::Disconnected => Some(tr!("Disconnected").to_string()),
+        PaneState::Connecting => Some("Connecting…".to_string()),
+        PaneState::Disconnected => Some("Disconnected".to_string()),
         PaneState::Exited {
             unavailable: true, ..
-        } => Some(tr!("Session exited · Saved output unavailable").to_string()),
-        PaneState::Exited { reason, .. } => Some(
-            match reason {
-                Some(ExitReason::Exited(code)) => tr!("Session exited · Exit code %lld", code),
-                Some(ExitReason::Signaled(signal)) => {
-                    tr!("Session exited · Signal %lld", signal)
-                }
-                Some(
-                    ExitReason::Ended | ExitReason::ServerStopped | ExitReason::Unrecognized(_),
-                )
-                | None => tr!("Session exited"),
+        } => Some("Session exited · Saved output unavailable".to_string()),
+        PaneState::Exited { reason, .. } => Some(match reason {
+            Some(ExitReason::Exited(code)) => format!("Session exited · Exit code {code}"),
+            Some(ExitReason::Signaled(signal)) => {
+                format!("Session exited · Signal {signal}")
             }
-            .to_string(),
-        ),
+            Some(ExitReason::Ended | ExitReason::ServerStopped | ExitReason::Unrecognized(_))
+            | None => "Session exited".to_string(),
+        }),
     }
 }
 

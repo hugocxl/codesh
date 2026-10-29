@@ -8,7 +8,6 @@ use codesh_ui::icon::Icon;
 use codesh_ui::panel::{
     PanelFrame, PanelId, PanelPosition, PanelSizeBounds, PanelSizing, PanelStyle,
 };
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
@@ -164,7 +163,7 @@ pub(crate) fn sidebar_buttons(model: &AppModel, cx: &mut Context<AppModel>) -> A
             crate::views::titlebar::icon_button(
                 "sidebar-new-terminal",
                 Icon::Plus,
-                tr!("New Terminal"),
+                "New Terminal",
                 Some(ShortcutId::NewTab),
                 model,
             )
@@ -179,14 +178,14 @@ pub(crate) fn sidebar_buttons(model: &AppModel, cx: &mut Context<AppModel>) -> A
             "sidebar-files",
             SidePanel::Files,
             Icon::Folder,
-            tr!("Files"),
+            "Files".into(),
             ShortcutId::ToggleFiles,
         ))
         .child(button(
             "sidebar-source-control",
             SidePanel::SourceControl,
             Icon::GitBranch,
-            tr!("Source Control"),
+            "Source Control".into(),
             ShortcutId::ToggleSourceControl,
         ))
         .into_any_element()
@@ -206,10 +205,12 @@ fn message(text: impl Into<SharedString>, model: &AppModel) -> AnyElement {
             let text = text.into();
             div()
                 .child(text.clone())
-                .when(text == tr!("Not a Git repository"), |view| {
-                    view.child(div().text_size(model.metrics.font_footnote()).child(tr!(
-                        "Open a folder containing a Git repository to view changes."
-                    )))
+                .when(text == "Not a Git repository", |view| {
+                    view.child(
+                        div()
+                            .text_size(model.metrics.font_footnote())
+                            .child("Open a folder containing a Git repository to view changes."),
+                    )
                 })
         })
         .into_any_element()
@@ -244,15 +245,9 @@ fn banner(id: PaneId, model: &AppModel, cx: &Context<AppModel>) -> AnyElement {
         .bg(theme.surface)
         .text_size(m.font_footnote())
         .text_color(theme.fg)
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .child(tr!("Changed on disk")),
-        )
-        .child(action(tr!("Reload"), true))
-        .child(action(tr!("Keep mine"), false))
+        .child(div().flex_1().min_w_0().truncate().child("Changed on disk"))
+        .child(action("Reload".into(), true))
+        .child(action("Keep mine".into(), false))
         .into_any_element()
 }
 
@@ -277,17 +272,17 @@ pub(crate) fn pane_body(
                     .child(div().flex_1().min_h_0().child(view.clone()))
                     .into_any_element(),
                 EditorContent::Message(text) => message(text.clone(), model),
-                EditorContent::Loading => message(tr!("Loading…"), model),
+                EditorContent::Loading => message("Loading…", model),
             },
-            None => message(tr!("Loading…"), model),
+            None => message("Loading…", model),
         },
         PaneContent::Diff { .. } => match model.diffs.get(&id) {
             Some(diff) => match (&diff.view, &diff.error) {
                 (Some(view), _) => view.clone().into_any_element(),
                 (None, Some(error)) => message(error.clone(), model),
-                (None, None) => message(tr!("Loading…"), model),
+                (None, None) => message("Loading…", model),
             },
-            None => message(tr!("Loading…"), model),
+            None => message("Loading…", model),
         },
         _ => return div().into_any_element(),
     };

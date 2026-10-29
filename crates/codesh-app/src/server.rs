@@ -4,7 +4,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use codesh_client::{Client, ClientError};
-use codesh_ui::tr;
 
 pub(crate) fn ensure_server_running(socket: &Path) -> Result<Client, ClientError> {
     codesh_client::local::ensure_running_hosted(socket, &server_executable()?)
@@ -56,7 +55,7 @@ fn wait_stopped(socket: &Path, identity: (u64, u64)) -> Result<(), ClientError> 
         if Instant::now() >= deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                tr!("Server has not finished stopping. Use Connect after shutdown completes.")
+                "Server has not finished stopping. Use Connect after shutdown completes."
                     .to_string(),
             )
             .into());
@@ -90,18 +89,16 @@ pub(crate) fn prepare_update(
     // A fresh connection protects against a server replaced since the prompt.
     let probe = Client::connect(socket)?;
     if probe.server_info() != expected || client.server_info() != expected {
-        return Err(io::Error::other(
-            tr!("The server changed. Review the update again.").to_string(),
-        )
-        .into());
+        return Err(
+            io::Error::other("The server changed. Review the update again.".to_string()).into(),
+        );
     }
     match mode {
         UpdateMode::Preserve => {
             if !update.compatible_with(expected) {
-                return Err(io::Error::other(
-                    tr!("This update requires a server restart").to_string(),
-                )
-                .into());
+                return Err(
+                    io::Error::other("This update requires a server restart".to_string()).into(),
+                );
             }
         }
         UpdateMode::WhenIdle => {
@@ -153,7 +150,7 @@ pub(crate) fn check_update(
         let installed = read_build_info(&executable)?;
         if installed != codesh_protocol::BuildInfo::current() {
             return Err(io::Error::other(
-                tr!("The installed app changed. Reopen Codesh to update the server.").to_string(),
+                "The installed app changed. Reopen Codesh to update the server.".to_string(),
             )
             .into());
         }

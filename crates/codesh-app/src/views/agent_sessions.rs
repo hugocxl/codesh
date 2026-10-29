@@ -10,7 +10,6 @@ use codesh_ui::panel::{
     PanelPosition, PanelSizeBounds, PanelSizing, PanelStyle,
 };
 use codesh_ui::picker::{Confirm, Dismiss, SelectNext, SelectPrevious, TabPressed};
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, Div, Focusable, Hsla, InteractiveElement, IntoElement, MouseDownEvent,
@@ -172,7 +171,7 @@ fn chrome(model: &AppModel, cx: &mut Context<AppModel>) -> PanelChrome {
     let refresh = if model.agent_sessions.task.is_some() {
         PanelAction::element(
             "refresh-agent-sessions",
-            tr!("Loading session history…"),
+            "Loading session history…",
             super::tab_activity::spinner_in(
                 "agent-session-loading",
                 m.icon_sm(),
@@ -186,7 +185,7 @@ fn chrome(model: &AppModel, cx: &mut Context<AppModel>) -> PanelChrome {
         let owner = cx.weak_entity();
         PanelAction::icon(
             "refresh-agent-sessions",
-            tr!("Refresh sessions"),
+            "Refresh sessions",
             Icon::Refresh,
             refresh,
             move |_, cx| {
@@ -206,7 +205,7 @@ fn chrome(model: &AppModel, cx: &mut Context<AppModel>) -> PanelChrome {
         })
     };
     PanelChrome::new(
-        tr!("Agent Sessions"),
+        "Agent Sessions",
         Some(
             IconGlyph::new(Icon::History, m.font_footnote(), model.theme.fg_muted)
                 .into_any_element(),
@@ -263,7 +262,7 @@ fn search(model: &AppModel, cx: &mut Context<AppModel>) -> Div {
                         icon_button(
                             "clear-session-search",
                             Icon::X,
-                            tr!("Clear search"),
+                            "Clear search".into(),
                             theme.fg_muted,
                             model,
                         )
@@ -323,14 +322,11 @@ fn notices(model: &AppModel) -> Option<Div> {
     let listing = &model.agent_sessions.listing;
     let messages: Vec<SharedString> = listing
         .limited
-        .then(|| tr!("Some history exceeds the scan limit."))
+        .then(|| SharedString::from("Some history exceeds the scan limit."))
         .into_iter()
-        .chain(
-            listing
-                .warnings
-                .iter()
-                .map(|(provider, _)| tr!("Could not read some %@ sessions.", provider.name())),
-        )
+        .chain(listing.warnings.iter().map(|(provider, _)| {
+            format!("Could not read some {} sessions.", provider.name()).into()
+        }))
         .collect();
     (!messages.is_empty()).then(|| {
         div()
@@ -353,22 +349,19 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> Div {
     let theme = &model.theme;
     let (message, reset) = if !model.state.current_project().server_id.is_local() {
         (
-            tr!("Select a local project to browse its saved agent sessions."),
+            "Select a local project to browse its saved agent sessions.",
             false,
         )
     } else if model.agent_sessions.scope.is_none() || model.agent_sessions.roots.is_none() {
-        (
-            tr!("The project or home directory could not be found."),
-            false,
-        )
+        ("The project or home directory could not be found.", false)
     } else if model.agent_sessions.task.is_some() {
-        (tr!("Loading session history…"), false)
+        ("Loading session history…", false)
     } else if model.agent_sessions.listing.sessions.is_empty() {
-        (tr!("No agent sessions in this project"), false)
+        ("No agent sessions in this project", false)
     } else if model.appearance.agent_sessions_providers.is_empty() {
-        (tr!("No providers selected"), true)
+        ("No providers selected", true)
     } else {
-        (tr!("No matching sessions"), true)
+        ("No matching sessions", true)
     };
     div()
         .size_full()
@@ -390,7 +383,7 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> Div {
                 codesh_ui::controls::button(
                     codesh_ui::controls::Style { theme, metrics: &m },
                     "reset-session-filters",
-                    &tr!("Reset filters"),
+                    "Reset filters",
                     true,
                     cx.listener(|model, _, window, cx| {
                         model.clear_session_search(cx);

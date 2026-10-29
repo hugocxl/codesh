@@ -8,7 +8,6 @@ use codesh_protocol::{
     ChannelId, ExitReason, ForegroundProcess, HistoryPage, InputModes, MetadataEvent, MouseAction,
     MouseEvent, SavedScreen, ScreenFrame, ScrollDirection, ServerPath, Size,
 };
-use codesh_ui::tr;
 use gpui::{
     Bounds, Context, EventEmitter, FocusHandle, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Render, Styled, Task, Window, div, prelude::FluentBuilder, px,
@@ -508,7 +507,7 @@ impl TerminalPane {
         if failed {
             if let Some(find) = &mut self.find {
                 find.results.loading_history = false;
-                find.results.error = Some(tr!("Could not load match").into());
+                find.results.error = Some("Could not load match".into());
             }
         } else if self
             .find

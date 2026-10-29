@@ -13,8 +13,6 @@ use std::sync::OnceLock;
 
 use libloading::Library;
 
-use crate::tr;
-
 pub(super) type gboolean = c_int;
 pub(super) type gpointer = *mut c_void;
 
@@ -482,8 +480,8 @@ static API: OnceLock<Result<Api, String>> = OnceLock::new();
 pub(super) fn load() -> Result<&'static Api, String> {
     API.get_or_init(|| {
         Api::bind().map_err(|error| {
-            tr!(
-                "Browser pages need WebKitGTK 4.1, which could not be loaded: %@",
+            format!(
+                "Browser pages need WebKitGTK 4.1, which could not be loaded: {}",
                 error.to_string()
             )
             .to_string()

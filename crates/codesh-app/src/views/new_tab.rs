@@ -5,7 +5,6 @@ use std::rc::Rc;
 
 use codesh_app_core::{Project, ProjectStatus, ServerId};
 use codesh_ui::command_palette::{Command, Registry};
-use codesh_ui::tr;
 use gpui::{Context, SharedString, Window};
 
 use super::command_palette::Handler;
@@ -17,13 +16,13 @@ pub(crate) const PAGE_ID: &str = "new_tab_in_project";
 /// Local projects, then each remote server, by its name, and its projects.
 pub(crate) fn command(cx: &Context<AppModel>) -> Command<Handler> {
     let model = cx.weak_entity();
-    Command::list(PAGE_ID, tr!("New Terminal in Project…"), move |cx| {
+    Command::list(PAGE_ID, "New Terminal in Project…", move |cx| {
         let mut commands = Registry::default();
         let Some(model) = model.upgrade() else {
             return commands;
         };
         let model = model.read(cx);
-        let local = tr!("Local");
+        let local = SharedString::from("Local");
         for project in projects(model, ServerId::local()) {
             commands.register(project_command(
                 project,
@@ -31,7 +30,7 @@ pub(crate) fn command(cx: &Context<AppModel>) -> Command<Handler> {
                 &local,
             ));
         }
-        let remote = tr!("Remote");
+        let remote = SharedString::from("Remote");
         for entry in &model.settings.servers {
             let server = entry.id;
             let home: Handler = Rc::new(move |model, _, cx| model.new_remote_home_tab(server, cx));

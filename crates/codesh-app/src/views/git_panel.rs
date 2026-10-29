@@ -328,20 +328,18 @@ impl Render for GitPanel {
                     )),
             );
         if let Some(error) = &self.error {
-            root = root.child(
-                div()
-                    .p(spacing())
-                    .text_color(theme.fg_muted)
-                    .child(error.clone())
-                    .when(
-                        error == codesh_ui::tr!("Not a Git repository").as_ref(),
-                        |view| {
-                            view.child(div().child(codesh_ui::tr!(
-                                "Open a folder containing a Git repository to view changes."
-                            )))
-                        },
-                    ),
-            );
+            root =
+                root.child(
+                    div()
+                        .p(spacing())
+                        .text_color(theme.fg_muted)
+                        .child(error.clone())
+                        .when(error == "Not a Git repository", |view| {
+                            view.child(div().child(
+                                "Open a folder containing a Git repository to view changes.",
+                            ))
+                        }),
+                );
         }
         if self.rows.is_empty() && self.error.is_none() {
             root = root.child(div().p(spacing()).text_color(theme.fg_muted).child(

@@ -10,7 +10,6 @@ use std::path::Path;
 
 use codesh_app_core::backup::Result;
 use codesh_app_core::settings::Settings;
-use codesh_ui::tr;
 
 pub(crate) use mobile::apply_mobile_settings;
 pub(crate) use transaction::{apply_pending, cancel_pending, stage};
@@ -85,17 +84,10 @@ fn prepare_from(profile: &Path, source: &Path) -> Result<PreparedImport> {
         .as_ref()
         .map_or(0, |state| state.projects().len().saturating_sub(1));
     let summary = if restore == Restore::Merge {
-        tr!(
-            "Import settings and %lld projects with their layouts on the next launch. Projects you already have keep their details and tabs, and workspaces with the same name are combined. A recovery copy is saved in the profile’s Backups folder.",
-            count
-        )
+        format!("Import settings and {count} projects with their layouts on the next launch. Projects you already have keep their details and tabs, and workspaces with the same name are combined. A recovery copy is saved in the profile’s Backups folder.")
     } else {
-        tr!(
-            "Restore settings and %lld saved projects with their layouts on the next launch. Existing projects are kept; matching projects receive the saved layouts. A recovery copy is saved in the profile’s Backups folder. Restart the server from Settings to apply restored server settings.",
-            count
-        )
-    }
-    .to_string();
+        format!("Restore settings and {count} saved projects with their layouts on the next launch. Existing projects are kept; matching projects receive the saved layouts. A recovery copy is saved in the profile’s Backups folder. Restart the server from Settings to apply restored server settings.")
+    }.clone();
 
     Ok(PreparedImport {
         files,
@@ -106,7 +98,7 @@ fn prepare_from(profile: &Path, source: &Path) -> Result<PreparedImport> {
 
 fn validate(files: &Files) -> Result<()> {
     if !files.contains_key("settings.toml") {
-        return Err(tr!("The backup does not contain settings.toml")
+        return Err("The backup does not contain settings.toml"
             .to_string()
             .into());
     }

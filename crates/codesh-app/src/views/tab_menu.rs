@@ -1,7 +1,5 @@
 use codesh_app_core::{Color, Project, TabCloseScope, TabId};
 
-use codesh_ui::tr;
-
 use super::menu::{Command, Item, color_items};
 
 #[derive(Clone, Copy, Debug)]
@@ -23,40 +21,41 @@ pub(crate) fn items(project: &Project, id: TabId) -> Vec<Item> {
     };
     let item = |label: gpui::SharedString, action| Item::action(label, Command::Tab(id, action));
     let mut items = vec![
-        item(tr!("New Terminal"), Action::New),
-        item(tr!("Rename Tab"), Action::Rename).separated(),
+        item("New Terminal".into(), Action::New),
+        item("Rename Tab".into(), Action::Rename).separated(),
     ];
     if tab.custom_title.is_some() {
-        items.push(item(tr!("Reset Title"), Action::ResetTitle));
+        items.push(item("Reset Title".into(), Action::ResetTitle));
     }
     let mut palette = color_items(tab.color.as_ref().map(Color::as_str), |index| {
         Command::Tab(id, Action::SetColor(index))
     })
     .into_iter();
-    let mut colors = vec![item(tr!("Default"), Action::ResetColor).checked_if(tab.color.is_none())];
+    let mut colors =
+        vec![item("Default".into(), Action::ResetColor).checked_if(tab.color.is_none())];
     colors.extend(palette.next().map(Item::separated));
     colors.extend(palette);
-    items.push(Item::submenu(tr!("Color"), colors));
+    items.push(Item::submenu("Color", colors));
     items.push(
         item(
             if tab.pinned {
-                tr!("Unpin Tab")
+                "Unpin Tab".into()
             } else {
-                tr!("Pin Tab")
+                "Pin Tab".into()
             },
             Action::TogglePin,
         )
         .separated(),
     );
     if !tab.pinned {
-        items.push(item(tr!("Close Tab"), Action::Close).separated());
+        items.push(item("Close Tab".into(), Action::Close).separated());
     }
     for (label, scope) in [
-        (tr!("Close Other Tabs"), TabCloseScope::Other),
-        (tr!("Close Tabs to the Left"), TabCloseScope::Left),
-        (tr!("Close Tabs to the Right"), TabCloseScope::Right),
+        ("Close Other Tabs", TabCloseScope::Other),
+        ("Close Tabs to the Left", TabCloseScope::Left),
+        ("Close Tabs to the Right", TabCloseScope::Right),
     ] {
-        let action = item(label, Action::CloseTabs(scope));
+        let action = item(label.into(), Action::CloseTabs(scope));
         let action = if tab.pinned && scope == TabCloseScope::Other {
             action.separated()
         } else {

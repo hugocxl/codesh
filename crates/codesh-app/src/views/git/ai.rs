@@ -2,7 +2,6 @@ use codesh_app_core::settings::CommitChoices;
 use codesh_protocol::ProjectId;
 use codesh_ui::controls::Style;
 use codesh_ui::dialog::{PromptCheckbox, PromptChoices, PromptPicker, PromptResponse};
-use codesh_ui::tr;
 use gpui::{AnyWindowHandle, AsyncApp};
 
 use crate::ai::Provider;
@@ -26,9 +25,9 @@ pub(crate) struct AiConfirmation {
 impl AiConfirmation {
     fn title(&self) -> String {
         match self.action {
-            Action::Commit => tr!("Commit to \"%@\"?", &self.branch).into(),
+            Action::Commit => format!("Commit to \"{}\"?", &self.branch),
             Action::CreatePullRequest => {
-                tr!("Create a pull request from \"%@\"?", &self.branch).into()
+                format!("Create a pull request from \"{}\"?", &self.branch)
             }
         }
     }
@@ -36,13 +35,12 @@ impl AiConfirmation {
     fn message(&self) -> String {
         match self.action {
             Action::Commit => {
-                tr!("Codesh will ask the AI provider for a commit message, then commit.").into()
+                "Codesh will ask the AI provider for a commit message, then commit.".into()
             }
-            Action::CreatePullRequest => tr!(
-                "Codesh will stage all changes, ask %@ for a branch name, title, and summary, then create the branch, commit, push, and open the pull request on GitHub.",
+            Action::CreatePullRequest => format!(
+                "Codesh will stage all changes, ask {} for a branch name, title, and summary, then create the branch, commit, push, and open the pull request on GitHub.",
                 self.provider.name
-            )
-            .into(),
+            ),
         }
     }
 
@@ -52,7 +50,7 @@ impl AiConfirmation {
         }
         PromptChoices {
             picker: Some(PromptPicker {
-                label: tr!("AI Provider").into(),
+                label: "AI Provider".into(),
                 items: self
                     .providers
                     .iter()
@@ -66,12 +64,12 @@ impl AiConfirmation {
             }),
             checkboxes: vec![
                 PromptCheckbox {
-                    label: tr!("Include unstaged changes").into(),
+                    label: "Include unstaged changes".into(),
                     checked: self.commit_choices().include_unstaged,
                     enabled: self.staged,
                 },
                 PromptCheckbox {
-                    label: tr!("Push after committing").into(),
+                    label: "Push after committing".into(),
                     checked: self.choices.push,
                     enabled: true,
                 },
@@ -119,7 +117,7 @@ impl AiConfirmation {
                     cx,
                     &self.title(),
                     &self.message(),
-                    &codesh_ui::l10n::translate(self.action.settings_title()),
+                    self.action.settings_title(),
                     &self.prompt_choices(),
                     style,
                     move |response| {

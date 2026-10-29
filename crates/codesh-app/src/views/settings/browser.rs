@@ -3,8 +3,6 @@
 
 use codesh_app_core::browser::SearchEngine;
 use codesh_ui::controls::{self, Choice};
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, Window, div, px};
 
@@ -39,10 +37,10 @@ pub(super) fn rows(view: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
     let settings = &view.snapshot.settings.browser;
     let mut rows = Vec::new();
     let browser = |change| Change::Browser(change);
-    if view.matches(Category::Browser, tr_key!("Enable built-in browser")) {
+    if view.matches(Category::Browser, "Enable built-in browser") {
         rows.push(view.row(
             "browser-enabled",
-            tr_key!("Enable built-in browser"),
+            "Enable built-in browser",
             view.toggle(
                 "browser-enabled",
                 settings.enabled,
@@ -53,20 +51,17 @@ pub(super) fn rows(view: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
         if !settings.enabled {
             rows.push(
                 view.note(
-                    &tr!("The built-in browser is off. Browser tabs and browser commands are disabled, and terminal links open in your system browser."),
+                    "The built-in browser is off. Browser tabs and browser commands are disabled, and terminal links open in your system browser.",
                     false,
                 )
                 .into_any_element(),
             );
         }
     }
-    if view.matches(
-        Category::Browser,
-        tr_key!("Open terminal links in the browser"),
-    ) {
+    if view.matches(Category::Browser, "Open terminal links in the browser") {
         rows.push(view.row(
             "browser-terminal-links",
-            tr_key!("Open terminal links in the browser"),
+            "Open terminal links in the browser",
             view.toggle(
                 "browser-terminal-links",
                 settings.open_terminal_links,
@@ -75,14 +70,14 @@ pub(super) fn rows(view: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
             ),
         ));
     }
-    if view.matches(Category::Browser, tr_key!("Search engine")) {
+    if view.matches(Category::Browser, "Search engine") {
         let choices: Vec<_> = SearchEngine::ALL
             .iter()
             .map(|engine| Choice::new(engine_id(*engine), engine.name()))
             .collect();
         rows.push(view.row_with(
             "browser-search-engine",
-            tr_key!("Search engine"),
+            "Search engine",
             controls::segmented(
                 view.style(),
                 "browser-search-engine",
@@ -102,25 +97,20 @@ pub(super) fn rows(view: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
             true,
         ));
     }
-    if view.matches(Category::Browser, tr_key!("Home page")) {
+    if view.matches(Category::Browser, "Home page") {
         rows.push(view.row(
             "browser-home-page",
-            tr_key!("Home page"),
+            "Home page",
             view.field("browser-home-page"),
         ));
     }
-    if view.matches(Category::Browser, tr_key!("Profiles")) {
-        rows.push(view.row_with(
-            "browser-profiles",
-            tr_key!("Profiles"),
-            profiles(view, cx),
-            true,
-        ));
+    if view.matches(Category::Browser, "Profiles") {
+        rows.push(view.row_with("browser-profiles", "Profiles", profiles(view, cx), true));
     }
-    if view.matches(Category::Browser, tr_key!("Import from another browser")) {
+    if view.matches(Category::Browser, "Import from another browser") {
         rows.push(view.row_with(
             "browser-import",
-            tr_key!("Import from another browser"),
+            "Import from another browser",
             sources(view, cx),
             true,
         ));
@@ -160,7 +150,7 @@ fn profiles(view: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
             .child(controls::button(
                 view.style(),
                 "browser-add-profile",
-                &tr!("Add Profile"),
+                "Add Profile",
                 true,
                 cx.listener(move |view, _, _, cx| {
                     view.clear_browser_profile_name(cx);
@@ -172,7 +162,7 @@ fn profiles(view: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
     )
     .child(
         view.note(
-            &tr!("Each profile keeps its own cookies, cache, history, and logins. Pick a profile per tab from the browser toolbar."),
+            "Each profile keeps its own cookies, cache, history, and logins. Pick a profile per tab from the browser toolbar.",
             false,
         ),
     )
@@ -195,7 +185,7 @@ fn profile_row(
         buttons = buttons.child(controls::button(
             view.style(),
             &format!("browser-default-{id}"),
-            &tr!("Make Default"),
+            "Make Default",
             true,
             cx.listener(move |_, _, _, cx| {
                 cx.emit(SettingsEvent::Change(Change::Browser(
@@ -208,7 +198,7 @@ fn profile_row(
     buttons = buttons.child(controls::button(
         view.style(),
         &format!("browser-rename-{id}"),
-        &tr!("Rename to Name Below"),
+        "Rename to Name Below",
         !name.is_empty(),
         cx.listener(move |view, _, _, cx| {
             view.clear_browser_profile_name(cx);
@@ -221,14 +211,14 @@ fn profile_row(
     buttons = buttons.child(controls::button(
         view.style(),
         &format!("browser-clear-{id}"),
-        &tr!("Clear Data"),
+        "Clear Data",
         true,
         cx.listener(move |_, _, window, cx| {
             confirm(
                 BrowserChange::ClearProfile(cleared.clone()),
-                &tr!("Clear data for “%@”?", &label),
-                &tr!("This signs out and removes all cookies, cache, history, and logins for this profile, including imported ones."),
-                &tr!("Clear Data"),
+                &format!("Clear data for “{label}”?"),
+                "This signs out and removes all cookies, cache, history, and logins for this profile, including imported ones.",
+                "Clear Data",
                 window,
                 cx,
             );
@@ -239,14 +229,14 @@ fn profile_row(
         buttons = buttons.child(controls::button(
             view.style(),
             &format!("browser-delete-{id}"),
-            &tr!("Delete"),
+            "Delete",
             true,
             cx.listener(move |_, _, window, cx| {
                 confirm(
                     BrowserChange::DeleteProfile(deleted.clone()),
-                    &tr!("Delete “%@”?", &label),
-                    &tr!("This permanently deletes the profile's cookies, history, and browsing data. Its tabs use the default profile."),
-                    &tr!("Delete"),
+                    &format!("Delete “{label}”?"),
+                    "This permanently deletes the profile's cookies, history, and browsing data. Its tabs use the default profile.",
+                    "Delete",
                     window,
                     cx,
                 );
@@ -274,7 +264,7 @@ fn profile_row(
                             .bg(theme.accent_soft)
                             .text_size(metrics.font_caption())
                             .text_color(theme.fg)
-                            .child(tr!("Default")),
+                            .child("Default"),
                     )
                 }),
         )
@@ -287,15 +277,12 @@ fn sources(view: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
     let mut list = div().flex().flex_col().gap(px(6.0)).w_full();
     if view.snapshot.browser_sources.is_empty() {
         return list
-            .child(view.note(
-                &tr!("No other browsers were found on this computer."),
-                false,
-            ))
+            .child(view.note("No other browsers were found on this computer.", false))
             .into_any_element();
     }
     for (index, (source, has_cookies)) in view.snapshot.browser_sources.iter().enumerate() {
         let mut buttons = div().flex().flex_wrap().gap(px(6.0));
-        let kinds = [(false, tr!("History & Bookmarks")), (true, tr!("Cookies"))];
+        let kinds = [(false, "History & Bookmarks"), (true, "Cookies")];
         for (cookies, label) in kinds
             .into_iter()
             .filter(|(cookies, _)| !cookies || *has_cookies)
@@ -303,7 +290,7 @@ fn sources(view: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
             buttons = buttons.child(controls::button(
                 view.style(),
                 &format!("browser-import-{index}-{cookies}"),
-                &label,
+                label,
                 true,
                 cx.listener(move |_, _, _, cx| {
                     cx.emit(SettingsEvent::Change(Change::Browser(
@@ -327,7 +314,7 @@ fn sources(view: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
         );
     }
     list.child(view.note(
-        &tr!("Imports go into the default profile. Cookies bring your sign-ins; macOS may ask to allow access to the browser's key."),
+        "Imports go into the default profile. Cookies bring your sign-ins; macOS may ask to allow access to the browser's key.",
         false,
     ))
     .into_any_element()

@@ -1,5 +1,3 @@
-use codesh_core::tr_key;
-
 use super::Category;
 
 pub(super) struct Setting {
@@ -13,770 +11,654 @@ pub(super) struct Setting {
 pub(super) const SETTINGS: &[Setting] = &[
     Setting {
         id: "voice-auto-send",
-        label: tr_key!("Send after recording"),
-        description: tr_key!(
-            "Press Return after inserting standalone voice dictation into the terminal."
-        ),
+        label: "Send after recording",
+        description: "Press Return after inserting standalone voice dictation into the terminal.",
         category: Category::General,
-        section: tr_key!("Voice"),
+        section: "Voice",
     },
     Setting {
         id: "voice-language",
-        label: tr_key!("Dictation language"),
-        description: tr_key!("Choose an installed on-device speech language."),
+        label: "Dictation language",
+        description: "Choose an installed on-device speech language.",
         category: Category::General,
-        section: tr_key!("Voice"),
+        section: "Voice",
     },
     Setting {
         id: "voice-model",
-        label: tr_key!("Offline voice model"),
-        description: tr_key!(
-            "Path to a local multilingual Whisper model. Used by Linux dictation."
-        ),
+        label: "Offline voice model",
+        description: "Path to a local multilingual Whisper model. Used by Linux dictation.",
         category: Category::General,
-        section: tr_key!("Voice"),
+        section: "Voice",
     },
     Setting {
         id: "browser-enabled",
-        label: tr_key!("Enable built-in browser"),
-        description: tr_key!(
-            "Open web pages in browser tabs and let codesh browser commands drive them."
-        ),
+        label: "Enable built-in browser",
+        description: "Open web pages in browser tabs and let codesh browser commands drive them.",
         category: Category::Browser,
-        section: tr_key!("General"),
+        section: "General",
     },
     Setting {
         id: "browser-terminal-links",
-        label: tr_key!("Open terminal links in the browser"),
-        description: tr_key!(
-            "Command-click a web link in a terminal to open it in a browser tab instead of your system browser."
-        ),
+        label: "Open terminal links in the browser",
+        description: "Command-click a web link in a terminal to open it in a browser tab instead of your system browser.",
         category: Category::Browser,
-        section: tr_key!("General"),
+        section: "General",
     },
     Setting {
         id: "browser-search-engine",
-        label: tr_key!("Search engine"),
-        description: tr_key!("Searches typed in the address bar use this engine."),
+        label: "Search engine",
+        description: "Searches typed in the address bar use this engine.",
         category: Category::Browser,
-        section: tr_key!("Browsing"),
+        section: "Browsing",
     },
     Setting {
         id: "browser-home-page",
-        label: tr_key!("Home page"),
-        description: tr_key!(
-            "The page new browser tabs open to. Leave it empty for the start page."
-        ),
+        label: "Home page",
+        description: "The page new browser tabs open to. Leave it empty for the start page.",
         category: Category::Browser,
-        section: tr_key!("Browsing"),
+        section: "Browsing",
     },
     Setting {
         id: "browser-profiles",
-        label: tr_key!("Profiles"),
-        description: tr_key!(
-            "Profiles keep cookies and logins apart. New browser panes use the default profile."
-        ),
+        label: "Profiles",
+        description: "Profiles keep cookies and logins apart. New browser panes use the default profile.",
         category: Category::Browser,
-        section: tr_key!("Profiles"),
+        section: "Profiles",
     },
     Setting {
         id: "browser-import",
-        label: tr_key!("Import from another browser"),
-        description: tr_key!(
-            "Bring history, bookmarks, or sign-ins from a browser on this computer."
-        ),
+        label: "Import from another browser",
+        description: "Bring history, bookmarks, or sign-ins from a browser on this computer.",
         category: Category::Browser,
-        section: tr_key!("Profiles"),
+        section: "Profiles",
     },
     Setting {
         id: "backup-export",
-        label: tr_key!("Export backup"),
-        description: tr_key!(
-            "Save settings, themes, projects, workspaces, and terminal layouts to a .codesh file."
-        ),
+        label: "Export backup",
+        description: "Save settings, themes, projects, workspaces, and terminal layouts to a .codesh file.",
         category: Category::Backup,
-        section: tr_key!("Backup & Restore"),
+        section: "Backup & Restore",
     },
     Setting {
         id: "backup-restore",
-        label: tr_key!("Restore backup"),
-        description: tr_key!(
-            "Choose a .codesh backup. Review the import before applying it on the next launch."
-        ),
+        label: "Restore backup",
+        description: "Choose a .codesh backup. Review the import before applying it on the next launch.",
         category: Category::Backup,
-        section: tr_key!("Backup & Restore"),
+        section: "Backup & Restore",
     },
     Setting {
         id: "backup-files",
-        label: tr_key!("Configuration files"),
-        description: tr_key!(
-            "Open configuration files in the system editor. Restart Codesh after editing app settings. Terminal settings reload when Codesh or Settings becomes active."
-        ),
+        label: "Configuration files",
+        description: "Open configuration files in the system editor. Restart Codesh after editing app settings. Terminal settings reload when Codesh or Settings becomes active.",
         category: Category::Backup,
-        section: tr_key!("Configuration"),
+        section: "Configuration",
     },
     Setting {
         id: "ai-commit-provider",
-        label: tr_key!("Commit provider"),
-        description: tr_key!(
-            "AI CLI that drafts commit messages. Auto uses the first installed provider."
-        ),
+        label: "Commit provider",
+        description: "AI CLI that drafts commit messages. Auto uses the first installed provider.",
         category: Category::Ai,
-        section: tr_key!("Commit"),
+        section: "Commit",
     },
     Setting {
         id: "ai-commit-prompt",
-        label: tr_key!("Commit prompt"),
-        description: tr_key!(
-            "AI drafts only the commit message. Codesh commits, and pushes when you choose to. An empty prompt uses the default. Do not include secrets."
-        ),
+        label: "Commit prompt",
+        description: "AI drafts only the commit message. Codesh commits, and pushes when you choose to. An empty prompt uses the default. Do not include secrets.",
         category: Category::Ai,
-        section: tr_key!("Commit"),
+        section: "Commit",
     },
     Setting {
         id: "ai-create-pr-provider",
-        label: tr_key!("Pull request provider"),
-        description: tr_key!(
-            "AI CLI that drafts pull requests. Auto uses the first installed provider."
-        ),
+        label: "Pull request provider",
+        description: "AI CLI that drafts pull requests. Auto uses the first installed provider.",
         category: Category::Ai,
-        section: tr_key!("Create Pull Request"),
+        section: "Create Pull Request",
     },
     Setting {
         id: "ai-create-pr-prompt",
-        label: tr_key!("Pull request prompt"),
-        description: tr_key!(
-            "AI drafts the title, summary, branch name, and target branch. You review them before Codesh commits, pushes, and opens the pull request. An empty prompt uses the default."
-        ),
+        label: "Pull request prompt",
+        description: "AI drafts the title, summary, branch name, and target branch. You review them before Codesh commits, pushes, and opens the pull request. An empty prompt uses the default.",
         category: Category::Ai,
-        section: tr_key!("Create Pull Request"),
+        section: "Create Pull Request",
     },
     Setting {
         id: "close-behavior",
-        label: tr_key!("When closing tabs or panes"),
-        description: tr_key!(
-            "Close sessions unused by other panes, or detach to keep them running and reopen them from Existing Terminals."
-        ),
+        label: "When closing tabs or panes",
+        description: "Close sessions unused by other panes, or detach to keep them running and reopen them from Existing Terminals.",
         category: Category::General,
-        section: tr_key!("Closing terminals"),
+        section: "Closing terminals",
     },
     Setting {
         id: "confirm-process",
-        label: tr_key!("Confirm before closing a running process"),
-        description: tr_key!(
-            "Ask before ending a running command. Detaching never requires confirmation."
-        ),
+        label: "Confirm before closing a running process",
+        description: "Ask before ending a running command. Detaching never requires confirmation.",
         category: Category::General,
-        section: tr_key!("Closing terminals"),
+        section: "Closing terminals",
     },
     Setting {
         id: "file-opener",
-        label: tr_key!("Open files with"),
-        description: tr_key!(
-            "Opens files you click in a terminal. Files open in the Codesh editor or system application."
-        ),
+        label: "Open files with",
+        description: "Opens files you click in a terminal. Files open in the Codesh editor or system application.",
         category: Category::General,
-        section: tr_key!("Files"),
+        section: "Files",
     },
     Setting {
         id: "width",
-        label: tr_key!("Default window width"),
-        description: tr_key!(
-            "Width in pixels for a new workspace window when no saved bounds exist."
-        ),
+        label: "Default window width",
+        description: "Width in pixels for a new workspace window when no saved bounds exist.",
         category: Category::General,
-        section: tr_key!("Window size"),
+        section: "Window size",
     },
     Setting {
         id: "height",
-        label: tr_key!("Default window height"),
-        description: tr_key!(
-            "Height in pixels for a new workspace window when no saved bounds exist."
-        ),
+        label: "Default window height",
+        description: "Height in pixels for a new workspace window when no saved bounds exist.",
         category: Category::General,
-        section: tr_key!("Window size"),
+        section: "Window size",
     },
     Setting {
         id: "worktree-template",
-        label: tr_key!("Default worktree path template"),
-        description: tr_key!(
-            "For example ../{base-dir}.{branch}. Must include {branch}; also supports {project-name}. Relative paths start in the project folder. Overrides the default folder."
-        ),
+        label: "Default worktree path template",
+        description: "For example ../{base-dir}.{branch}. Must include {branch}; also supports {project-name}. Relative paths start in the project folder. Overrides the default folder.",
         category: Category::General,
-        section: tr_key!("Worktrees"),
+        section: "Worktrees",
     },
     Setting {
         id: "worktree-folder",
-        label: tr_key!("Default worktree folder"),
-        description: tr_key!(
-            "Worktrees go in <folder>/<project>/<name>. Leave both location settings empty to use ~/.codesh/worktrees."
-        ),
+        label: "Default worktree folder",
+        description: "Worktrees go in <folder>/<project>/<name>. Leave both location settings empty to use ~/.codesh/worktrees.",
         category: Category::General,
-        section: tr_key!("Worktrees"),
+        section: "Worktrees",
     },
     Setting {
         id: "light-theme",
-        label: tr_key!("Light theme"),
-        description: tr_key!(
-            "Colors for the interface and terminals when macOS uses light appearance."
-        ),
+        label: "Light theme",
+        description: "Colors for the interface and terminals when macOS uses light appearance.",
         category: Category::Appearance,
-        section: tr_key!("Themes"),
+        section: "Themes",
     },
     Setting {
         id: "dark-theme",
-        label: tr_key!("Dark theme"),
-        description: tr_key!(
-            "Colors for the interface and terminals when macOS uses dark appearance."
-        ),
+        label: "Dark theme",
+        description: "Colors for the interface and terminals when macOS uses dark appearance.",
         category: Category::Appearance,
-        section: tr_key!("Themes"),
+        section: "Themes",
     },
     Setting {
         id: "sidebar",
-        label: tr_key!("Expand sidebar"),
-        description: tr_key!("Show project names alongside their icons in the workspace sidebar."),
+        label: "Expand sidebar",
+        description: "Show project names alongside their icons in the workspace sidebar.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "status-bar",
-        label: tr_key!("Show status bar"),
-        description: tr_key!(
-            "Show connection and terminal information at the bottom of the workspace."
-        ),
+        label: "Show status bar",
+        description: "Show connection and terminal information at the bottom of the workspace.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "sidebar-collapsed-style",
-        label: tr_key!("Collapsed sidebar style"),
-        description: tr_key!(
-            "Show project icons or hide the sidebar in Project Focused. Tab Focused and Agents Focused always hide it when collapsed."
-        ),
+        label: "Collapsed sidebar style",
+        description: "Show project icons or hide the sidebar in Project Focused. Tab Focused and Agents Focused always hide it when collapsed.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "sidebar-vibrancy",
-        label: tr_key!("Sidebar vibrancy"),
-        description: tr_key!("Use a translucent macOS background while the sidebar is expanded."),
+        label: "Sidebar vibrancy",
+        description: "Use a translucent macOS background while the sidebar is expanded.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "sidebar-vibrancy-level",
-        label: tr_key!("Sidebar vibrancy level"),
-        description: tr_key!(
-            "How much of the macOS background effect shows through the theme color, from 0 to 100. Collapsed sidebars stay solid."
-        ),
+        label: "Sidebar vibrancy level",
+        description: "How much of the macOS background effect shows through the theme color, from 0 to 100. Collapsed sidebars stay solid.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "tips",
-        label: tr_key!("Show tips"),
-        description: tr_key!("Show Codesh tips at the bottom of the built-in sidebar."),
+        label: "Show tips",
+        description: "Show Codesh tips at the bottom of the built-in sidebar.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "auto-expand-worktrees",
-        label: tr_key!("Expand worktrees when switching projects"),
-        description: tr_key!("Reveal worktrees when selecting a project in Project Focused."),
+        label: "Expand worktrees when switching projects",
+        description: "Reveal worktrees when selecting a project in Project Focused.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "worktree-unread",
-        label: tr_key!("Show unread worktree indicators"),
-        description: tr_key!("Show unread completion counts beside worktrees."),
+        label: "Show unread worktree indicators",
+        description: "Show unread completion counts beside worktrees.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "worktree-recent-order",
-        label: tr_key!("Order the worktree switcher by recent use"),
-        description: tr_key!(
-            "List the current worktree first, then the most recently used. Off, the project comes first, then its worktrees."
-        ),
+        label: "Order the worktree switcher by recent use",
+        description: "List the current worktree first, then the most recently used. Off, the project comes first, then its worktrees.",
         category: Category::Appearance,
-        section: tr_key!("Interface"),
+        section: "Interface",
     },
     Setting {
         id: "agents-panel",
-        label: tr_key!("Show agents panel"),
-        description: tr_key!("Show the agents panel, or its button when the sidebar is collapsed."),
+        label: "Show agents panel",
+        description: "Show the agents panel, or its button when the sidebar is collapsed.",
         category: Category::Appearance,
-        section: tr_key!("Agents Panel"),
+        section: "Agents Panel",
     },
     Setting {
         id: "agents-panel-grouping",
-        label: tr_key!("Agents panel rows"),
-        description: tr_key!(
-            "List each agent and open its pane, or each project and worktree running agents and open it."
-        ),
+        label: "Agents panel rows",
+        description: "List each agent and open its pane, or each project and worktree running agents and open it.",
         category: Category::Appearance,
-        section: tr_key!("Agents Panel"),
+        section: "Agents Panel",
     },
     Setting {
         id: "font-family",
-        label: tr_key!("Font family"),
-        description: tr_key!("The typeface used to render text in every terminal pane."),
+        label: "Font family",
+        description: "The typeface used to render text in every terminal pane.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-fallbacks",
-        label: tr_key!("Fallback fonts"),
-        description: tr_key!("Fonts used, in order, for characters the main font lacks."),
+        label: "Fallback fonts",
+        description: "Fonts used, in order, for characters the main font lacks.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-size",
-        label: tr_key!("Font size (points)"),
-        description: tr_key!(
-            "Default terminal text size. Individual panes can still be zoomed independently."
-        ),
+        label: "Font size (points)",
+        description: "Default terminal text size. Individual panes can still be zoomed independently.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "adjust-cell-height",
-        label: tr_key!("Line spacing"),
-        description: tr_key!(
-            "Add space between terminal lines using pixels or a percentage, such as 10%%."
-        ),
+        label: "Line spacing",
+        description: "Add space between terminal lines using pixels or a percentage, such as 10%.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "adjust-cell-width",
-        label: tr_key!("Character spacing"),
-        description: tr_key!("Adjust character spacing by pixels or a percentage, such as 10%%."),
+        label: "Character spacing",
+        description: "Adjust character spacing by pixels or a percentage, such as 10%.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-family-bold",
-        label: tr_key!("Bold font"),
-        description: tr_key!("Font for bold text. Default uses the main font's bold style."),
+        label: "Bold font",
+        description: "Font for bold text. Default uses the main font's bold style.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-family-italic",
-        label: tr_key!("Italic font"),
-        description: tr_key!("Font for italic text. Default uses the main font's italic style."),
+        label: "Italic font",
+        description: "Font for italic text. Default uses the main font's italic style.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-family-bold-italic",
-        label: tr_key!("Bold italic font"),
-        description: tr_key!(
-            "Font for bold italic text. Default uses the main font's bold italic style."
-        ),
+        label: "Bold italic font",
+        description: "Font for bold italic text. Default uses the main font's bold italic style.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-feature",
-        label: tr_key!("Font features"),
-        description: tr_key!(
-            "OpenType features separated by commas, such as ss01 or zero. Put a minus before one to turn it off, such as -calt."
-        ),
+        label: "Font features",
+        description: "OpenType features separated by commas, such as ss01 or zero. Put a minus before one to turn it off, such as -calt.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-ligatures",
-        label: tr_key!("Font ligatures"),
-        description: tr_key!(
-            "Combine programming symbols when the selected font supports ligatures."
-        ),
+        label: "Font ligatures",
+        description: "Combine programming symbols when the selected font supports ligatures.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-codepoint-map",
-        label: tr_key!("Codepoint fonts"),
-        description: tr_key!(
-            "Use a specific font for a Unicode range, such as U+E000-U+F8FF for icons."
-        ),
+        label: "Codepoint fonts",
+        description: "Use a specific font for a Unicode range, such as U+E000-U+F8FF for icons.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-thicken",
-        label: tr_key!("Thicken font"),
-        description: tr_key!("Draw terminal text with a heavier stroke."),
+        label: "Thicken font",
+        description: "Draw terminal text with a heavier stroke.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "font-thicken-strength",
-        label: tr_key!("Thicken strength"),
-        description: tr_key!("How much heavier text is drawn when Thicken font is on."),
+        label: "Thicken strength",
+        description: "How much heavier text is drawn when Thicken font is on.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "bold-is-bright",
-        label: tr_key!("Bright colors for bold text"),
-        description: tr_key!(
-            "Use bright ANSI colors for bold text in the first eight palette colors."
-        ),
+        label: "Bright colors for bold text",
+        description: "Use bright ANSI colors for bold text in the first eight palette colors.",
         category: Category::Terminal,
-        section: tr_key!("Font"),
+        section: "Font",
     },
     Setting {
         id: "background-transparency",
-        label: tr_key!("Terminal transparency"),
-        description: tr_key!("Let the desktop show through the terminal background."),
+        label: "Terminal transparency",
+        description: "Let the desktop show through the terminal background.",
         category: Category::Terminal,
-        section: tr_key!("Background"),
+        section: "Background",
     },
     Setting {
         id: "background-vibrancy",
-        label: tr_key!("Background vibrancy"),
-        description: tr_key!(
-            "Reveal the native macOS material by reducing the solid background tint."
-        ),
+        label: "Background vibrancy",
+        description: "Reveal the native macOS material by reducing the solid background tint.",
         category: Category::Terminal,
-        section: tr_key!("Background"),
+        section: "Background",
     },
     Setting {
         id: "background-opacity-cells",
-        label: tr_key!("Apply opacity to colored cells"),
-        description: tr_key!("Also make backgrounds drawn by terminal programs translucent."),
+        label: "Apply opacity to colored cells",
+        description: "Also make backgrounds drawn by terminal programs translucent.",
         category: Category::Terminal,
-        section: tr_key!("Background"),
+        section: "Background",
     },
     Setting {
         id: "window-padding-x",
-        label: tr_key!("Horizontal padding (points)"),
-        description: tr_key!("Adjust the space to the left and right of terminal text."),
+        label: "Horizontal padding (points)",
+        description: "Adjust the space to the left and right of terminal text.",
         category: Category::Terminal,
-        section: tr_key!("Background"),
+        section: "Background",
     },
     Setting {
         id: "window-padding-y",
-        label: tr_key!("Vertical padding (points)"),
-        description: tr_key!("Adjust the space above and below terminal text."),
+        label: "Vertical padding (points)",
+        description: "Adjust the space above and below terminal text.",
         category: Category::Terminal,
-        section: tr_key!("Background"),
+        section: "Background",
     },
     Setting {
         id: "window-padding-balance",
-        label: tr_key!("Balance padding"),
-        description: tr_key!("Distribute unused cell space equally around the terminal grid."),
+        label: "Balance padding",
+        description: "Distribute unused cell space equally around the terminal grid.",
         category: Category::Terminal,
-        section: tr_key!("Background"),
+        section: "Background",
     },
     Setting {
         id: "window-padding-color",
-        label: tr_key!("Padding color"),
-        description: tr_key!(
-            "Fill padding with the background color, or extend the color of the nearest cells."
-        ),
+        label: "Padding color",
+        description: "Fill padding with the background color, or extend the color of the nearest cells.",
         category: Category::Terminal,
-        section: tr_key!("Background"),
+        section: "Background",
     },
     Setting {
         id: "background",
-        label: tr_key!("Background color"),
-        description: tr_key!(
-            "Replaces the theme's terminal background, such as #1e1e2e. Leave empty to use the theme."
-        ),
+        label: "Background color",
+        description: "Replaces the theme's terminal background, such as #1e1e2e. Leave empty to use the theme.",
         category: Category::Terminal,
-        section: tr_key!("Colors"),
+        section: "Colors",
     },
     Setting {
         id: "foreground",
-        label: tr_key!("Text color"),
-        description: tr_key!(
-            "Replaces the theme's terminal text color. Leave empty to use the theme."
-        ),
+        label: "Text color",
+        description: "Replaces the theme's terminal text color. Leave empty to use the theme.",
         category: Category::Terminal,
-        section: tr_key!("Colors"),
+        section: "Colors",
     },
     Setting {
         id: "cursor-color",
-        label: tr_key!("Cursor color"),
-        description: tr_key!(
-            "A color, cell-foreground, or cell-background. Leave empty to use the theme."
-        ),
+        label: "Cursor color",
+        description: "A color, cell-foreground, or cell-background. Leave empty to use the theme.",
         category: Category::Terminal,
-        section: tr_key!("Colors"),
+        section: "Colors",
     },
     Setting {
         id: "cursor-text",
-        label: tr_key!("Cursor text color"),
-        description: tr_key!(
-            "Color of the character under a block cursor. Leave empty to use the theme."
-        ),
+        label: "Cursor text color",
+        description: "Color of the character under a block cursor. Leave empty to use the theme.",
         category: Category::Terminal,
-        section: tr_key!("Colors"),
+        section: "Colors",
     },
     Setting {
         id: "selection-foreground",
-        label: tr_key!("Selection text color"),
-        description: tr_key!(
-            "A color, cell-foreground, or cell-background. Leave empty to use the theme."
-        ),
+        label: "Selection text color",
+        description: "A color, cell-foreground, or cell-background. Leave empty to use the theme.",
         category: Category::Terminal,
-        section: tr_key!("Colors"),
+        section: "Colors",
     },
     Setting {
         id: "selection-background",
-        label: tr_key!("Selection color"),
-        description: tr_key!(
-            "A color, cell-foreground, or cell-background. Leave empty to use the theme."
-        ),
+        label: "Selection color",
+        description: "A color, cell-foreground, or cell-background. Leave empty to use the theme.",
         category: Category::Terminal,
-        section: tr_key!("Colors"),
+        section: "Colors",
     },
     Setting {
         id: "palette",
-        label: tr_key!("ANSI colors"),
-        description: tr_key!("Replaces the 16 ANSI colors. Leave a color empty to use the theme."),
+        label: "ANSI colors",
+        description: "Replaces the 16 ANSI colors. Leave a color empty to use the theme.",
         category: Category::Terminal,
-        section: tr_key!("Colors"),
+        section: "Colors",
     },
     Setting {
         id: "cursor-style",
-        label: tr_key!("Cursor shape"),
-        description: tr_key!("Choose the initial cursor shape. Terminal programs can change it."),
+        label: "Cursor shape",
+        description: "Choose the initial cursor shape. Terminal programs can change it.",
         category: Category::Terminal,
-        section: tr_key!("Cursor"),
+        section: "Cursor",
     },
     Setting {
         id: "cursor-style-blink",
-        label: tr_key!("Cursor blinking"),
-        description: tr_key!("Choose the initial blink behavior. Terminal programs can change it."),
+        label: "Cursor blinking",
+        description: "Choose the initial blink behavior. Terminal programs can change it.",
         category: Category::Terminal,
-        section: tr_key!("Cursor"),
+        section: "Cursor",
     },
     Setting {
         id: "adjust-cursor-thickness",
-        label: tr_key!("Cursor thickness"),
-        description: tr_key!(
-            "Thicken bar, underline, and outlined cursors. Use 1 for one extra physical pixel, or 100%% to double thickness."
-        ),
+        label: "Cursor thickness",
+        description: "Thicken bar, underline, and outlined cursors. Use 1 for one extra physical pixel, or 100% to double thickness.",
         category: Category::Terminal,
-        section: tr_key!("Cursor"),
+        section: "Cursor",
     },
     Setting {
         id: "cursor-opacity",
-        label: tr_key!("Cursor opacity"),
-        description: tr_key!("How opaque the cursor is."),
+        label: "Cursor opacity",
+        description: "How opaque the cursor is.",
         category: Category::Terminal,
-        section: tr_key!("Cursor"),
+        section: "Cursor",
     },
     Setting {
         id: "copy-on-select",
-        label: tr_key!("Copy on select"),
-        description: tr_key!(
-            "Copy selected terminal text to the clipboard as soon as you finish selecting."
-        ),
+        label: "Copy on select",
+        description: "Copy selected terminal text to the clipboard as soon as you finish selecting.",
         category: Category::Terminal,
-        section: tr_key!("Selection"),
+        section: "Selection",
     },
     Setting {
         id: "selection-clear-on-typing",
-        label: tr_key!("Clear selection when typing"),
-        description: tr_key!("Remove the selected range when sending text to the terminal."),
+        label: "Clear selection when typing",
+        description: "Remove the selected range when sending text to the terminal.",
         category: Category::Terminal,
-        section: tr_key!("Selection"),
+        section: "Selection",
     },
     Setting {
         id: "selection-clear-on-copy",
-        label: tr_key!("Clear selection after copying"),
-        description: tr_key!("Remove the selected range after copying its text."),
+        label: "Clear selection after copying",
+        description: "Remove the selected range after copying its text.",
         category: Category::Terminal,
-        section: tr_key!("Selection"),
+        section: "Selection",
     },
     Setting {
         id: "scroll-precision",
-        label: tr_key!("Trackpad scroll speed"),
-        description: tr_key!("Adjust smooth scrolling speed."),
+        label: "Trackpad scroll speed",
+        description: "Adjust smooth scrolling speed.",
         category: Category::Terminal,
-        section: tr_key!("Scrolling"),
+        section: "Scrolling",
     },
     Setting {
         id: "scroll-discrete",
-        label: tr_key!("Mouse wheel scroll speed"),
-        description: tr_key!("Adjust mouse wheel scrolling speed."),
+        label: "Mouse wheel scroll speed",
+        description: "Adjust mouse wheel scrolling speed.",
         category: Category::Terminal,
-        section: tr_key!("Scrolling"),
+        section: "Scrolling",
     },
     Setting {
         id: "scroll-on-keystroke",
-        label: tr_key!("Scroll to bottom when typing"),
-        description: tr_key!("Return to live output when sending a keystroke."),
+        label: "Scroll to bottom when typing",
+        description: "Return to live output when sending a keystroke.",
         category: Category::Terminal,
-        section: tr_key!("Scrolling"),
+        section: "Scrolling",
     },
     Setting {
         id: "scroll-on-output",
-        label: tr_key!("Scroll to bottom on output"),
-        description: tr_key!("Return to live output whenever the terminal receives new text."),
+        label: "Scroll to bottom on output",
+        description: "Return to live output whenever the terminal receives new text.",
         category: Category::Terminal,
-        section: tr_key!("Scrolling"),
+        section: "Scrolling",
     },
     Setting {
         id: "mouse-reporting",
-        label: tr_key!("Allow programs to use the mouse"),
-        description: tr_key!(
-            "Send mouse events to terminal programs that request them. Hold Shift to select text instead."
-        ),
+        label: "Allow programs to use the mouse",
+        description: "Send mouse events to terminal programs that request them. Hold Shift to select text instead.",
         category: Category::Terminal,
-        section: tr_key!("Input"),
+        section: "Input",
     },
     Setting {
         id: "macos-option-as-alt",
-        label: tr_key!("Option as Alt"),
-        description: tr_key!(
-            "Use both Option keys, neither, or just one as the terminal Alt modifier."
-        ),
+        label: "Option as Alt",
+        description: "Use both Option keys, neither, or just one as the terminal Alt modifier.",
         category: Category::Terminal,
-        section: tr_key!("Input"),
+        section: "Input",
     },
     Setting {
         id: "directory",
-        label: tr_key!("New pane directory"),
-        description: tr_key!(
-            "Start new splits in the project folder or the current pane's working directory."
-        ),
+        label: "New pane directory",
+        description: "Start new splits in the project folder or the current pane's working directory.",
         category: Category::Terminal,
-        section: tr_key!("Input"),
+        section: "Input",
     },
     Setting {
         id: "terminal-keybindings",
-        label: tr_key!("Key bindings"),
-        description: tr_key!(
-            "Keys the terminal handles while it is focused. They take precedence over app shortcuts."
-        ),
+        label: "Key bindings",
+        description: "Keys the terminal handles while it is focused. They take precedence over app shortcuts.",
         category: Category::Terminal,
-        section: tr_key!("Key bindings"),
+        section: "Key bindings",
     },
     Setting {
         id: "keybind-clear-defaults",
-        label: tr_key!("Disable built-in bindings"),
-        description: tr_key!(
-            "Turn off Codesh's built-in terminal keys, such as Command-K to clear the screen, and keep only yours."
-        ),
+        label: "Disable built-in bindings",
+        description: "Turn off Codesh's built-in terminal keys, such as Command-K to clear the screen, and keep only yours.",
         category: Category::Terminal,
-        section: tr_key!("Key bindings"),
+        section: "Key bindings",
     },
     Setting {
         id: "terminal-import-notes",
-        label: tr_key!("Imported settings"),
-        description: tr_key!(
-            "Notes about imported terminal settings. Your original configuration is preserved."
-        ),
+        label: "Imported settings",
+        description: "Notes about imported terminal settings. Your original configuration is preserved.",
         category: Category::Terminal,
-        section: tr_key!("Migration"),
+        section: "Migration",
     },
     Setting {
         id: "terminal-reset",
-        label: tr_key!("Reset terminal settings"),
-        description: tr_key!(
-            "Return every setting on this page, including key bindings, to its default."
-        ),
+        label: "Reset terminal settings",
+        description: "Return every setting on this page, including key bindings, to its default.",
         category: Category::Terminal,
-        section: tr_key!("Reset"),
+        section: "Reset",
     },
     Setting {
         id: "server",
-        label: tr_key!("Current device"),
-        description: tr_key!("Manage the local server that keeps your terminal sessions running."),
+        label: "Current device",
+        description: "Manage the local server that keeps your terminal sessions running.",
         category: Category::Server,
-        section: tr_key!("Connection"),
+        section: "Connection",
     },
     Setting {
         id: "default-shell",
-        label: tr_key!("Default shell (executable path)"),
-        description: tr_key!(
-            "Shell for new sessions. Leave empty to use $SHELL, falling back to /bin/zsh."
-        ),
+        label: "Default shell (executable path)",
+        description: "Shell for new sessions. Leave empty to use $SHELL, falling back to /bin/zsh.",
         category: Category::Server,
-        section: tr_key!("Sessions"),
+        section: "Sessions",
     },
     Setting {
         id: "history-budget",
-        label: tr_key!("History budget per session (MiB)"),
-        description: tr_key!(
-            "Retained terminal history, from 0 to 65536 MiB. Saved-history changes take effect at the next server start."
-        ),
+        label: "History budget per session (MiB)",
+        description: "Retained terminal history, from 0 to 65536 MiB. Saved-history changes take effect at the next server start.",
         category: Category::Server,
-        section: tr_key!("Sessions"),
+        section: "Sessions",
     },
     Setting {
         id: "shell-integration",
-        label: tr_key!("Shell integration"),
-        description: tr_key!(
-            "Enable working-directory tracking and prompt navigation in new sessions."
-        ),
+        label: "Shell integration",
+        description: "Enable working-directory tracking and prompt navigation in new sessions.",
         category: Category::Server,
-        section: tr_key!("Sessions"),
+        section: "Sessions",
     },
     Setting {
         id: "Stop Server",
-        label: tr_key!("Stop Server"),
-        description: tr_key!(
-            "End all sessions on this device and stop the server. A confirmation is required."
-        ),
+        label: "Stop Server",
+        description: "End all sessions on this device and stop the server. A confirmation is required.",
         category: Category::Server,
-        section: tr_key!("Server control"),
+        section: "Server control",
     },
     Setting {
         id: "Restart Server",
-        label: tr_key!("Restart Server"),
-        description: tr_key!(
-            "End all sessions and start the server again. Saved terminal records are preserved."
-        ),
+        label: "Restart Server",
+        description: "End all sessions and start the server again. Saved terminal records are preserved.",
         category: Category::Server,
-        section: tr_key!("Server control"),
+        section: "Server control",
     },
     Setting {
         id: "mobile-access",
-        label: tr_key!("Allow mobile devices"),
-        description: tr_key!(
-            "Let paired phones reach this device's server over the local network or a VPN. A paired phone gets full terminal access."
-        ),
+        label: "Allow mobile devices",
+        description: "Let paired phones reach this device's server over the local network or a VPN. A paired phone gets full terminal access.",
         category: Category::Mobile,
-        section: tr_key!("Access"),
+        section: "Access",
     },
     Setting {
         id: "mobile-port",
-        label: tr_key!("Port"),
-        description: tr_key!("Network port phones connect to, from 1024 to 65535."),
+        label: "Port",
+        description: "Network port phones connect to, from 1024 to 65535.",
         category: Category::Mobile,
-        section: tr_key!("Access"),
+        section: "Access",
     },
     Setting {
         id: "mobile-status",
-        label: tr_key!("Status"),
-        description: tr_key!("Whether phones can reach this device right now."),
+        label: "Status",
+        description: "Whether phones can reach this device right now.",
         category: Category::Mobile,
-        section: tr_key!("Access"),
+        section: "Access",
     },
     Setting {
         id: "mobile-pair",
-        label: tr_key!("Pair a phone"),
-        description: tr_key!("Show a one-time code to scan with the Codesh app."),
+        label: "Pair a phone",
+        description: "Show a one-time code to scan with the Codesh app.",
         category: Category::Mobile,
-        section: tr_key!("Pairing"),
+        section: "Pairing",
     },
     Setting {
         id: "mobile-devices",
-        label: tr_key!("Paired devices"),
-        description: tr_key!("Phones that can connect. Revoking one disconnects it immediately."),
+        label: "Paired devices",
+        description: "Phones that can connect. Revoking one disconnects it immediately.",
         category: Category::Mobile,
-        section: tr_key!("Devices"),
+        section: "Devices",
     },
 ];
 

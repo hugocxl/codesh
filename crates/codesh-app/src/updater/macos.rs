@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use codesh_core::release::{self, Channel};
-use codesh_ui::tr;
 
 use super::{Release, Result, client, download, latest, replacement};
 
@@ -28,11 +27,7 @@ impl Installation {
     pub(crate) fn detect() -> Result<Self> {
         let app_name = Channel::current().app_name();
         release::Version::current().ok_or_else(|| {
-            tr!(
-                "Automatic updates require an installed release of %@",
-                app_name
-            )
-            .to_string()
+            format!("Automatic updates require an installed release of {app_name}")
         })?;
         let executable = codesh_core::executable::current_path()?;
         let bundle = executable
@@ -40,18 +35,15 @@ impl Installation {
             .and_then(Path::parent)
             .and_then(Path::parent)
             .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
-            .ok_or_else(|| {
-                tr!("Automatic updates require an installed %@.app", app_name).to_string()
-            })?
+            .ok_or_else(|| format!("Automatic updates require an installed {app_name}.app"))?
             .to_owned();
         if bundle.starts_with("/Volumes")
             || bundle
                 .components()
                 .any(|part| part.as_os_str() == "AppTranslocation")
         {
-            return Err(tr!(
-                "Move %@.app to Applications and reopen it before updating",
-                app_name
+            return Err(format!(
+                "Move {app_name}.app to Applications and reopen it before updating"
             )
             .to_string()
             .into());
@@ -61,7 +53,7 @@ impl Installation {
             .arg(&bundle)
             .output()?;
         if !details.status.success() {
-            return Err(tr!("The installed app has no valid developer signature")
+            return Err("The installed app has no valid developer signature"
                 .to_string()
                 .into());
         }
@@ -75,7 +67,7 @@ impl Installation {
                         .bytes()
                         .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
             })
-            .ok_or_else(|| tr!("Automatic updates require a Developer ID signed app").to_string())?
+            .ok_or_else(|| "Automatic updates require a Developer ID signed app".to_string())?
             .to_owned();
         let installation = Self { bundle, team };
         installation.verify_app(&installation.bundle, env!("CARGO_PKG_VERSION"))?;
@@ -99,7 +91,7 @@ impl Installation {
             .tempdir_in(
                 self.bundle
                     .parent()
-                    .ok_or_else(|| tr!("Missing application directory").to_string())?,
+                    .ok_or_else(|| "Missing application directory".to_string())?,
             )?;
         let download_dir = tempfile::tempdir()?;
         let dmg = download_dir.path().join("update.dmg");
@@ -117,7 +109,7 @@ impl Installation {
             .as_ref()
             .is_some_and(|info| info.version != release.version)
         {
-            return Err(tr!("The server version does not match the signed app")
+            return Err("The server version does not match the signed app"
                 .to_string()
                 .into());
         }
@@ -138,7 +130,7 @@ impl Installation {
         let record: serde_json::Value = serde_json::from_slice(&bytes)?;
         let version = record["version"]
             .as_str()
-            .ok_or_else(|| tr!("Invalid pending update").to_string())?
+            .ok_or_else(|| "Invalid pending update".to_string())?
             .to_owned();
         if !release::is_newer(&version, env!("CARGO_PKG_VERSION")) {
             std::fs::remove_file(path)?;
@@ -147,10 +139,10 @@ impl Installation {
         let staging = PathBuf::from(
             record["staging"]
                 .as_str()
-                .ok_or_else(|| tr!("Invalid pending update path").to_string())?,
+                .ok_or_else(|| "Invalid pending update path".to_string())?,
         );
         if !self.owns_staging(&staging) {
-            return Err(tr!("Pending update is outside the installation directory")
+            return Err("Pending update is outside the installation directory"
                 .to_string()
                 .into());
         }
@@ -159,7 +151,7 @@ impl Installation {
         let build =
             crate::server::read_build_info(&candidate.join("Contents/MacOS/codesh-server")).ok();
         if build.as_ref().is_some_and(|build| build.version != version) {
-            return Err(tr!("Pending update version mismatch").to_string().into());
+            return Err("Pending update version mismatch".into());
         }
         Ok(Some((
             PreparedUpdate {
@@ -189,7 +181,7 @@ impl Installation {
         let _bundle_lock = replacement::lock(
             self.bundle
                 .parent()
-                .ok_or_else(|| tr!("Missing application directory").to_string())?,
+                .ok_or_else(|| "Missing application directory".to_string())?,
         )?;
         let client = codesh_client::Client::connect(socket)?;
         self.cleanup_previous(client.server_info())
@@ -199,7 +191,7 @@ impl Installation {
         for entry in std::fs::read_dir(
             self.bundle
                 .parent()
-                .ok_or_else(|| tr!("Missing application directory").to_string())?,
+                .ok_or_else(|| "Missing application directory".to_string())?,
         )? {
             let path = entry?.path();
             if !self.owns_staging(&path) {
@@ -249,7 +241,7 @@ impl Installation {
                 .args(["-extract", key, "raw", "-o", "-"])
                 .arg(&plist))?;
             if actual.trim() != expected {
-                return Err(tr!("The signed app has an unexpected %@", key)
+                return Err(format!("The signed app has an unexpected {key}")
                     .to_string()
                     .into());
             }
@@ -260,7 +252,7 @@ impl Installation {
                 .arg(&plist))?;
             if count.trim().parse::<u64>().ok() != Some(build) {
                 return Err(
-                    tr!("The signed beta build number does not match the update feed")
+                    "The signed beta build number does not match the update feed"
                         .to_string()
                         .into(),
                 );
@@ -279,11 +271,9 @@ impl Installation {
         let server = crate::server::read_build_info(&app.join("Contents/MacOS/codesh-server"))?;
         let client = crate::server::read_build_info(&app.join("Contents/MacOS/codesh"))?;
         if client != server || server.version != version {
-            return Err(
-                tr!("The bundled client and server do not match the release")
-                    .to_string()
-                    .into(),
-            );
+            return Err("The bundled client and server do not match the release"
+                .to_string()
+                .into());
         }
         Ok(())
     }
@@ -303,7 +293,7 @@ impl PreparedUpdate {
             self.installation
                 .bundle
                 .parent()
-                .ok_or_else(|| tr!("Missing application directory").to_string())?,
+                .ok_or_else(|| "Missing application directory".to_string())?,
         )?;
         if self.installation.owns_staging(&self.staging)
             && !self.staging.join("retained.json").exists()
@@ -344,7 +334,7 @@ impl PreparedUpdate {
                 .ok();
         if build != self.build {
             return Err(
-                tr!("The staged update metadata changed. Check for updates again.")
+                "The staged update metadata changed. Check for updates again."
                     .to_string()
                     .into(),
             );
@@ -386,7 +376,7 @@ impl PreparedUpdate {
             self.installation
                 .bundle
                 .parent()
-                .ok_or_else(|| tr!("Missing application directory").to_string())?,
+                .ok_or_else(|| "Missing application directory".to_string())?,
         )?;
         let candidate = self.candidate();
         self.validate()?;
@@ -398,10 +388,10 @@ impl PreparedUpdate {
             })
         {
             if backup.exists() {
-                return Err(tr!(
-                    "%@. The previous app is available at %@",
-                    error.to_string(),
-                    backup.display().to_string()
+                return Err(format!(
+                    "{}. The previous app is available at {}",
+                    error,
+                    backup.display()
                 )
                 .to_string()
                 .into());
@@ -478,8 +468,8 @@ impl Drop for MountedImage {
 fn run(command: &mut Command) -> Result<String> {
     let output = command.output()?;
     if !output.status.success() {
-        return Err(tr!(
-            "%@ failed: %@",
+        return Err(format!(
+            "{} failed: {}",
             command.get_program().to_string_lossy(),
             String::from_utf8_lossy(&output.stderr).trim()
         )
@@ -548,7 +538,7 @@ fn write_record(path: &Path, value: &serde_json::Value) -> Result<()> {
     use std::io::Write;
     let directory = path
         .parent()
-        .ok_or_else(|| tr!("Missing update directory").to_string())?;
+        .ok_or_else(|| "Missing update directory".to_string())?;
     let mut file = tempfile::NamedTempFile::new_in(directory)?;
     serde_json::to_writer(file.as_file_mut(), value)?;
     file.flush()?;

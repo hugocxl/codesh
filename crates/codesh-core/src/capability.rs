@@ -4,8 +4,6 @@
 
 use std::borrow::Cow;
 
-use crate::tr;
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Feature {
     Voice,
@@ -25,17 +23,15 @@ impl Feature {
     ];
 
     /// Why a build without a backend for the feature cannot offer it.
-    pub fn unsupported_reason(self) -> Cow<'static, str> {
+    pub fn unsupported_reason(self) -> &'static str {
         match self {
-            Self::Voice => tr!("Voice input is not available on this platform yet."),
-            Self::Notifications => {
-                tr!("Desktop notifications are not available on this platform yet.")
-            }
+            Self::Voice => "Voice input is not available on this platform yet.",
+            Self::Notifications => "Desktop notifications are not available on this platform yet.",
             Self::CommandLineTool => {
-                tr!("Installing the command line tool is not available on this platform yet.")
+                "Installing the command line tool is not available on this platform yet."
             }
-            Self::Updates => tr!("Automatic updates are not available on this platform yet."),
-            Self::AppHiding => tr!("Hiding apps is not available on this platform."),
+            Self::Updates => "Automatic updates are not available on this platform yet.",
+            Self::AppHiding => "Hiding apps is not available on this platform.",
         }
     }
 }
@@ -67,7 +63,7 @@ impl Capability {
     pub fn reason(&self, feature: Feature) -> Option<Cow<'static, str>> {
         match self {
             Self::Supported => None,
-            Self::Unsupported => Some(feature.unsupported_reason()),
+            Self::Unsupported => Some(Cow::Borrowed(feature.unsupported_reason())),
             Self::Unavailable(reason) => Some(Cow::Owned(reason.clone())),
         }
     }
@@ -109,7 +105,7 @@ impl Capabilities {
 
     /// Why this build cannot offer `feature` at all. `None` while a backend
     /// exists, whatever its services report.
-    pub fn unsupported(&self, feature: Feature) -> Option<Cow<'static, str>> {
+    pub fn unsupported(&self, feature: Feature) -> Option<&'static str> {
         (!self.has_backend(feature)).then(|| feature.unsupported_reason())
     }
 }

@@ -1,6 +1,6 @@
 use codesh_app_core::{Direction, PaneContent, PaneId};
 use codesh_core::shortcuts::ShortcutId;
-use codesh_ui::{components::IconGlyph, icon::Icon, tr};
+use codesh_ui::{components::IconGlyph, icon::Icon};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
@@ -80,22 +80,22 @@ pub(crate) fn render(
                 .group_hover("pane-card", Styled::visible)
         });
     let (zoom_icon, zoom_tooltip) = if zoomed {
-        (Icon::Restore, tr!("Restore Pane"))
+        (Icon::Restore, "Restore Pane")
     } else {
-        (Icon::Maximize, tr!("Zoom Pane"))
+        (Icon::Maximize, "Zoom Pane")
     };
     for (name, icon, tooltip, shortcut, action) in [
         (
             "right",
             Icon::Columns,
-            tr!("Split Right"),
+            "Split Right",
             ShortcutId::SplitRight,
             Action::Right,
         ),
         (
             "down",
             Icon::Rows,
-            tr!("Split Down"),
+            "Split Down",
             ShortcutId::SplitDown,
             Action::Down,
         ),
@@ -109,7 +109,7 @@ pub(crate) fn render(
         (
             "close",
             Icon::X,
-            tr!("Close Pane"),
+            "Close Pane",
             ShortcutId::ClosePane,
             Action::Close,
         ),

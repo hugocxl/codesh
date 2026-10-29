@@ -118,9 +118,8 @@ pub(super) fn resolve(requested: &str) -> Result<String, String> {
     if requested.is_empty() {
         return Ok(system());
     }
-    normalize(requested).ok_or_else(|| {
-        crate::tr!("Choose a supported dictation language in Settings → Composer.").into()
-    })
+    normalize(requested)
+        .ok_or_else(|| "Choose a supported dictation language in Settings → Composer.".into())
 }
 
 fn system() -> String {

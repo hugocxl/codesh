@@ -4,7 +4,6 @@ use codesh_app_core::{PaneId, ServerId, TabId};
 use codesh_client::ClientError;
 use codesh_core::capability::Feature;
 use codesh_protocol::{ActivitySnapshot, AgentActivity, SessionId};
-use codesh_ui::tr;
 use gpui::Context;
 
 use super::{AppModel, Work};
@@ -34,9 +33,9 @@ fn notification_id(server: ServerId, id: u64) -> String {
 fn activity_description(kind: codesh_protocol::ActivityKind) -> gpui::SharedString {
     use codesh_protocol::ActivityKind;
     match kind {
-        ActivityKind::Attention => tr!("Needs your attention"),
-        ActivityKind::Completed => tr!("Finished working"),
-        ActivityKind::Unrecognized(_) => tr!("Has an update"),
+        ActivityKind::Attention => "Needs your attention".into(),
+        ActivityKind::Completed => "Finished working".into(),
+        ActivityKind::Unrecognized(_) => "Has an update".into(),
     }
 }
 
@@ -255,11 +254,7 @@ impl AppModel {
                 }
             }
             Err(error) => {
-                self.server_problem(
-                    server,
-                    tr!("Could not read activity: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.server_problem(server, format!("Could not read activity: {error}"), cx);
             }
         }
         cx.notify();
@@ -376,10 +371,7 @@ impl AppModel {
             }
             Err(error) => {
                 activity.ack_failed = true;
-                self.fail(
-                    tr!("Could not mark activity read: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not mark activity read: {error}"), cx);
             }
         }
         cx.notify();

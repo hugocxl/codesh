@@ -1,5 +1,4 @@
-use codesh_ui::l10n::tr_key;
-use codesh_ui::{controls, tr};
+use codesh_ui::controls;
 use gpui::{AnyElement, Context, IntoElement, ParentElement, SharedString, Styled, div};
 
 use super::{Category, Change, PickerKind, SettingsEvent, SettingsView};
@@ -36,8 +35,8 @@ fn provider_label(view: &SettingsView, action: Action) -> SharedString {
     {
         Some(id) => match crate::ai::provider(id) {
             Some(provider) if installed(provider.id) => provider.name.into(),
-            Some(provider) => tr!("%@ · Not installed", provider.name),
-            None => tr!("%@ · Unsupported", id),
+            Some(provider) => format!("{} · Not installed", provider.name).into(),
+            None => format!("{id} · Unsupported").into(),
         },
         None => view
             .snapshot
@@ -45,8 +44,8 @@ fn provider_label(view: &SettingsView, action: Action) -> SharedString {
             .first()
             .and_then(|id| crate::ai::provider(id))
             .map_or_else(
-                || tr!("Auto · None installed"),
-                |provider| tr!("Auto · %@", provider.name),
+                || "Auto · None installed".into(),
+                |provider| format!("Auto · {}", provider.name).into(),
             ),
     }
 }
@@ -55,11 +54,8 @@ pub(super) fn rows(view: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
     let mut rows = Vec::new();
     for (action, prompt_id) in PROMPTS {
         let (provider, prompt) = match action {
-            Action::Commit => (tr_key!("Commit provider"), tr_key!("Commit prompt")),
-            Action::CreatePullRequest => (
-                tr_key!("Pull request provider"),
-                tr_key!("Pull request prompt"),
-            ),
+            Action::Commit => ("Commit provider", "Commit prompt"),
+            Action::CreatePullRequest => ("Pull request provider", "Pull request prompt"),
         };
         if view.matches(Category::Ai, provider) {
             rows.push(view.row(
@@ -78,7 +74,7 @@ pub(super) fn rows(view: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
             let restore = controls::button(
                 view.style(),
                 &format!("{prompt_id}-restore"),
-                &tr!("Restore Default"),
+                "Restore Default",
                 edited,
                 cx.listener(move |_, _, _, cx| {
                     cx.emit(SettingsEvent::Change(Change::Field(

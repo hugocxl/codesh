@@ -5,10 +5,8 @@ use codesh_client::{ClientError, RunGrid};
 use codesh_protocol::{ErrorCode, HistoryCursor, SearchMatch, SearchPage};
 use codesh_ui::components::IconButton;
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::tr_key;
 use codesh_ui::text_input::{InputEvent, InputStyle, SEARCH_CONTEXT, TextInput};
 use codesh_ui::theme::{Metrics, Theme};
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AppContext, Context, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
@@ -68,7 +66,7 @@ impl Results {
             return None;
         }
         if self.query.len() > 256 {
-            self.error = Some(tr!("Query is too long").into());
+            self.error = Some("Query is too long".into());
             return None;
         }
         Some(self.request(HistoryCursor(0)))
@@ -109,7 +107,7 @@ impl Results {
     fn stale(&mut self) -> Option<SearchRequest> {
         self.clear();
         if self.restarted {
-            self.error = Some(tr!("Output changed; search again").into());
+            self.error = Some("Output changed; search again".into());
             return None;
         }
         self.restarted = true;
@@ -134,14 +132,14 @@ impl Results {
             return error.clone();
         }
         if self.loading_history {
-            return tr!("Loading…").into();
+            return "Loading…".into();
         }
         let current = self.current.map_or(0, |index| index + 1);
         let total = self.matches.len();
         if self.pending.is_some() {
-            tr!("%lld of %lld…", current, total).into()
+            format!("{current} of {total}…")
         } else {
-            tr!("%lld of %lld", current, total).into()
+            format!("{current} of {total}")
         }
     }
 
@@ -216,7 +214,7 @@ impl TerminalPane {
         }
         let input = cx.new(|cx| {
             TextInput::new(InputStyle::compact(theme, &metrics), cx)
-                .with_placeholder_key(tr_key!("Find in terminal…"))
+                .with_placeholder("Find in terminal…")
                 .with_key_context(SEARCH_CONTEXT)
         });
         let subscription = cx.subscribe(&input, |pane, input, event, cx| match event {
@@ -456,11 +454,11 @@ pub(crate) fn bar(pane: &TerminalPane, cx: &mut Context<TerminalPane>) -> Option
                     .child(find.results.counter()),
             )
             .child(
-                button("find-previous", Icon::ChevronLeft, tr!("Previous match"))
+                button("find-previous", Icon::ChevronLeft, "Previous match".into())
                     .on_click(cx.listener(|pane, _, _, cx| pane.step_find(true, cx))),
             )
             .child(
-                button("find-next", Icon::ChevronRight, tr!("Next match"))
+                button("find-next", Icon::ChevronRight, "Next match".into())
                     .on_click(cx.listener(|pane, _, _, cx| pane.step_find(false, cx))),
             )
             .child(
@@ -484,7 +482,7 @@ pub(crate) fn bar(pane: &TerminalPane, cx: &mut Context<TerminalPane>) -> Option
                     .child("Aa"),
             )
             .child(
-                button("find-close", Icon::X, tr!("Close search"))
+                button("find-close", Icon::X, "Close search".into())
                     .on_click(cx.listener(|pane, _, _, cx| pane.close_find(cx))),
             )
             .into_any_element(),

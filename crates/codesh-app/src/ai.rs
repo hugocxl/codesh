@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use codesh_core::worker::WorkerPool;
-use codesh_ui::tr;
 
 const OUTPUT_LIMIT: usize = 256 * 1024;
 const PROMPT_LIMIT: usize = 256 * 1024;
@@ -261,14 +260,14 @@ impl Provider {
         cancellation: &Cancellation,
     ) -> Result<String, String> {
         if prompt.len() > PROMPT_LIMIT {
-            return Err(tr!("AI prompt exceeds the 256 KB limit").to_string());
+            return Err("AI prompt exceeds the 256 KB limit".to_string());
         }
         if !directory.is_dir() {
-            return Err(tr!("The project directory isn't available on this Mac").to_string());
+            return Err("The project directory isn't available on this Mac".to_string());
         }
         let executable = self
             .executable_path()
-            .ok_or_else(|| tr!("%@ CLI is not installed", self.name).to_string())?;
+            .ok_or_else(|| format!("{} CLI is not installed", self.name))?;
         let mut command = Command::new(executable);
         command
             .args(self.arguments)
@@ -293,10 +292,10 @@ impl Provider {
         let (stdout, stderr) = capture(command, TIMEOUT, OUTPUT_LIMIT, cancellation)
             .map_err(|failure| failure.describe(self.name))?;
         let output = String::from_utf8(stdout)
-            .map_err(|_| tr!("%@ returned invalid UTF-8", self.name).to_string())?;
+            .map_err(|_| format!("{} returned invalid UTF-8", self.name))?;
         if output.trim().is_empty() {
-            return Err(tr!(
-                "%@ returned an empty response: %@",
+            return Err(format!(
+                "{} returned an empty response: {}",
                 self.name,
                 String::from_utf8_lossy(&stderr).trim()
             )
@@ -330,14 +329,14 @@ enum Failure {
 impl Failure {
     fn describe(self, provider: &str) -> String {
         match self {
-            Self::Cancelled => tr!("Cancelled").to_string(),
+            Self::Cancelled => "Cancelled".to_string(),
             Self::TimedOut(_) => {
-                tr!("%@ did not respond within five minutes", provider).to_string()
+                format!("{provider} did not respond within five minutes")
             }
             Self::TooLarge => {
-                tr!("%@'s response exceeded the 256 KB output limit", provider).to_string()
+                format!("{provider}'s response exceeded the 256 KB output limit")
             }
-            Self::Exited(detail) => tr!("%@ failed: %@", provider, detail).to_string(),
+            Self::Exited(detail) => format!("{provider} failed: {detail}"),
             Self::Io(error) => error,
         }
     }
@@ -405,7 +404,7 @@ fn capture(
     ];
     for (index, pipe) in pipes.into_iter().enumerate() {
         let Some(mut pipe) = pipe else {
-            return Err(Failure::Io(tr!("AI output pipe unavailable").to_string()));
+            return Err(Failure::Io("AI output pipe unavailable".to_string()));
         };
         let sender = sender.clone();
         std::thread::spawn(move || {
@@ -504,7 +503,7 @@ pub(crate) fn run<T: Send + 'static>(
         result
             .recv()
             .await
-            .unwrap_or_else(|_| Err(tr!("AI worker stopped").to_string()))
+            .unwrap_or_else(|_| Err("AI worker stopped".to_string()))
     }
 }
 

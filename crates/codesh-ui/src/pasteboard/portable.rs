@@ -16,7 +16,7 @@ pub fn read_content(cx: &gpui::App) -> Result<Content, String> {
     for entry in item.entries() {
         if let gpui::ClipboardEntry::Image(image) = entry {
             if image.bytes().len() > 25 * 1024 * 1024 {
-                return Err(crate::tr!("Copied image is larger than 25 MiB").to_string());
+                return Err("Copied image is larger than 25 MiB".to_string());
             }
             return Ok(Content::Image(image.bytes().to_vec()));
         }

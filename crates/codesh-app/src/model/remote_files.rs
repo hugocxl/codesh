@@ -16,7 +16,6 @@ use codesh_protocol::{
     ErrorCode, FilesAction, FilesReply, FilesRequest, MAX_UPLOAD_BYTES, ProjectId, ServerPath,
     SessionId,
 };
-use codesh_ui::tr;
 use gpui::Context;
 
 use super::AppModel;
@@ -66,14 +65,12 @@ impl RemoteFiles {
     }
 
     fn read_local(&self, path: &Path, name: &str) -> Result<Vec<u8>, String> {
-        let unreadable =
-            |error: io::Error| tr!("Could not read %@: %@", name, error.to_string()).to_string();
+        let unreadable = |error: io::Error| format!("Could not read {name}: {error}");
         let metadata = std::fs::metadata(path).map_err(unreadable)?;
         if metadata.is_dir() {
-            return Err(tr!(
-                "%@ is a folder. Only files can be sent to %@.",
-                name,
-                &self.name
+            return Err(format!(
+                "{} is a folder. Only files can be sent to {}.",
+                name, &self.name
             )
             .to_string());
         }
@@ -90,25 +87,22 @@ impl RemoteFiles {
     fn send(&self, session: SessionId, name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
         match self.client.upload(session, name, bytes) {
             Ok(path) => Ok(local_path(&path)),
-            Err(ClientError::Server(error)) if error.code == ErrorCode::Unsupported => Err(tr!(
-                "Codesh on %@ can't receive files. Update Codesh there.",
-                &self.name
+            Err(ClientError::Server(error)) if error.code == ErrorCode::Unsupported => {
+                Err(format!(
+                    "Codesh on {} can't receive files. Update Codesh there.",
+                    &self.name
+                )
+                .to_string())
+            }
+            Err(ClientError::Server(error)) => Err(format!(
+                "Could not send {} to {}: {}",
+                name, &self.name, &error.message
             )
             .to_string()),
-            Err(ClientError::Server(error)) => Err(tr!(
-                "Could not send %@ to %@: %@",
-                name,
-                &self.name,
-                &error.message
-            )
-            .to_string()),
-            Err(error) => Err(tr!(
-                "Could not send %@ to %@: %@",
-                name,
-                &self.name,
-                error.to_string()
-            )
-            .to_string()),
+            Err(error) => Err(format!(
+                "Could not send {} to {}: {}",
+                name, &self.name, error
+            )),
         }
     }
 
@@ -183,8 +177,8 @@ impl RemoteFiles {
     /// The file's bytes, up to the files limit.
     pub(crate) fn read(&self, path: &Path) -> Result<Vec<u8>, String> {
         let Some((project, relative)) = self.locate(path) else {
-            return Err(tr!(
-                "Codesh can open copies only of files in %@'s projects and Home.",
+            return Err(format!(
+                "Codesh can open copies only of files in {}'s projects and Home.",
                 &self.name
             )
             .to_string());
@@ -195,7 +189,7 @@ impl RemoteFiles {
         };
         match self.client.files(request) {
             Ok(FilesReply::Bytes(file)) => Ok(file.bytes),
-            Ok(_) => Err(tr!("The server sent something other than the file.").to_string()),
+            Ok(_) => Err("The server sent something other than the file.".to_string()),
             Err(ClientError::Server(error)) => Err(error.message),
             Err(error) => Err(error.to_string()),
         }
@@ -203,12 +197,7 @@ impl RemoteFiles {
 }
 
 fn too_large(name: &str, server: &str) -> String {
-    tr!(
-        "%@ is larger than 100 MiB, the most Codesh sends to %@.",
-        name,
-        server
-    )
-    .to_string()
+    format!("{name} is larger than 100 MiB, the most Codesh sends to {server}.")
 }
 
 fn display_name(path: &Path) -> String {
@@ -343,14 +332,16 @@ impl AppModel {
     ) -> Result<RemoteFiles, String> {
         let name = self.server_label(server);
         if !self.ready(server) || !self.confirmed(server) {
-            return Err(tr!("%@ isn't connected.", &name).to_string());
+            return Err(format!("{name} isn't connected."));
         }
         let Some(client) = self.side_client(server, cx) else {
-            return Err(tr!("Still connecting to %@. Try again in a moment.", &name).to_string());
+            return Err(format!(
+                "Still connecting to {name}. Try again in a moment."
+            ));
         };
         let home = self
             .remote_home(server)
-            .ok_or_else(|| tr!("%@'s projects haven't loaded yet.", &name).to_string())?
+            .ok_or_else(|| format!("{name}'s projects haven't loaded yet."))?
             .to_path_buf();
         let mut roots: Vec<_> = self
             .state
@@ -522,14 +513,11 @@ impl AppModel {
             .remote_files(server, cx)
             .is_ok_and(|files| files.reaches(&file.path));
         self.remote_links.menu = Some((pane, server, file.path.clone()));
-        let mut copy = Item::action(tr!("Open a Copy"), Command::OpenRemoteCopy);
+        let mut copy = Item::action("Open a Copy", Command::OpenRemoteCopy);
         if !reachable {
             copy = copy.disabled();
         }
-        let items = vec![
-            copy,
-            Item::action(tr!("Copy Path"), Command::CopyRemotePath),
-        ];
+        let items = vec![copy, Item::action("Copy Path", Command::CopyRemotePath)];
         let model = cx.entity().downgrade();
         let window = self.window;
         cx.defer(move |cx| {
@@ -549,7 +537,7 @@ impl AppModel {
             cx.write_to_clipboard(gpui::ClipboardItem::new_string(
                 path.to_string_lossy().into_owned(),
             ));
-            self.show_notice(tr!("Copied the path").to_string(), cx);
+            self.show_notice("Copied the path".to_string(), cx);
         }
     }
 
@@ -563,7 +551,7 @@ impl AppModel {
         let files = match self.remote_files(server, cx) {
             Ok(files) => files,
             Err(error) => {
-                self.fail(tr!("Could not open a copy: %@", &error).to_string(), cx);
+                self.fail(format!("Could not open a copy: {error}"), cx);
                 return;
             }
         };
@@ -576,7 +564,7 @@ impl AppModel {
         cx.spawn(async move |model, cx| {
             if let Err(error) = opened.await {
                 let _ = model.update(cx, |model, cx| {
-                    model.fail(tr!("Could not open a copy: %@", &error).to_string(), cx);
+                    model.fail(format!("Could not open a copy: {error}"), cx);
                 });
             }
         })

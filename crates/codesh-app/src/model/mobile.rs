@@ -2,7 +2,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use codesh_app_core::ServerId;
 use codesh_protocol::{DeviceId, PairingOffer, RemoteAccessSettings, RemoteAccessState};
-use codesh_ui::tr;
 use gpui::{AnyWindowHandle, Context, Task};
 
 use super::{AppModel, Quitting};
@@ -61,34 +60,34 @@ impl AppModel {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if !self.mobile_available() {
-            return Err(tr!("Connect to the server before changing mobile access").to_string());
+            return Err("Connect to the server before changing mobile access".to_string());
         }
         if self.mobile.busy {
-            return Err(tr!("Wait for the current mobile access change to finish").to_string());
+            return Err("Wait for the current mobile access change to finish".to_string());
         }
         let current = self
             .mobile
             .state
             .as_ref()
             .map(|state| state.settings)
-            .ok_or_else(|| tr!("Load mobile access first").to_string())?;
+            .ok_or_else(|| "Load mobile access first".to_string())?;
         let settings = match change {
             Change::MobileAccess(enabled) => RemoteAccessSettings { enabled, ..current },
             Change::Field("mobile-port", port) => RemoteAccessSettings {
                 port: port
                     .parse()
-                    .map_err(|_| tr!("Use a port from 1024 to 65535").to_string())?,
+                    .map_err(|_| "Use a port from 1024 to 65535".to_string())?,
                 ..current
             },
-            _ => return Err(tr!("Unknown mobile access setting").to_string()),
+            _ => return Err("Unknown mobile access setting".to_string()),
         };
         settings
             .validate()
-            .map_err(|_| tr!("Use a port from 1024 to 65535").to_string())?;
+            .map_err(|_| "Use a port from 1024 to 65535".to_string())?;
         if settings != current {
             self.mobile.busy = self.send(ServerId::local(), Work::WriteRemoteAccess(settings), cx);
             if !self.mobile.busy {
-                return Err(tr!("Could not send the change to the server").to_string());
+                return Err("Could not send the change to the server".to_string());
             }
         }
         Ok(())
@@ -151,8 +150,7 @@ impl AppModel {
                     {
                         if model.mobile.busy {
                             model.mobile.error = Some(
-                                tr!("Wait for the current mobile access change to finish")
-                                    .to_string(),
+                                "Wait for the current mobile access change to finish".to_string(),
                             );
                         } else {
                             model.mobile.busy =

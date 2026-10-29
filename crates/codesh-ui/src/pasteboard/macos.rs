@@ -2,8 +2,6 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::NSPasteboard;
 use objc2_foundation::{NSString, NSURL};
 
-use crate::tr;
-
 use super::Content;
 use std::path::PathBuf;
 pub fn read_content(_cx: &gpui::App) -> Result<Content, String> {
@@ -33,7 +31,7 @@ pub fn read_content(_cx: &gpui::App) -> Result<Content, String> {
     ] {
         if let Some(data) = board.dataForType(&NSString::from_str(identifier)) {
             if data.len() > 25 * 1024 * 1024 {
-                return Err(tr!("Copied image is larger than 25 MiB").to_string());
+                return Err("Copied image is larger than 25 MiB".to_string());
             }
             return Ok(Content::Image(data.to_vec()));
         }

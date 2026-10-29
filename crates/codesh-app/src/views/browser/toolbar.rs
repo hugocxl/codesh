@@ -5,7 +5,6 @@ use std::rc::Rc;
 use codesh_ui::browser::NativeBrowser;
 use codesh_ui::components::{IconButton, IconGlyph, Tooltip};
 use codesh_ui::icon::Icon;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, Context, Entity, Focusable, InteractiveElement, IntoElement,
@@ -66,7 +65,7 @@ pub(super) fn render(
                     button(
                         "browser-back",
                         Icon::ChevronLeft,
-                        tr!("Back"),
+                        "Back".into(),
                         view.page.can_go_back,
                     )
                     .on_click(cx.listener(|view, _, _, cx| view.go_back(cx))),
@@ -75,16 +74,16 @@ pub(super) fn render(
                     button(
                         "browser-forward",
                         Icon::ChevronRight,
-                        tr!("Forward"),
+                        "Forward".into(),
                         view.page.can_go_forward,
                     )
                     .on_click(cx.listener(|view, _, _, cx| view.go_forward(cx))),
                 )
                 .child(if loading {
-                    button("browser-stop", Icon::X, tr!("Stop"), true)
+                    button("browser-stop", Icon::X, "Stop".into(), true)
                         .on_click(cx.listener(|view, _, _, cx| view.stop(cx)))
                 } else {
-                    button("browser-reload", Icon::RotateCw, tr!("Reload"), true)
+                    button("browser-reload", Icon::RotateCw, "Reload".into(), true)
                         .on_click(cx.listener(|view, _, _, cx| view.reload(cx)))
                 })
                 .child(address)
@@ -119,15 +118,15 @@ fn element_picker_button(view: &BrowserView, cx: &mut Context<BrowserView>) -> A
     };
     let glyph = IconGlyph::new(Icon::Overlap, view.metrics.icon_md(), color);
     let tooltip = if view.selecting_element {
-        tr!("Click an element to copy its HTML and text. Press Escape to cancel")
+        "Click an element to copy its HTML and text. Press Escape to cancel"
     } else {
-        tr!("Select an element to copy its HTML and text")
+        "Select an element to copy its HTML and text"
     };
     toolbar_button(
         view,
         "browser-copy-element",
         div().child(glyph),
-        tooltip,
+        tooltip.into(),
         view.selecting_element,
         move |view, _, cx| {
             if enabled {
@@ -148,7 +147,7 @@ fn external_button(view: &BrowserView, cx: &mut Context<BrowserView>) -> AnyElem
         view,
         "browser-external",
         div().child(glyph),
-        tr!("Open in External Browser"),
+        "Open in External Browser".into(),
         false,
         |_, event, cx| cx.emit(BrowserViewEvent::Menu(Menu::External, event.position)),
         cx,
@@ -179,7 +178,7 @@ fn profile_button(view: &BrowserView, cx: &mut Context<BrowserView>) -> AnyEleme
         view,
         "browser-profile",
         content,
-        tr!("Browser Profile"),
+        "Browser Profile".into(),
         false,
         |_, event, cx| cx.emit(BrowserViewEvent::Menu(Menu::Profile, event.position)),
         cx,
@@ -440,23 +439,23 @@ pub(super) fn find_bar(view: &BrowserView, cx: &mut Context<BrowserView>) -> Opt
                     div()
                         .text_size(metrics.font_caption())
                         .text_color(theme.warning)
-                        .child(tr!("Not found")),
+                        .child("Not found"),
                 )
             })
             .child(
                 button(
                     "browser-find-previous",
                     Icon::ChevronUp,
-                    tr!("Previous match"),
+                    "Previous match".into(),
                 )
                 .on_click(cx.listener(|view, _, _, cx| view.step_find(true, cx))),
             )
             .child(
-                button("browser-find-next", Icon::ChevronDown, tr!("Next match"))
+                button("browser-find-next", Icon::ChevronDown, "Next match".into())
                     .on_click(cx.listener(|view, _, _, cx| view.step_find(false, cx))),
             )
             .child(
-                button("browser-find-close", Icon::X, tr!("Close search"))
+                button("browser-find-close", Icon::X, "Close search".into())
                     .on_click(cx.listener(|view, _, window, cx| view.close_find(window, cx))),
             )
             .into_any_element(),

@@ -4,8 +4,6 @@ use codesh_app_core::Direction;
 use codesh_app_core::settings::{Keymap, SidePanel};
 use codesh_ui::components::IconGlyph;
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     App, Context, Focusable, FontWeight, InteractiveElement, IntoElement, KeyBinding,
@@ -531,54 +529,49 @@ fn register_terminal_commands(
         .and_then(|pane| model.terminal(&pane))
         .is_none();
     for command in [
-        action(model, ShortcutId::Find, tr_key!("Find…"), Find),
-        action(model, ShortcutId::FindNext, tr_key!("Find Next"), FindNext),
+        action(model, ShortcutId::Find, "Find…", Find),
+        action(model, ShortcutId::FindNext, "Find Next", FindNext),
         action(
             model,
             ShortcutId::FindPrevious,
-            tr_key!("Find Previous"),
+            "Find Previous",
             FindPrevious,
         ),
         action(
             model,
             ShortcutId::PreviousPrompt,
-            tr_key!("Previous Prompt"),
+            "Previous Prompt",
             PreviousPrompt,
         ),
-        action(
-            model,
-            ShortcutId::NextPrompt,
-            tr_key!("Next Prompt"),
-            NextPrompt,
-        ),
+        action(model, ShortcutId::NextPrompt, "Next Prompt", NextPrompt),
         action(
             model,
             ShortcutId::SelectCommandOutput,
-            tr_key!("Select Command Output"),
+            "Select Command Output",
             SelectCommandOutput,
         ),
         action(
             model,
             ShortcutId::ScrollToBottom,
-            tr_key!("Scroll to Bottom"),
+            "Scroll to Bottom",
             ScrollToBottom,
         ),
         action(
             model,
             ShortcutId::IncreaseFontSize,
-            tr_key!("Increase Font Size"),
+            "Increase Font Size",
             IncreaseFontSize,
         ),
         action(
             model,
             ShortcutId::DecreaseFontSize,
-            tr_key!("Decrease Font Size"),
+            "Decrease Font Size",
             DecreaseFontSize,
         ),
         action(
             model,
             ShortcutId::DetachTerminal,
-            tr_key!("Detach Terminal"),
+            "Detach Terminal",
             DetachTerminal,
         ),
     ] {
@@ -597,25 +590,20 @@ fn register_pane_focus_commands(
         action(
             model,
             ShortcutId::FocusPaneLeft,
-            tr_key!("Focus Pane Left"),
+            "Focus Pane Left",
             FocusPaneLeft,
         ),
         action(
             model,
             ShortcutId::FocusPaneRight,
-            tr_key!("Focus Pane Right"),
+            "Focus Pane Right",
             FocusPaneRight,
         ),
-        action(
-            model,
-            ShortcutId::FocusPaneUp,
-            tr_key!("Focus Pane Up"),
-            FocusPaneUp,
-        ),
+        action(model, ShortcutId::FocusPaneUp, "Focus Pane Up", FocusPaneUp),
         action(
             model,
             ShortcutId::FocusPaneDown,
-            tr_key!("Focus Pane Down"),
+            "Focus Pane Down",
             FocusPaneDown,
         ),
     ] {
@@ -636,34 +624,29 @@ fn register_app_commands(
         action(
             model,
             ShortcutId::ExistingTerminals,
-            tr_key!("Existing Terminals…"),
+            "Existing Terminals…",
             ExistingTerminals,
         ),
         action(
             model,
             ShortcutId::ToggleFullScreen,
-            tr_key!("Toggle Full Screen"),
+            "Toggle Full Screen",
             ToggleFullScreen,
         ),
-        action(
-            model,
-            ShortcutId::Minimize,
-            tr_key!("Minimize Window"),
-            Minimize,
-        ),
-        action(model, ShortcutId::Zoom, tr_key!("Zoom Window"), Zoom)
+        action(model, ShortcutId::Minimize, "Minimize Window", Minimize),
+        action(model, ShortcutId::Zoom, "Zoom Window", Zoom)
             .keywords("Zoom Window Maximize Restore"),
         titled(
             model,
             ShortcutId::Quit,
-            tr!("Quit %@", crate::app_name()),
+            format!("Quit {}", crate::app_name()),
             Quit,
         )
         .keywords("Quit"),
         action(
             model,
             ShortcutId::EndAllSessionsAndQuit,
-            tr_key!("End All Sessions and Quit"),
+            "End All Sessions and Quit",
             EndAllSessionsAndQuit,
         ),
     ] {
@@ -673,7 +656,7 @@ fn register_app_commands(
         registry.register(
             Command::new(
                 "check_for_updates",
-                tr!("Check for Updates…"),
+                "Check for Updates…",
                 dispatch(CheckForUpdates),
             )
             .keywords("Check for Updates"),
@@ -683,7 +666,7 @@ fn register_app_commands(
         registry.register(action(
             model,
             ShortcutId::InstallCommandLineTool,
-            tr_key!("Install Command Line Tool…"),
+            "Install Command Line Tool…",
             InstallCommandLineTool,
         ));
     }
@@ -699,47 +682,36 @@ fn register_panel_commands(
         action(
             model,
             ShortcutId::ToggleSidebar,
-            tr_key!("Toggle Sidebar"),
+            "Toggle Sidebar",
             ToggleSidebar,
         ),
         action(
             model,
             ShortcutId::ToggleAgentsPanel,
-            tr_key!("Toggle Agents Panel"),
+            "Toggle Agents Panel",
             ToggleAgentsPanel,
         ),
         action(
             model,
             ShortcutId::ToggleAgentSessions,
-            tr_key!("Toggle Agent Sessions"),
+            "Toggle Agent Sessions",
             ToggleAgentSessions,
         )
         .keywords("harness history resume providers"),
-        action(
-            model,
-            ShortcutId::ToggleFiles,
-            tr_key!("Toggle Files"),
-            ToggleFiles,
-        )
-        .keywords("explorer tree folder"),
+        action(model, ShortcutId::ToggleFiles, "Toggle Files", ToggleFiles)
+            .keywords("explorer tree folder"),
         action(
             model,
             ShortcutId::ToggleSourceControl,
-            tr_key!("Toggle Source Control"),
+            "Toggle Source Control",
             ToggleSourceControl,
         )
         .keywords("git changes stage"),
-        action(
-            model,
-            ShortcutId::GoToFile,
-            tr_key!("Go to File…"),
-            GoToFile,
-        )
-        .keywords("quick open file"),
+        action(model, ShortcutId::GoToFile, "Go to File…", GoToFile).keywords("quick open file"),
         action(
             model,
             ShortcutId::FindInFiles,
-            tr_key!("Find in Files…"),
+            "Find in Files…",
             FindInFiles,
         )
         .keywords("search grep"),
@@ -749,7 +721,7 @@ fn register_panel_commands(
     registry.register(
         codesh_ui::command_palette::Command::new(
             "commit",
-            codesh_ui::l10n::translate(tr_key!("Commit…")),
+            "Commit…",
             super::command_palette::dispatch(FocusCommitMessage),
         )
         .keywords("Commit git message"),
@@ -763,17 +735,12 @@ fn register_worktree_commands(
     use super::command_palette::action;
 
     for command in [
-        action(
-            model,
-            ShortcutId::NewWorktree,
-            tr_key!("New Worktree…"),
-            NewWorktree,
-        )
-        .disabled(model.new_worktree_target().is_none()),
+        action(model, ShortcutId::NewWorktree, "New Worktree…", NewWorktree)
+            .disabled(model.new_worktree_target().is_none()),
         action(
             model,
             ShortcutId::SwitchWorktree,
-            tr_key!("Switch Worktree…"),
+            "Switch Worktree…",
             SwitchWorktree,
         )
         .disabled(model.worktree_switcher_project().is_none()),
@@ -796,73 +763,45 @@ pub(crate) fn register_commands(
             .and_then(|tab| model.tab(tab))
             .is_none_or(|tab| tab.panes.len() < 2);
     for command in [
-        action(model, ShortcutId::NewTab, tr_key!("New Terminal"), NewTab),
+        action(model, ShortcutId::NewTab, "New Terminal", NewTab),
         action(
             model,
             ShortcutId::NewHomeTab,
-            tr_key!("New Home Terminal"),
+            "New Home Terminal",
             NewHomeTab,
         ),
-        action(model, ShortcutId::CloseTab, tr_key!("Close Tab"), CloseTab)
+        action(model, ShortcutId::CloseTab, "Close Tab", CloseTab)
             .disabled(model.active_tab().is_none()),
-        action(
-            model,
-            ShortcutId::SplitRight,
-            tr_key!("Split Right"),
-            SplitRight,
-        )
-        .disabled(no_pane),
-        action(
-            model,
-            ShortcutId::SplitDown,
-            tr_key!("Split Down"),
-            SplitDown,
-        )
-        .disabled(no_pane),
-        action(
-            model,
-            ShortcutId::ClosePane,
-            tr_key!("Close Pane"),
-            ClosePane,
-        )
-        .disabled(no_pane),
+        action(model, ShortcutId::SplitRight, "Split Right", SplitRight).disabled(no_pane),
+        action(model, ShortcutId::SplitDown, "Split Down", SplitDown).disabled(no_pane),
+        action(model, ShortcutId::ClosePane, "Close Pane", ClosePane).disabled(no_pane),
         action(
             model,
             ShortcutId::ToggleZoomPane,
-            tr_key!("Toggle Pane Zoom"),
+            "Toggle Pane Zoom",
             ToggleZoomPane,
         )
         .disabled(no_pane),
         action(
             model,
             ShortcutId::EqualizeSplits,
-            tr_key!("Equalize Splits"),
+            "Equalize Splits",
             EqualizeSplits,
         )
         .disabled(unsplit),
-        action(
-            model,
-            ShortcutId::NextProject,
-            tr_key!("Next Project"),
-            NextProject,
-        )
-        .disabled(model.navigation_projects().len() < 2),
+        action(model, ShortcutId::NextProject, "Next Project", NextProject)
+            .disabled(model.navigation_projects().len() < 2),
         action(
             model,
             ShortcutId::PreviousProject,
-            tr_key!("Previous Project"),
+            "Previous Project",
             PreviousProject,
         )
         .disabled(model.navigation_projects().len() < 2),
-        action(model, ShortcutId::NextTab, tr_key!("Next Tab"), NextTab)
+        action(model, ShortcutId::NextTab, "Next Tab", NextTab)
             .disabled(model.navigation_targets().len() < 2),
-        action(
-            model,
-            ShortcutId::PreviousTab,
-            tr_key!("Previous Tab"),
-            PreviousTab,
-        )
-        .disabled(model.navigation_targets().len() < 2),
+        action(model, ShortcutId::PreviousTab, "Previous Tab", PreviousTab)
+            .disabled(model.navigation_targets().len() < 2),
     ] {
         registry.register(command);
     }
@@ -875,7 +814,7 @@ pub(crate) fn register_commands(
         registry.register(action(
             model,
             ShortcutId::ToggleVoiceRecording,
-            tr_key!("Toggle Voice Recording"),
+            "Toggle Voice Recording",
             ToggleVoiceRecording,
         ));
     }
@@ -893,7 +832,7 @@ pub(crate) fn register_browser_commands(
         super::command_palette::action(
             model,
             ShortcutId::NewBrowserTab,
-            tr_key!("New Browser Pane"),
+            "New Browser Pane",
             NewBrowserTab,
         )
         .disabled(missing || !model.browser_enabled()),
@@ -1123,7 +1062,7 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::AnyElement {
             div()
                 .text_size(m.font_headline())
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(if missing { tr!("Project folder is missing") } else { tr!("Nothing open in %@", &model.state.current_project().name) }),
+                .child(if missing { "Project folder is missing".to_string() } else { format!("Nothing open in {}", &model.state.current_project().name) }),
         )
         .child(
             div()
@@ -1131,7 +1070,7 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::AnyElement {
                 .text_center()
                 .text_size(m.font_body())
                 .text_color(theme.fg_muted)
-                .child(if missing { tr!("This project’s folder could not be found. Remove the project from the sidebar to clear its tabs.") } else { tr!("Open a terminal to start working in this project.") }),
+                .child(if missing { "This project’s folder could not be found. Remove the project from the sidebar to clear its tabs." } else { "Open a terminal to start working in this project." }),
         )
         .when(!missing, |view| view.child(
             div()
@@ -1150,7 +1089,7 @@ fn empty(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::AnyElement {
                 .on_click(cx.listener(|model, _, _, cx| {
                     model.new_tab_in(model.state.current_project().id, cx);
                 }))
-                .child(tr!("New Terminal")),
+                .child("New Terminal"),
         ));
     let card = card.relative().when(
         super::codesh::style::HIDE_COLLAPSED_SIDEBAR && !model.appearance.sidebar_expanded,

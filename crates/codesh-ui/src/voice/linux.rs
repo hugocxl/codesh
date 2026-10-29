@@ -2,7 +2,6 @@ mod languages;
 mod process;
 
 use super::{Arc, AtomicBool, Duration, Ordering, Phase, PoisonError, Recorder, Shared};
-use crate::tr;
 use process::Process;
 use std::fs::File;
 use std::io::Read;
@@ -43,7 +42,7 @@ struct Tools {
 
 pub(super) fn start(language: String, model: String) -> Result<Recorder, String> {
     if ACTIVE.swap(true, Ordering::AcqRel) {
-        return Err(tr!("Dictation is already active. Finish or cancel it first.").into());
+        return Err("Dictation is already active. Finish or cancel it first.".into());
     }
     let session = Session;
     let shared = Arc::new(Shared::default());
@@ -79,7 +78,7 @@ fn prepare(model: &str, shared: &Shared) -> Result<(Tools, PathBuf), String> {
         })
         .filter(|path| path.is_absolute())
         .ok_or_else(|| {
-            tr!("The user data folder is unavailable. Set XDG_DATA_HOME or HOME to use offline dictation.").to_string()
+            "The user data folder is unavailable. Set XDG_DATA_HOME or HOME to use offline dictation.".to_string()
         })?
         .join("codesh/voice");
     let model = if model.is_empty() {
@@ -98,7 +97,7 @@ fn prepare(model: &str, shared: &Shared) -> Result<(Tools, PathBuf), String> {
 }
 
 fn check_version(executable: &Path, shared: &Shared) -> Result<(), String> {
-    let error = || tr!("Install whisper-cli 1.9.5 or later to use offline dictation.").to_string();
+    let error = || "Install whisper-cli 1.9.5 or later to use offline dictation.".to_string();
     let mut command = Command::new(executable);
     command.arg("--version");
     let mut process = Process::spawn(command, false).map_err(|_| error())?;
@@ -124,9 +123,8 @@ fn check_version(executable: &Path, shared: &Shared) -> Result<(), String> {
 }
 
 fn validate_model(path: &Path) -> Result<PathBuf, String> {
-    let error = || {
-        tr!("Choose a readable multilingual GGML voice model in Settings → Composer.").to_string()
-    };
+    let error =
+        || "Choose a readable multilingual GGML voice model in Settings → Composer.".to_string();
     let path = path.canonicalize().map_err(|_| error())?;
     if !path.metadata().is_ok_and(|metadata| metadata.is_file()) {
         return Err(error());
@@ -143,8 +141,8 @@ fn validate_model(path: &Path) -> Result<PathBuf, String> {
 
 fn validate_speech_model(path: &Path) -> Result<PathBuf, String> {
     let error = || {
-        tr!(
-            "Install the Silero speech detection model at %@ to use offline dictation.",
+        format!(
+            "Install the Silero speech detection model at {} to use offline dictation.",
             path.display().to_string()
         )
         .to_string()
@@ -182,7 +180,7 @@ fn executable(name: &str) -> Result<PathBuf, String> {
                 metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
             })
         })
-        .ok_or_else(|| tr!("Install %@ to use offline dictation.", name).into())
+        .ok_or_else(|| format!("Install {name} to use offline dictation.").into())
 }
 
 fn record(tools: &Tools, model: &Path, language: &str, shared: &Shared) -> Result<(), String> {
@@ -217,7 +215,7 @@ fn local_server() -> Result<std::ffi::OsString, String> {
                 .map(|metadata| PathBuf::from(format!("/run/user/{}", metadata.uid())))
         })
         .ok_or_else(|| {
-            tr!("The local audio service is unavailable. Start dictation from a desktop session.")
+            "The local audio service is unavailable. Start dictation from a desktop session."
                 .to_string()
         })?;
     let mut server = std::ffi::OsString::from("unix:");
@@ -246,7 +244,7 @@ fn capture(
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .error = Some(
-                tr!("The 10-minute recording limit was reached. Finish to transcribe, or cancel.")
+                "The 10-minute recording limit was reached. Finish to transcribe, or cancel."
                     .into(),
             );
         }
@@ -287,7 +285,7 @@ fn capture(
                 snapshot.level = level(&chunk);
             }
             Err(RecvTimeoutError::Timeout) if last_audio.elapsed() < idle => {}
-            _ => return Err(tr!("Microphone capture stopped. Check the default input device and its PulseAudio or PipeWire permissions.").into()),
+            _ => return Err("Microphone capture stopped. Check the default input device and its PulseAudio or PipeWire permissions.".into()),
         }
     }
 }
@@ -328,13 +326,11 @@ fn transcribe(
         return Ok(String::new());
     };
     if !success || !matches!(written.recv_timeout(POLL), Ok(Ok(()))) {
-        return Err(tr!(
-            "Offline transcription failed. Check whisper-cli, the voice model and the Silero speech detection model."
-        )
+        return Err("Offline transcription failed. Check whisper-cli, the voice model and the Silero speech detection model."
         .into());
     }
     let text = String::from_utf8(output)
-        .map_err(|_| tr!("Offline transcription returned invalid text.").to_string())?;
+        .map_err(|_| "Offline transcription returned invalid text.".to_string())?;
     Ok(text.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
@@ -352,16 +348,16 @@ fn collect(
             return Ok(None);
         }
         if Instant::now() >= deadline {
-            return Err(tr!(
+            return Err(
                 "Offline transcription timed out. Try a smaller model or a shorter recording."
-            )
-            .into());
+                    .into(),
+            );
         }
         if !ended {
             match process.output.recv_timeout(POLL) {
                 Ok(Ok(chunk)) => {
                     if output.len() + chunk.len() > limit {
-                        return Err(tr!("The offline transcript was too large.").into());
+                        return Err("The offline transcript was too large.".into());
                     }
                     output.extend_from_slice(&chunk);
                 }

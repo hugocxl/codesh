@@ -4,7 +4,6 @@ use std::path::Path;
 
 use codesh_app_core::settings::Appearance;
 use codesh_ui::theme::{ColorScheme, Theme};
-use codesh_ui::tr;
 use gpui::{Window, WindowAppearance};
 
 use crate::views::terminal::colors::Palette;
@@ -32,10 +31,10 @@ impl Catalog {
             .and_then(|()| Self::read_directory(directory, &mut entries, &mut errors))
         {
             errors.push(
-                tr!(
-                    "Could not load themes from %@: %@",
-                    directory.display().to_string(),
-                    error.to_string()
+                format!(
+                    "Could not load themes from {}: {}",
+                    directory.display(),
+                    error
                 )
                 .to_string(),
             );
@@ -75,18 +74,16 @@ impl Catalog {
                     let scheme = ColorScheme::parse(&source);
                     if scheme.background.is_none() || scheme.foreground.is_none() {
                         errors.push(
-                            tr!(
-                                "Theme %@ needs valid background and foreground colors",
-                                name
-                            )
-                            .to_string(),
+                            format!("Theme {name} needs valid background and foreground colors")
+                                .to_string(),
                         );
                         continue;
                     }
                     entries.insert(theme_name(name).to_owned(), scheme);
                 }
-                Err(error) => errors
-                    .push(tr!("Could not read theme %@: %@", name, error.to_string()).to_string()),
+                Err(error) => {
+                    errors.push(format!("Could not read theme {name}: {error}"));
+                }
             }
         }
         Ok(())

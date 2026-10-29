@@ -1,7 +1,5 @@
-use codesh_core::l10n::searchable;
 use codesh_ui::picker::{Picker, PickerConfig, PickerEvent, PickerItem, PickerRow, PickerStatus};
 use codesh_ui::theme::{Metrics, Theme};
-use codesh_ui::tr;
 use codesh_ui::voice::Language;
 use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
@@ -38,13 +36,13 @@ impl LanguagePicker {
     ) -> Self {
         let picker = cx.new(|cx| {
             let mut picker = Picker::new(
-                PickerConfig::dropdown("language-browser", tr!("Search languages…")),
+                PickerConfig::dropdown("language-browser", "Search languages…"),
                 theme,
                 metrics,
                 cx,
             );
             picker.set_status(
-                PickerStatus::Loading(tr!("Loading on-device languages…")),
+                PickerStatus::Loading("Loading on-device languages…".into()),
                 cx,
             );
             picker
@@ -99,8 +97,8 @@ impl LanguagePicker {
         };
         let query = query.trim().to_lowercase();
         let mut items = Vec::new();
-        if searchable("System language").contains(&query) {
-            let mut row = PickerRow::new("system-language", tr!("System language"));
+        if "system language".contains(&query) {
+            let mut row = PickerRow::new("system-language", "System language");
             row.current = self.active.is_empty();
             items.push(PickerItem::Row(row));
         }
@@ -114,7 +112,7 @@ impl LanguagePicker {
             }
         }
         let status = if items.is_empty() {
-            PickerStatus::Empty(tr!("No matching languages"))
+            PickerStatus::Empty("No matching languages".into())
         } else {
             PickerStatus::Ready
         };

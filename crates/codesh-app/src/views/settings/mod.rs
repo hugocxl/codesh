@@ -24,8 +24,6 @@ use std::collections::{HashMap, HashSet};
 
 use super::codesh::style;
 use codesh_app_core::settings::{Settings, TerminalSettings};
-use codesh_core::l10n::{searchable, translate};
-use codesh_core::tr_key;
 use codesh_ui::controls::{self, Style};
 use codesh_ui::form;
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
@@ -46,7 +44,7 @@ pub(crate) fn register_commands(
     registry.register(action(
         model,
         ShortcutId::OpenSettings,
-        tr_key!("Open Settings"),
+        "Open Settings",
         super::workspace::OpenSettings,
     ));
 }
@@ -82,16 +80,16 @@ impl Category {
     /// The English name; also the key of its translation.
     fn label(self) -> &'static str {
         match self {
-            Self::General => tr_key!("General"),
-            Self::Ai => tr_key!("AI"),
-            Self::Appearance => tr_key!("Appearance"),
-            Self::Terminal => tr_key!("Terminal"),
-            Self::Keyboard => tr_key!("Keyboard"),
-            Self::Commands => tr_key!("Commands"),
-            Self::Browser => tr_key!("Browser"),
-            Self::Server => tr_key!("Server"),
-            Self::Mobile => tr_key!("Mobile"),
-            Self::Backup => tr_key!("Backup & Restore"),
+            Self::General => "General",
+            Self::Ai => "AI",
+            Self::Appearance => "Appearance",
+            Self::Terminal => "Terminal",
+            Self::Keyboard => "Keyboard",
+            Self::Commands => "Commands",
+            Self::Browser => "Browser",
+            Self::Server => "Server",
+            Self::Mobile => "Mobile",
+            Self::Backup => "Backup & Restore",
         }
     }
 }
@@ -214,7 +212,7 @@ impl SettingsView {
     ) -> Self {
         let search = cx.new(|cx| {
             TextInput::new(InputStyle::field(&theme, &metrics), cx)
-                .with_placeholder_key(tr_key!("Search Settings"))
+                .with_placeholder("Search Settings")
         });
         let search_subscription = cx.subscribe(&search, |pane: &mut Self, _, event, cx| {
             if matches!(event, InputEvent::Changed) {
@@ -562,15 +560,21 @@ impl SettingsView {
                     .is_none_or(|section| setting.is_none_or(|setting| setting.section == section))
         } else {
             let text = setting.map_or_else(
-                || format!("{} {}", searchable(category.label()), searchable(label)),
+                || {
+                    format!(
+                        "{} {}",
+                        category.label().to_lowercase(),
+                        label.to_lowercase()
+                    )
+                },
                 |setting| {
                     format!(
                         "{} {} {} {} {}",
-                        searchable(category.label()),
-                        searchable(setting.section),
+                        category.label().to_lowercase(),
+                        setting.section.to_lowercase(),
                         setting.id,
-                        searchable(label),
-                        searchable(setting.description)
+                        label.to_lowercase(),
+                        setting.description.to_lowercase()
                     )
                 },
             );
@@ -623,7 +627,7 @@ impl SettingsView {
         control: AnyElement,
         stacked: bool,
     ) -> AnyElement {
-        self.text_row(id, &translate(label), description, control, stacked)
+        self.text_row(id, label, description, control, stacked)
     }
 
     fn visible_catalog_row(&self, setting: &catalog::Setting) -> bool {
@@ -691,8 +695,8 @@ impl SettingsView {
         stacked: bool,
     ) -> AnyElement {
         let setting = catalog::setting(id);
-        let catalog_description = setting.map(|setting| translate(setting.description));
-        let description = description.or(catalog_description.as_deref());
+        let catalog_description = setting.map(|setting| setting.description);
+        let description = description.or(catalog_description);
         let (section, last) = self.row_group(id);
         let help = description.map(str::to_owned);
         let help_theme = self.theme.clone();

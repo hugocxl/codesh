@@ -27,8 +27,6 @@ use super::{
 };
 use codesh_ui::components::{IconButton, IconGlyph, SymbolGlyph};
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 
 use crate::model::AppModel;
 
@@ -44,13 +42,13 @@ pub(crate) fn register_commands(
     registry.register(action(
         model,
         ShortcutId::AddProject,
-        tr_key!("Open Project…"),
+        "Open Project…",
         super::workspace::AddProject,
     ));
     let has_workspaces = !model.state.workspaces().is_empty() || model.remote_servers_offered();
     let model = cx.weak_entity();
     registry.register(
-        Command::list("switch_project", tr!("Switch Project…"), move |cx| {
+        Command::list("switch_project", "Switch Project…", move |cx| {
             let mut projects = Registry::default();
             let Some(model) = model.upgrade() else {
                 return projects;
@@ -92,13 +90,13 @@ pub(crate) fn register_commands(
     }
     let model = cx.weak_entity();
     registry.register(
-        Command::list("switch_workspace", tr!("Switch Workspace…"), move |cx| {
+        Command::list("switch_workspace", "Switch Workspace…", move |cx| {
             let mut workspaces = Registry::default();
             let Some(model) = model.upgrade() else {
                 return workspaces;
             };
             let model = model.read(cx);
-            let all = std::iter::once((None, tr!("All Projects").to_string()));
+            let all = std::iter::once((None, "All Projects".to_string()));
             let named = model
                 .state
                 .workspaces()
@@ -116,7 +114,7 @@ pub(crate) fn register_commands(
                 if id.is_none() && model.remote_servers_offered() {
                     let handler: Handler = Rc::new(|model, _, cx| model.select_remote_servers(cx));
                     workspaces.register(
-                        Command::new("remote_servers", tr!("Remote Servers"), handler)
+                        Command::new("remote_servers", "Remote Servers", handler)
                             .keywords("Remote Servers"),
                     );
                 }
@@ -193,14 +191,13 @@ impl AppModel {
                 None => entries.into_iter().map(server).collect(),
             })
             .chain(std::iter::once(
-                Item::action(tr!("Manage Remote Servers…"), Command::ManageRemoteDevices)
-                    .separated(),
+                Item::action("Manage Remote Servers…", Command::ManageRemoteDevices).separated(),
             ))
             .collect();
         self.open_menu(
             vec![
-                Item::action(tr!("Local"), Command::AddProject),
-                Item::submenu(tr!("Remote"), devices),
+                Item::action("Local", Command::AddProject),
+                Item::submenu("Remote", devices),
             ],
             position,
             window,
@@ -717,7 +714,7 @@ fn header_actions(project: &Project, model: &AppModel, cx: &mut Context<AppModel
         // Pressing a button must not start dragging the project.
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
-            button("project-settings", Icon::Settings, tr!("Project Settings")).on_click(
+            button("project-settings", Icon::Settings, "Project Settings".into()).on_click(
                 cx.listener(move |model, event: &gpui::ClickEvent, window, cx| {
                     if let Some(project) = model.state.project(id) {
                         model.open_menu(model.project_menu(project), event.position(), window, cx);
@@ -729,7 +726,7 @@ fn header_actions(project: &Project, model: &AppModel, cx: &mut Context<AppModel
             project.status() == ProjectStatus::Available && model.repository(id),
             |row| {
                 row.child(
-                    button("project-new-worktree", Icon::Plus, tr!("New Worktree")).on_click(
+                    button("project-new-worktree", Icon::Plus, "New Worktree".into()).on_click(
                         cx.listener(move |model, _, window, cx| model.new_worktree(id, window, cx)),
                     ),
                 )
@@ -747,7 +744,7 @@ pub(super) fn remote_marker(project: &Project, model: &AppModel) -> Option<AnyEl
     let id = project.id;
     let m = model.metrics;
     let theme = model.theme.clone();
-    let tooltip = tr!("Remote project on %@", name);
+    let tooltip = format!("Remote project on {name}");
     Some(
         div()
             .id(SharedString::from(format!("project-remote-{id}")))
@@ -819,7 +816,7 @@ pub(super) fn add_project_button(model: &AppModel, cx: &mut Context<AppModel>) -
                     .text_size(m.font_body())
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(theme.fg_muted)
-                    .child(tr!("Add Project")),
+                    .child("Add Project"),
             )
         })
         .into_any_element()

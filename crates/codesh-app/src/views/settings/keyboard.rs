@@ -1,8 +1,8 @@
 use super::{Category, Change, SettingsEvent, SettingsView};
-use codesh_ui::{controls, tr};
+use codesh_ui::controls;
 use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, Keystroke, ParentElement, Styled, div,
-    prelude::FluentBuilder, px,
+    AnyElement, Context, InteractiveElement, IntoElement, Keystroke, ParentElement, SharedString,
+    Styled, div, prelude::FluentBuilder, px,
 };
 
 pub(super) fn matching(pane: &SettingsView) -> Vec<usize> {
@@ -21,11 +21,11 @@ pub(super) fn row(pane: &SettingsView, index: usize, cx: &mut Context<SettingsVi
         .and_then(|feature| pane.snapshot.capabilities.reason(feature));
     let recording = pane.recording.as_deref() == Some(id);
     let chord = pane.snapshot.settings.keymap.binding(id);
-    let label = if recording {
-        tr!("Press a shortcut…")
+    let label: SharedString = if recording {
+        "Press a shortcut…".into()
     } else {
         chord.map_or_else(
-            || tr!("Not assigned"),
+            || "Not assigned".into(),
             |chord| codesh_core::shortcuts::display_chord(chord.as_str()).into(),
         )
     };

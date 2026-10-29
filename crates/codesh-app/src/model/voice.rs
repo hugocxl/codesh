@@ -3,7 +3,6 @@ use crate::views::voice::{VoiceEvent, VoicePanel};
 use codesh_app_core::{PaneId, ProjectId, ServerId};
 use codesh_core::capability::Feature;
 use codesh_protocol::{ChannelId, Modes};
-use codesh_ui::tr;
 use gpui::{
     AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Styled, Subscription,
     Window, div,
@@ -54,7 +53,7 @@ impl AppModel {
         });
         let Some(target) = target else {
             self.set_banner_error(Some(
-                tr!("Open a live terminal before starting dictation.").to_string(),
+                "Open a live terminal before starting dictation.".to_string(),
             ));
             cx.notify();
             return;
@@ -148,9 +147,7 @@ impl AppModel {
         cx.spawn(async move |model, cx| {
             if let Err(error) = deliver(&worker, target.generation, channel, bytes).await {
                 let _ = model.update(cx, |model, cx| {
-                    model.set_banner_error(Some(
-                        tr!("Dictation delivery failed: %@", &error).to_string(),
-                    ));
+                    model.set_banner_error(Some(format!("Dictation delivery failed: {error}")));
                     cx.notify();
                 });
             }
@@ -199,5 +196,5 @@ pub(super) async fn deliver(
     result
         .recv()
         .await
-        .map_err(|_| tr!("Terminal connection closed before delivery was confirmed").to_string())?
+        .map_err(|_| "Terminal connection closed before delivery was confirmed".to_string())?
 }

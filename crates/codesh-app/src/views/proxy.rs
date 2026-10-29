@@ -5,10 +5,8 @@ use codesh_app_core::settings::{DEFAULT_PROXY_BYPASS, ProxyKind, ProxySettings};
 use codesh_ui::components::{ButtonInteraction, IconGlyph};
 use codesh_ui::controls::{self, Choice, Style};
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::tr_key;
 use codesh_ui::popover;
 use codesh_ui::text_input::{InputEvent, InputStyle, TextInput};
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, Context, Entity, Focusable, FontWeight, InteractiveElement,
@@ -40,7 +38,7 @@ impl ProxyForm {
             host: text(&self.host),
             port: port
                 .parse()
-                .map_err(|_| tr!("Enter a port from 1 to 65535").to_string())?,
+                .map_err(|_| "Enter a port from 1 to 65535".to_string())?,
             username: text(&self.username),
             password: self.password.read(cx).text().to_owned(),
             bypass: text(&self.bypass),
@@ -48,13 +46,13 @@ impl ProxyForm {
         };
         settings.validate().map_err(|_| {
             if settings.host.is_empty() || settings.host.contains(['/', '@', ' ']) {
-                tr!("Enter the proxy's host name or address, without http://").to_string()
+                "Enter the proxy's host name or address, without http://".to_string()
             } else if settings.port == 0 {
-                tr!("Enter a port from 1 to 65535").to_string()
+                "Enter a port from 1 to 65535".to_string()
             } else if settings.username.is_empty() {
-                tr!("Enter the user name for this password").to_string()
+                "Enter the user name for this password".to_string()
             } else {
-                tr!("The proxy settings contain characters that can't be used").to_string()
+                "The proxy settings contain characters that can't be used".to_string()
             }
         })?;
         Ok(settings)
@@ -102,11 +100,7 @@ pub(crate) fn control(model: &AppModel, cx: &mut Context<AppModel>) -> impl Into
             div()
                 .text_size(m.font_footnote())
                 .font_weight(FontWeight::MEDIUM)
-                .child(if global {
-                    tr!("Proxy · On")
-                } else {
-                    tr!("Proxy")
-                }),
+                .child(if global { "Proxy · On" } else { "Proxy" }),
         )
 }
 
@@ -168,11 +162,11 @@ pub(crate) fn render(
         .child(
             popover::header(theme, m)
                 .justify_between()
-                .child(tr!("Proxy"))
+                .child("Proxy")
                 .child(controls::button(
                     style,
                     "close-proxy",
-                    &tr!("Close"),
+                    "Close",
                     true,
                     cx.listener(|model, _, _, cx| model.dismiss_overlay(cx)),
                 )),
@@ -191,7 +185,7 @@ fn fields(form: &ProxyForm, model: &AppModel, cx: &mut Context<AppModel>) -> gpu
     popover::body(m)
         .gap(m.scaled(12.0))
         .child(field(
-            &tr!("Type"),
+            "Type",
             controls::segmented(
                 style,
                 "proxy-kind",
@@ -217,27 +211,18 @@ fn fields(form: &ProxyForm, model: &AppModel, cx: &mut Context<AppModel>) -> gpu
             div()
                 .flex()
                 .gap(m.spacing4())
-                .child(field(&tr!("Host"), text("proxy-host", &form.host), model).flex_1())
-                .child(
-                    field(&tr!("Port"), text("proxy-port", &form.port), model).w(m.scaled(96.0)),
-                ),
+                .child(field("Host", text("proxy-host", &form.host), model).flex_1())
+                .child(field("Port", text("proxy-port", &form.port), model).w(m.scaled(96.0))),
         )
         .child(
             div()
                 .flex()
                 .gap(m.spacing4())
-                .child(field(&tr!("User"), text("proxy-username", &form.username), model).flex_1())
-                .child(
-                    field(
-                        &tr!("Password"),
-                        text("proxy-password", &form.password),
-                        model,
-                    )
-                    .flex_1(),
-                ),
+                .child(field("User", text("proxy-username", &form.username), model).flex_1())
+                .child(field("Password", text("proxy-password", &form.password), model).flex_1()),
         )
         .child(field(
-            &tr!("No proxy for"),
+            "No proxy for",
             text("proxy-bypass", &form.bypass),
             model,
         ))
@@ -255,7 +240,7 @@ fn fields(form: &ProxyForm, model: &AppModel, cx: &mut Context<AppModel>) -> gpu
                 .child(
                     div()
                         .text_size(m.font_footnote())
-                        .child(tr!("Use for the whole app")),
+                        .child("Use for the whole app"),
                 ),
         )
         .children(notes(form, model))
@@ -267,21 +252,15 @@ fn notes(form: &ProxyForm, model: &AppModel) -> Vec<gpui::Div> {
     let theme = &model.theme;
     let note = |color| div().text_size(m.font_footnote()).text_color(color);
     let mut notes = vec![note(theme.fg_muted).child(if form.global {
-                    tr!(
-                        "New terminals on this computer, Codesh's own downloads, and SSH to remote servers use the proxy. Terminals already running keep their settings."
-                    )
+                    "New terminals on this computer, Codesh's own downloads, and SSH to remote servers use the proxy. Terminals already running keep their settings."
                 } else {
-                    tr!(
-                        "Right-click a terminal and choose Apply Proxy to use it there. The terminal restarts in the same folder."
-                    )
+                    "Right-click a terminal and choose Apply Proxy to use it there. The terminal restarts in the same folder."
                 })];
     if model.proxy_needs_newer_server() {
         notes.push(
             note(theme.warning)
                 .debug_selector(|| "proxy-server-outdated".into())
-                .child(tr!(
-                    "This computer's server is from an older Codesh and starts terminals without the proxy. Restart the server to update it."
-                )),
+                .child("This computer's server is from an older Codesh and starts terminals without the proxy. Restart the server to update it."),
         );
     }
     if let Some(error) = form.error.clone().or_else(|| model.proxy.error.clone()) {
@@ -306,7 +285,7 @@ fn actions(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::Div {
                 controls::button(
                     style,
                     "proxy-remove",
-                    &tr!("Remove Proxy"),
+                    "Remove Proxy",
                     true,
                     cx.listener(|model, _, _, cx| model.remove_proxy(cx)),
                 )
@@ -316,7 +295,7 @@ fn actions(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::Div {
         .child(div().flex_1())
         .child(super::remote_servers::primary(
             "proxy-save",
-            tr!("Save"),
+            "Save".into(),
             true,
             model,
             cx.listener(|model, _, _, cx| model.submit_proxy_form(cx)),
@@ -335,7 +314,7 @@ fn input(
     cx.new(|cx| {
         let input = TextInput::new(style, cx);
         if secure { input.secure() } else { input }
-            .with_placeholder_key(placeholder)
+            .with_placeholder(placeholder)
             .with_text(text)
     })
 }
@@ -366,8 +345,8 @@ impl AppModel {
         };
         let host = input(self, cx, "127.0.0.1", &current.host, false);
         let port = input(self, cx, "8080", &port, false);
-        let username = input(self, cx, tr_key!("optional"), &current.username, false);
-        let password = input(self, cx, tr_key!("optional"), &current.password, true);
+        let username = input(self, cx, "optional", &current.username, false);
+        let password = input(self, cx, "optional", &current.password, true);
         let bypass = input(self, cx, DEFAULT_PROXY_BYPASS, &current.bypass, false);
         let subscriptions = [&host, &port, &username, &password, &bypass]
             .into_iter()
@@ -427,7 +406,7 @@ impl AppModel {
         match result {
             Ok(()) => {
                 self.dismiss_overlay(cx);
-                self.show_notice(tr!("Proxy saved").to_string(), cx);
+                self.show_notice("Proxy saved".to_string(), cx);
             }
             Err(error) => {
                 if let Some(Overlay::Proxy(form)) = &mut self.overlay {
@@ -442,7 +421,7 @@ impl AppModel {
         match self.set_proxy(None, cx) {
             Ok(()) => {
                 self.dismiss_overlay(cx);
-                self.show_notice(tr!("Proxy removed").to_string(), cx);
+                self.show_notice("Proxy removed".to_string(), cx);
             }
             Err(error) => {
                 if let Some(Overlay::Proxy(form)) = &mut self.overlay {

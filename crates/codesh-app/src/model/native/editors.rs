@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use codesh_app_core::{PaneContent, PaneId, ProjectId};
 use codesh_protocol::{FilesAction, FilesReply, GitAction, GitDiffRequest, GitReply};
-use codesh_ui::tr;
 use gpui::{AppContext, Context, Entity, Subscription};
 
 use super::server_path;
@@ -67,9 +66,9 @@ pub(crate) struct DiffPane {
 /// The editor's message for a file the server would not read as text.
 fn unreadable(error: &str) -> Option<String> {
     if error.contains("not valid UTF-8") {
-        Some(tr!("This file is binary, so it can't be shown here.").to_string())
+        Some("This file is binary, so it can't be shown here.".to_string())
     } else if error.contains("5 MiB") {
-        Some(tr!("This file is larger than 5 MB, so it can't be opened here.").to_string())
+        Some("This file is larger than 5 MB, so it can't be opened here.".to_string())
     } else {
         None
     }
@@ -93,10 +92,7 @@ impl AppModel {
             Ok(pane) => pane,
             Err(error) => {
                 self.state = previous;
-                self.fail(
-                    tr!("Could not open file: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not open file: {error}"), cx);
                 return;
             }
         };
@@ -135,10 +131,7 @@ impl AppModel {
         let previous = self.state.clone();
         if let Err(error) = self.state.open_diff_pane(project, path, staged) {
             self.state = previous;
-            self.fail(
-                tr!("Could not open file: %@", error.to_string()).to_string(),
-                cx,
-            );
+            self.fail(format!("Could not open file: {error}"), cx);
             return;
         }
         if !self.save(cx) {
@@ -272,7 +265,7 @@ impl AppModel {
         let text = match result {
             Ok(FilesReply::Content(content)) if content.content.contains('\0') => {
                 editor.content = EditorContent::Message(
-                    tr!("This file is binary, so it can't be shown here.").to_string(),
+                    "This file is binary, so it can't be shown here.".to_string(),
                 );
                 cx.notify();
                 return;
@@ -358,7 +351,7 @@ impl AppModel {
                     cx.notify();
                 }
                 Err(error) => {
-                    model.fail(tr!("Could not save %@: %@", &path, &error).to_string(), cx);
+                    model.fail(format!("Could not save {path}: {error}"), cx);
                 }
             }
             done(model, saved, cx);
@@ -451,7 +444,7 @@ impl AppModel {
                 diff.unsent = !sent;
                 if diff.view.is_none() {
                     diff.error =
-                        (!sent).then(|| tr!("Connect to the server to see this diff.").to_string());
+                        (!sent).then(|| "Connect to the server to see this diff.".to_string());
                 }
             }
         }

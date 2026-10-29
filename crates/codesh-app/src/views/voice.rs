@@ -1,7 +1,6 @@
 use codesh_ui::{
     components::{ButtonInteraction, SymbolGlyph},
     theme::{Metrics, Theme},
-    tr,
     voice::{Phase, Recorder, Snapshot},
 };
 use gpui::prelude::FluentBuilder;
@@ -139,7 +138,7 @@ impl VoicePanel {
         if transcript.is_empty() {
             self.snapshot.phase = Phase::Failed;
             self.snapshot.error =
-                Some(tr!("No speech detected. Try again or press Esc to close.").to_string());
+                Some("No speech detected. Try again or press Esc to close.".to_string());
             return;
         }
         cx.emit(VoiceEvent::Finish(transcript));
@@ -304,23 +303,16 @@ impl VoicePanel {
                 0.55
             });
         for (key, label) in [
-            ("⎋".into(), tr!("Cancel")),
+            ("⎋", "Cancel"),
             (
-                tr!("Space"),
+                "Space",
                 if self.snapshot.phase == Phase::Paused {
-                    tr!("Resume")
+                    "Resume"
                 } else {
-                    tr!("Pause")
+                    "Pause"
                 },
             ),
-            (
-                "⏎".into(),
-                if self.auto_send {
-                    tr!("Send")
-                } else {
-                    tr!("Insert")
-                },
-            ),
+            ("⏎", if self.auto_send { "Send" } else { "Insert" }),
         ] {
             if self.snapshot.phase == Phase::Transcribing && key != "⎋" {
                 continue;
@@ -369,11 +361,11 @@ impl Render for VoicePanel {
         let error = self.snapshot.error.as_ref();
         let text = error.cloned().unwrap_or_else(|| {
             if self.snapshot.phase == Phase::Transcribing {
-                tr!("Transcribing on this computer…").to_string()
+                "Transcribing on this computer…".to_string()
             } else if codesh_ui::voice::LOCAL_MODEL {
-                tr!("Finish recording to transcribe.").to_string()
+                "Finish recording to transcribe.".to_string()
             } else if self.snapshot.transcript.is_empty() {
-                tr!("Listening...").to_string()
+                "Listening...".to_string()
             } else {
                 self.snapshot.transcript.clone()
             }
@@ -454,7 +446,7 @@ impl Render for VoicePanel {
                         .child(outline(m.scaled(100.0), self.theme.border))
                         .text_size(m.font_footnote())
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child(tr!("Close"))
+                        .child("Close")
                         .button_interaction(cx.listener(|_, _, _, cx| cx.emit(VoiceEvent::Cancel))),
                 )
             })

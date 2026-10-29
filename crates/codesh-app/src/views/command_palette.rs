@@ -17,7 +17,7 @@ pub(crate) fn action(
     title: &'static str,
     action: impl Action,
 ) -> Command<Handler> {
-    titled(model, id, codesh_ui::l10n::translate(title), action).keywords(title)
+    titled(model, id, title, action).keywords(title)
 }
 
 /// A palette command for a shortcut action, under a title already translated.

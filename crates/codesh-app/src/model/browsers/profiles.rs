@@ -3,7 +3,6 @@
 use codesh_ui::browser::polybrowser::{
     self, ExternalProfile, ImportOptions, Profile, ProfileId, ProfileManager,
 };
-use codesh_ui::tr;
 use gpui::Context;
 
 use crate::model::AppModel;
@@ -143,7 +142,7 @@ impl AppModel {
                         self.import_into_browser_profile(&default, source, *cookies, cx)
                     }
                     (Err(error), _) => Err(error),
-                    (_, None) => Err(tr!("That browser is no longer available").into()),
+                    (_, None) => Err("That browser is no longer available".into()),
                 }
             }
             BrowserChange::DefaultProfile(id) => {
@@ -171,7 +170,7 @@ impl AppModel {
         let id = parse_id(id)?;
         let name = name.trim();
         if name.is_empty() {
-            return Err(tr!("A profile needs a name").into());
+            return Err("A profile needs a name".into());
         }
         self.browser_profiles()?
             .rename(id, name)
@@ -189,7 +188,7 @@ impl AppModel {
     ) -> Result<(), String> {
         let default = self.default_browser_profile()?.id().to_string();
         if id == default {
-            return Err(tr!("The default profile can't be deleted").into());
+            return Err("The default profile can't be deleted".into());
         }
         let parsed = parse_id(id)?;
         #[cfg(target_os = "linux")]
@@ -231,7 +230,7 @@ impl AppModel {
         let id = parsed.to_string();
         let default = self.default_browser_profile()?.id().to_string();
         if id == default {
-            return Err(tr!("The default profile can't be deleted").into());
+            return Err("The default profile can't be deleted".into());
         }
         let users: Vec<_> = self
             .browser_panes()
@@ -277,7 +276,7 @@ impl AppModel {
             let result = cleared.recv().await;
             let _ = model.update(cx, |model, cx| match result {
                 Ok(Ok(())) => {
-                    let notice = tr!("Cleared browsing data for “%@”", &name).to_string();
+                    let notice = format!("Cleared browsing data for “{name}”");
                     model.show_notice(notice, cx);
                 }
                 Ok(Err(error)) => model.fail(error.to_string(), cx),
@@ -323,11 +322,9 @@ impl AppModel {
             let outcome = read.await;
             let _ = model.update(cx, |model, cx| match outcome {
                 Ok(Imported::History(report)) => model.show_notice(
-                    tr!(
-                        "Imported %lld visits and %lld bookmarks from %@",
-                        report.visits_added,
-                        report.bookmarks_added,
-                        &label
+                    format!(
+                        "Imported {} visits and {} bookmarks from {}",
+                        report.visits_added, report.bookmarks_added, &label
                     )
                     .to_string(),
                     cx,
@@ -366,13 +363,7 @@ impl AppModel {
             let result = written.recv().await;
             let _ = model.update(cx, |model, cx| match result {
                 Ok(Ok(count)) => model.show_notice(
-                    tr!(
-                        "Imported %lld cookies from %@ into “%@”",
-                        count,
-                        &label,
-                        &name
-                    )
-                    .to_string(),
+                    format!("Imported {count} cookies from {label} into “{name}”"),
                     cx,
                 ),
                 Ok(Err(error)) => model.fail(error.to_string(), cx),

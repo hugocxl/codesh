@@ -1,6 +1,5 @@
 use codesh_ui::components::{IconButton, IconGlyph};
 use codesh_ui::icon::Icon;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
     Styled, canvas, div,
@@ -54,7 +53,7 @@ pub(super) fn footer(model: &AppModel, cx: &mut Context<AppModel>) -> Option<Any
                                 theme.fg,
                             )
                             .tooltip(
-                                tr!("Show Codesh Tip"),
+                                "Show Codesh Tip",
                                 theme.raised(),
                                 theme.fg,
                                 theme.border,
@@ -116,7 +115,7 @@ fn content(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::Div {
                 .text_size(m.font_caption())
                 .font_weight(FontWeight::BOLD)
                 .text_color(theme.accent)
-                .child(tr!("CODESH TIP")),
+                .child("CODESH TIP"),
         )
         .child(
             div().debug_selector(|| "hide-tips".into()).child(
@@ -129,7 +128,7 @@ fn content(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::Div {
                     theme.fg,
                 )
                 .tooltip(
-                    tr!("Hide Tips"),
+                    "Hide Tips",
                     theme.raised(),
                     theme.fg,
                     theme.border,
@@ -147,7 +146,7 @@ fn content(model: &AppModel, cx: &mut Context<AppModel>) -> gpui::Div {
                 .flex_1()
                 .text_size(m.font_caption())
                 .text_color(theme.fg_dim)
-                .child(tr!("%lld of %lld", model.tips.position(), TIPS.len())),
+                .child(format!("{} of {}", model.tips.position(), TIPS.len())),
         )
         .child(step_button(false, model, cx))
         .child(step_button(true, model, cx));
@@ -170,9 +169,9 @@ fn step_button(forward: bool, model: &AppModel, cx: &mut Context<AppModel>) -> A
     let m = model.metrics;
     let theme = &model.theme;
     let (id, icon, tooltip) = if forward {
-        ("next-tip", Icon::ChevronRight, tr!("Next Tip"))
+        ("next-tip", Icon::ChevronRight, "Next Tip")
     } else {
-        ("previous-tip", Icon::ChevronLeft, tr!("Previous Tip"))
+        ("previous-tip", Icon::ChevronLeft, "Previous Tip")
     };
     div()
         .debug_selector(move || id.into())

@@ -13,7 +13,6 @@ mod process;
 
 use codesh_app_core::opener::{FileLocation, OpenContext, OpenRequest, Registry, Target};
 use codesh_core::worker::WorkerPool;
-use codesh_ui::tr;
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic)]
@@ -25,24 +24,24 @@ const FINDER: &str = "com.apple.finder";
 pub(crate) const FILE_MANAGER: &str = if cfg!(target_os = "macos") {
     "Finder"
 } else {
-    codesh_ui::l10n::tr_key!("File manager")
+    "File manager"
 };
 
 /// The menu item that shows a path in the file manager.
 pub(crate) fn reveal_label() -> gpui::SharedString {
     if cfg!(target_os = "macos") {
-        tr!("Reveal in Finder")
+        "Reveal in Finder".into()
     } else {
-        tr!("Show in File Manager")
+        "Show in File Manager".into()
     }
 }
 
 /// The action that picks a folder in the system's own dialog.
 pub(crate) fn browse_label() -> gpui::SharedString {
     if cfg!(target_os = "macos") {
-        tr!("Finder…")
+        "Finder…".into()
     } else {
-        tr!("Browse…")
+        "Browse…".into()
     }
 }
 
@@ -137,7 +136,7 @@ fn open_with<'a>(
     };
     let handler = registry()
         .resolve(request, preferred, fallback)
-        .ok_or_else(|| io::Error::other(tr!("No opener supports this resource").to_string()))?
+        .ok_or_else(|| io::Error::other("No opener supports this resource".to_string()))?
         .handler;
     match (&request.target, handler) {
         (Target::Url(url), Handler::Browser) => launch(&Launch::system([OsString::from(url)])),
@@ -161,7 +160,7 @@ fn open_with<'a>(
             launch(&command).or_else(|_| launch(&finder(&file.path)))
         }
         _ => Err(io::Error::other(
-            tr!("Opener does not support this resource").to_string(),
+            "Opener does not support this resource".to_string(),
         )),
     }
 }
@@ -222,9 +221,9 @@ fn missing(program: &Path, error: io::Error) -> io::Error {
     }
     io::Error::new(
         io::ErrorKind::NotFound,
-        tr!(
-            "%@ is not installed, so there is nothing to open this with.",
-            program.display().to_string()
+        format!(
+            "{} is not installed, so there is nothing to open this with.",
+            program.display()
         )
         .to_string(),
     )

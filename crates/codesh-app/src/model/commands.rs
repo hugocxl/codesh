@@ -1,6 +1,5 @@
 use codesh_app_core::settings::KeyChord;
 use codesh_ui::command_palette::{Command, Registry};
-use codesh_ui::tr;
 use gpui::Context;
 
 use super::{AppModel, ConnectionState, ProjectStatus, Quitting};
@@ -51,14 +50,7 @@ impl AppModel {
                 command.shortcut_id() != id
                     && self.settings.keymap.binding(&command.shortcut_id()) == Some(chord)
             })
-            .map(|command| {
-                tr!(
-                    "%@ is also bound to command: %@",
-                    chord.to_string(),
-                    &command.name
-                )
-                .to_string()
-            })
+            .map(|command| format!("{} is also bound to command: {}", chord, &command.name))
     }
 
     fn can_run_custom_command(&self) -> bool {

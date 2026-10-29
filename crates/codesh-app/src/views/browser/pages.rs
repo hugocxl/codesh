@@ -5,7 +5,6 @@ use codesh_app_core::browser::SearchEngine;
 use codesh_ui::components::{IconGlyph, SymbolGlyph};
 use codesh_ui::icon::Icon;
 use codesh_ui::theme::{Metrics, Theme};
-use codesh_ui::tr;
 use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, px,
@@ -31,14 +30,14 @@ pub(super) fn start(
             div()
                 .text_size(metrics.font_headline())
                 .text_color(theme.fg)
-                .child(tr!("New Browser")),
+                .child("New Browser"),
         )
         .child(
             div()
                 .text_size(metrics.font_body())
                 .text_color(theme.fg_muted)
-                .child(tr!(
-                    "Search with %@ or enter a website address.",
+                .child(format!(
+                    "Search with {} or enter a website address.",
                     engine.name()
                 )),
         )
@@ -60,7 +59,7 @@ pub(super) fn start(
                 .text_size(metrics.font_body())
                 .text_color(theme.fg_dim)
                 .on_click(cx.listener(|view, _, window, cx| view.focus_address(window, cx)))
-                .child(tr!("Search or enter address"))
+                .child("Search or enter address")
                 .child(div().text_color(theme.fg_dim).child("⌘L")),
         )
         .into_any_element()
@@ -87,7 +86,7 @@ pub(super) fn error(
             div()
                 .text_size(metrics.font_headline())
                 .text_color(theme.fg)
-                .child(tr!("This page can't be opened")),
+                .child("This page can't be opened"),
         )
         .child(
             div()
@@ -118,7 +117,7 @@ pub(super) fn error(
                 .text_size(metrics.font_body())
                 .cursor_pointer()
                 .on_click(cx.listener(|view, _, _, cx| view.reload(cx)))
-                .child(tr!("Try Again")),
+                .child("Try Again"),
         )
         .into_any_element()
 }

@@ -4,8 +4,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use codesh_app_core::qr::{QUIET_ZONE, QrCode};
 use codesh_protocol::{ListenerStatus, PairedDevice, PairingOffer, RemoteAccessState};
 use codesh_ui::controls;
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, Bounds, ClipboardItem, Context, InteractiveElement, IntoElement, ParentElement,
     SharedString, Styled, canvas, div, point, px, size,
@@ -35,35 +33,32 @@ impl Pairing {
 pub(super) fn rows(pane: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     let mut rows = Vec::new();
     if pane.snapshot.connection != crate::model::ConnectionState::Ready {
-        if pane.matches(Category::Mobile, tr_key!("Server disconnected")) {
+        if pane.matches(Category::Mobile, "Server disconnected") {
             rows.push(
-                pane.note(
-                    &tr!("Connect to the server to manage mobile access."),
-                    false,
-                )
-                .into_any_element(),
+                pane.note("Connect to the server to manage mobile access.", false)
+                    .into_any_element(),
             );
         }
         return rows;
     }
     if let Some(error) = &pane.snapshot.mobile_error
-        && pane.matches(Category::Mobile, tr_key!("Mobile access error"))
+        && pane.matches(Category::Mobile, "Mobile access error")
     {
         rows.push(pane.note(error, true).into_any_element());
     }
     let Some(state) = &pane.snapshot.mobile else {
-        if pane.matches(Category::Mobile, tr_key!("Loading mobile access")) {
+        if pane.matches(Category::Mobile, "Loading mobile access") {
             rows.push(
-                pane.note(&tr!("Loading mobile access…"), false)
+                pane.note("Loading mobile access…", false)
                     .into_any_element(),
             );
         }
         return rows;
     };
-    if pane.matches(Category::Mobile, tr_key!("Allow mobile devices")) {
+    if pane.matches(Category::Mobile, "Allow mobile devices") {
         rows.push(pane.row(
             "mobile-access",
-            tr_key!("Allow mobile devices"),
+            "Allow mobile devices",
             pane.toggle(
                 "mobile-access",
                 state.settings.enabled,
@@ -72,24 +67,24 @@ pub(super) fn rows(pane: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
             ),
         ));
     }
-    if pane.matches(Category::Mobile, tr_key!("Port")) {
-        rows.push(pane.row("mobile-port", tr_key!("Port"), pane.field("mobile-port")));
+    if pane.matches(Category::Mobile, "Port") {
+        rows.push(pane.row("mobile-port", "Port", pane.field("mobile-port")));
     }
-    if pane.matches(Category::Mobile, tr_key!("Status")) {
-        rows.push(pane.row("mobile-status", tr_key!("Status"), status(pane, state)));
+    if pane.matches(Category::Mobile, "Status") {
+        rows.push(pane.row("mobile-status", "Status", status(pane, state)));
     }
-    if pane.matches(Category::Mobile, tr_key!("Pair a phone")) {
+    if pane.matches(Category::Mobile, "Pair a phone") {
         rows.push(pane.row_with(
             "mobile-pair",
-            tr_key!("Pair a phone"),
+            "Pair a phone",
             pairing(pane, state, cx),
             true,
         ));
     }
-    if pane.matches(Category::Mobile, tr_key!("Paired devices")) {
+    if pane.matches(Category::Mobile, "Paired devices") {
         rows.push(pane.row_with(
             "mobile-devices",
-            tr_key!("Paired devices"),
+            "Paired devices",
             devices(pane, state, cx),
             true,
         ));
@@ -100,12 +95,14 @@ pub(super) fn rows(pane: &SettingsView, cx: &mut Context<SettingsView>) -> Vec<A
 fn status(pane: &SettingsView, state: &RemoteAccessState) -> AnyElement {
     let (text, failed) = match (&state.status, state.settings.enabled) {
         (ListenerStatus::Listening, _) => {
-            (tr!("Listening on port %lld", state.settings.port), false)
+            (format!("Listening on port {}", state.settings.port), false)
         }
-        (ListenerStatus::Failed(message), _) => (tr!("Not listening: %@", message), true),
-        (ListenerStatus::Disabled, true) => (tr!("Starting"), false),
-        (ListenerStatus::Disabled, false) => (tr!("Off"), false),
-        (ListenerStatus::Unrecognized(_), _) => (tr!("Update Codesh to see this status"), false),
+        (ListenerStatus::Failed(message), _) => (format!("Not listening: {message}"), true),
+        (ListenerStatus::Disabled, true) => ("Starting".to_string(), false),
+        (ListenerStatus::Disabled, false) => ("Off".to_string(), false),
+        (ListenerStatus::Unrecognized(_), _) => {
+            ("Update Codesh to see this status".to_string(), false)
+        }
     };
     div()
         .debug_selector(|| "settings-mobile-status".into())
@@ -128,7 +125,7 @@ fn pairing(
         return controls::button(
             pane.style(),
             "mobile-pair",
-            &tr!("Show Pairing Code"),
+            "Show Pairing Code",
             listening && !pane.snapshot.mobile_busy,
             cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::PairPhone)),
         )
@@ -140,9 +137,11 @@ fn pairing(
         .flex_col()
         .gap(px(10.0))
         .child(code(pairing.code.clone()))
-        .child(div().text_color(pane.theme.fg_muted).child(tr!(
-            "Scan with the Codesh app. The code works once and expires in 5 minutes."
-        )))
+        .child(
+            div()
+                .text_color(pane.theme.fg_muted)
+                .child("Scan with the Codesh app. The code works once and expires in 5 minutes."),
+        )
         .child(
             div()
                 .flex()
@@ -150,14 +149,14 @@ fn pairing(
                 .child(controls::button(
                     pane.style(),
                     "mobile-copy-link",
-                    &tr!("Copy Link"),
+                    "Copy Link",
                     true,
                     move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(link.clone())),
                 ))
                 .child(controls::button(
                     pane.style(),
                     "mobile-cancel-pairing",
-                    &tr!("Cancel"),
+                    "Cancel",
                     true,
                     cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::CancelPairing)),
                 )),
@@ -169,7 +168,7 @@ fn pairing(
 fn code(code: Option<Arc<QrCode>>) -> AnyElement {
     let Some(code) = code else {
         return div()
-            .child(tr!("The pairing code is too long to show."))
+            .child("The pairing code is too long to show.")
             .into_any_element();
     };
     let painted = canvas(
@@ -217,7 +216,7 @@ fn devices(
     if state.devices.is_empty() {
         return div()
             .text_color(pane.theme.fg_muted)
-            .child(tr!("No paired devices yet."))
+            .child("No paired devices yet.")
             .into_any_element();
     }
     let now = SystemTime::now()
@@ -251,7 +250,7 @@ fn devices(
                 .child(controls::button(
                     pane.style(),
                     &format!("mobile-revoke-{id}"),
-                    &tr!("Revoke"),
+                    "Revoke",
                     !pane.snapshot.mobile_busy,
                     cx.listener(move |_, _, _, cx| cx.emit(SettingsEvent::RevokeDevice(id))),
                 ))
@@ -261,16 +260,16 @@ fn devices(
 
 fn presence(device: &PairedDevice, now: u64) -> SharedString {
     if device.connected {
-        return tr!("Connected");
+        return "Connected".into();
     }
     let Some(seen) = device.last_seen else {
-        return tr!("Never connected");
+        return "Never connected".into();
     };
     match now.saturating_sub(seen) {
-        0..60 => tr!("Last seen just now"),
-        seconds @ 60..3_600 => tr!("Last seen %lld min ago", seconds / 60),
-        seconds @ 3_600..86_400 => tr!("Last seen %lld h ago", seconds / 3_600),
-        seconds => tr!("Last seen %lld d ago", seconds / 86_400),
+        0..60 => "Last seen just now".into(),
+        seconds @ 60..3_600 => format!("Last seen {} min ago", seconds / 60).into(),
+        seconds @ 3_600..86_400 => format!("Last seen {} h ago", seconds / 3_600).into(),
+        seconds => format!("Last seen {} d ago", seconds / 86_400).into(),
     }
 }
 

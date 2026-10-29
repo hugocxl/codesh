@@ -1,7 +1,6 @@
 use codesh_core::shortcuts::{ShortcutId, display_chord};
 use codesh_ui::components::{IconGlyph, Tooltip};
 use codesh_ui::icon::Icon;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, App, AppContext, Context, Div, ElementId, InteractiveElement, IntoElement,
     MouseButton, ParentElement, SharedString, Stateful, StatefulInteractiveElement, Styled, Window,
@@ -197,9 +196,9 @@ pub(crate) fn sidebar_toggle(model: &AppModel, cx: &Context<AppModel>) -> Statef
         "toggle-sidebar",
         Icon::PanelLeft,
         if model.appearance.sidebar_expanded {
-            tr!("Hide Sidebar")
+            "Hide Sidebar"
         } else {
-            tr!("Show Sidebar")
+            "Show Sidebar"
         },
         Some(ShortcutId::ToggleSidebar),
         model,

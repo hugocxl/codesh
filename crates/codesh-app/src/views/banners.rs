@@ -1,6 +1,5 @@
 use codesh_ui::components::{ButtonInteraction, IconGlyph, Tooltip};
 use codesh_ui::icon::Icon;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, AppContext, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window, div, px,
@@ -67,7 +66,7 @@ fn problem(
         .tooltip(move |_, cx| {
             cx.new(|_| {
                 Tooltip::new(
-                    tr!("Dismiss"),
+                    "Dismiss",
                     tooltip_theme.raised(),
                     tooltip_theme.fg,
                     tooltip_theme.border,

@@ -1,6 +1,6 @@
 use codesh_app_core::{Project, ProjectId, ProjectStatus, Tab};
 use codesh_core::shortcuts::ShortcutId;
-use codesh_ui::{components::IconGlyph, icon::Icon, tr};
+use codesh_ui::{components::IconGlyph, icon::Icon};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
@@ -209,7 +209,7 @@ fn activity_row(
                     model.open_menu(
                         if let Some(tab) = tab_id {
                             vec![super::super::menu::Item::action(
-                                tr!("Close Terminal"),
+                                "Close Terminal",
                                 super::super::menu::Command::Tab(
                                     tab,
                                     super::super::tab_menu::Action::Close,
@@ -265,9 +265,7 @@ fn card_content(
                         .min_w(px(0.0))
                         .truncate()
                         .child(if tab.is_some() {
-                            activity
-                                .directory
-                                .unwrap_or_else(|| tr!("Terminal").to_string())
+                            activity.directory.unwrap_or_else(|| "Terminal".to_string())
                         } else {
                             project.name.clone()
                         }),
@@ -289,7 +287,7 @@ fn card_content(
                             .bg(theme.surface)
                             .text_size(m.font_micro())
                             .font_weight(FontWeight::BOLD)
-                            .child(tr!("PRIMARY")),
+                            .child("PRIMARY"),
                     )
                 })
                 .child(div().flex_1())
@@ -412,7 +410,7 @@ fn headline(
         Headline::Empty => line
             .child(lead(chip(Icon::Terminal, theme.fg_dim)))
             .child(text(
-                tr!("No terminal").to_string(),
+                "No terminal".to_string(),
                 theme.fg_dim,
                 FontWeight::NORMAL,
             ))

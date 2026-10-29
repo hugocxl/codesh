@@ -1,8 +1,6 @@
 use codesh_ui::components::ButtonInteraction;
 use codesh_ui::controls::{self, Style};
-use codesh_ui::l10n::translate;
 use codesh_ui::popover;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, Context, FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton,
     ParentElement, StatefulInteractiveElement, Styled, Window, canvas, div, px,
@@ -64,12 +62,12 @@ pub(crate) fn control(model: &AppModel, cx: &mut Context<AppModel>) -> impl Into
                 .text_size(m.font_footnote())
                 .font_weight(FontWeight::MEDIUM)
                 .child(if model.status_server().is_local() {
-                    format!("{} · {}", tr!("Server"), translate(status.label()))
+                    format!("{} · {}", "Server", status.label())
                 } else {
                     format!(
                         "{} · {}",
                         model.server_label(model.status_server()),
-                        translate(status.label())
+                        status.label()
                     )
                 }),
         )
@@ -100,19 +98,15 @@ pub(crate) fn render(model: &AppModel, window: &Window, cx: &mut Context<AppMode
                 .child(
                     div()
                         .text_color(status_color(status, model))
-                        .child(translate(status.label())),
+                        .child(status.label()),
                 ),
         )
         .child(
             div()
                 .text_color(theme.fg_muted)
                 .child(match version {
-                    Some(version) => tr!(
-                        "Server for %@ · Codesh %@",
-                        &model.state.current_project().name,
-                        version
-                    ),
-                    None => tr!("Server for %@", &model.state.current_project().name),
+                    Some(version) => format!("Server for {} · Codesh {}", &model.state.current_project().name, version),
+                    None => format!("Server for {}", &model.state.current_project().name),
                 }),
         )
         .children(error.map(|error| {
@@ -125,9 +119,9 @@ pub(crate) fn render(model: &AppModel, window: &Window, cx: &mut Context<AppMode
             div()
                 .text_color(theme.fg_muted)
                 .child(if server.is_local() {
-                    tr!("Restarting or stopping this server ends all terminal sessions on this device, including sessions in other projects and clients.")
+                    "Restarting or stopping this server ends all terminal sessions on this device, including sessions in other projects and clients.".to_string()
                 } else {
-                    tr!("Restarting or stopping this server ends all terminal sessions on %@, including sessions in other projects and clients.", &label)
+                    format!("Restarting or stopping this server ends all terminal sessions on {label}, including sessions in other projects and clients.")
                 }),
         );
     let panel = popover::surface(theme, m)
@@ -145,11 +139,11 @@ pub(crate) fn render(model: &AppModel, window: &Window, cx: &mut Context<AppMode
         .child(
             popover::header(theme, m)
                 .justify_between()
-                .child(tr!("Project server"))
+                .child("Project server")
                 .child(controls::button(
                     Style { theme, metrics: &m },
                     "close-server-status",
-                    &tr!("Close"),
+                    "Close",
                     true,
                     cx.listener(|model, _, _, cx| model.dismiss_overlay(cx)),
                 )),
@@ -171,7 +165,7 @@ fn actions(model: &AppModel, cx: &mut Context<AppModel>) -> impl IntoElement {
             controls::button(
                 Style { theme, metrics: &m },
                 "connect-server",
-                &tr!("Connect"),
+                "Connect",
                 model.server_connect_enabled(),
                 cx.listener(|model, _, _, cx| {
                     if model.server_connect_enabled() {
@@ -184,14 +178,14 @@ fn actions(model: &AppModel, cx: &mut Context<AppModel>) -> impl IntoElement {
         );
     } else {
         for (restart, id, label) in [
-            (true, "restart-project-server", tr!("Restart server…")),
-            (false, "stop-project-server", tr!("Stop server…")),
+            (true, "restart-project-server", "Restart server…"),
+            (false, "stop-project-server", "Stop server…"),
         ] {
             actions = actions.child(
                 controls::button(
                     Style { theme, metrics: &m },
                     id,
-                    &label,
+                    label,
                     model.server_control_enabled(),
                     cx.listener(move |model, _, window, cx| {
                         model.confirm_server_control(

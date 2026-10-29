@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use codesh_app_core::settings::ProxySettings;
 use codesh_app_core::{PaneId, ServerId};
 use codesh_protocol::Feature;
-use codesh_ui::tr;
 use gpui::Context;
 
 use super::{AppModel, ConnectionState};
@@ -81,10 +80,7 @@ impl AppModel {
         {
             Ok(proxy) => proxy,
             Err(error) => {
-                self.fail(
-                    tr!("Could not use the proxy for SSH: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not use the proxy for SSH: {error}"), cx);
                 None
             }
         };
@@ -171,13 +167,13 @@ impl AppModel {
         use crate::views::menu::{Command, Item};
         let proxied = self.pane_uses_proxy(pane);
         if !proxied && self.proxy.settings.is_none() {
-            return Item::action(tr!("Set Up Proxy…"), Command::ProxySettings);
+            return Item::action("Set Up Proxy…", Command::ProxySettings);
         }
         let item = Item::action(
             if proxied {
-                tr!("Remove Proxy")
+                "Remove Proxy"
             } else {
-                tr!("Apply Proxy")
+                "Apply Proxy"
             },
             Command::RestartWithProxy(pane, !proxied),
         );

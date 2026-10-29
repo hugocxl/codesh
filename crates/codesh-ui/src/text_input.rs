@@ -510,8 +510,6 @@ pub struct TextInput {
     focus_handle: FocusHandle,
     content: SharedString,
     placeholder: SharedString,
-    /// Whether `placeholder` is an English key drawn in the app language.
-    placeholder_key: bool,
     ghost: SharedString,
     style: InputStyle,
     font_family: Option<SharedString>,
@@ -547,7 +545,6 @@ impl TextInput {
             focus_handle: cx.focus_handle().tab_stop(true),
             content: SharedString::default(),
             placeholder: SharedString::default(),
-            placeholder_key: false,
             ghost: SharedString::default(),
             style,
             font_family: None,
@@ -590,14 +587,6 @@ impl TextInput {
 
     pub fn with_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.set_placeholder(placeholder);
-        self
-    }
-
-    /// A placeholder given as an English key, such as a `tr_key!` literal. It
-    /// is drawn in the app language, so it follows language changes.
-    pub fn with_placeholder_key(mut self, key: &'static str) -> Self {
-        self.placeholder = key.into();
-        self.placeholder_key = true;
         self
     }
 
@@ -674,7 +663,6 @@ impl TextInput {
 
     pub fn set_placeholder(&mut self, placeholder: impl Into<SharedString>) {
         self.placeholder = placeholder.into();
-        self.placeholder_key = false;
     }
 
     pub fn set_ghost(&mut self, ghost: impl Into<SharedString>, cx: &mut Context<Self>) {
@@ -1586,13 +1574,7 @@ impl Element for TextElement {
 
         let shows_placeholder = input.content.is_empty();
         let display_text: SharedString = if shows_placeholder {
-            if input.placeholder_key {
-                codesh_core::l10n::translate(&input.placeholder)
-                    .into_owned()
-                    .into()
-            } else {
-                input.placeholder.clone()
-            }
+            input.placeholder.clone()
         } else if input.secure {
             "*".repeat(input.content.len()).into()
         } else {

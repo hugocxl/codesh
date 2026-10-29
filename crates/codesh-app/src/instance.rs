@@ -11,8 +11,6 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use codesh_ui::tr;
-
 /// More than any command line holds; a longer message is not a handoff.
 const LIMIT: u64 = 256 * 1024;
 const ANSWER: Duration = Duration::from_secs(2);
@@ -114,13 +112,9 @@ fn hand_over(socket: &Path, asked: &[PathBuf], patience: Duration) -> io::Result
 }
 
 fn unanswered(error: &dyn std::fmt::Display) -> io::Error {
-    io::Error::other(
-        tr!(
-            "Codesh is already running but did not answer: %@",
-            error.to_string()
-        )
-        .to_string(),
-    )
+    io::Error::other(format!(
+        "Codesh is already running but did not answer: {error}"
+    ))
 }
 
 fn listen(listener: &UnixListener, folders: &Folders) {

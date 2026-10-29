@@ -8,7 +8,6 @@ use codesh_ui::icon::Icon;
 use codesh_ui::picker::{
     Picker, PickerConfig, PickerEvent, PickerItem, PickerLeading, PickerRow, PickerStatus,
 };
-use codesh_ui::tr;
 use gpui::{AppContext, Context, Focusable, Window};
 
 #[derive(Default)]
@@ -38,7 +37,7 @@ impl AppModel {
     ) {
         let picker = cx.new(|cx| {
             Picker::new(
-                PickerConfig::new("project-terminals", tr!("Filter terminals or owners…")),
+                PickerConfig::new("project-terminals", "Filter terminals or owners…"),
                 self.theme.clone(),
                 self.metrics,
                 cx,
@@ -157,12 +156,11 @@ impl AppModel {
         let items: Vec<_> = available
             .into_iter()
             .filter_map(|session| {
-                let owner = session.owner.map_or_else(
-                    || tr!("No owner").to_string(),
-                    |owner| tr!("Owner: %@", owner.to_string()).to_string(),
-                );
+                let owner = session
+                    .owner
+                    .map_or_else(|| "No owner".to_string(), |owner| format!("Owner: {owner}"));
                 let directory = String::from_utf8_lossy(&session.info.directory.0);
-                let title = tr!("Terminal %lld", session.info.id.get()).to_string();
+                let title = format!("Terminal {}", session.info.id.get());
                 if !format!("{title} {directory} {owner}")
                     .to_lowercase()
                     .contains(&query)
@@ -178,16 +176,16 @@ impl AppModel {
             .collect();
         let listing = self.existing_sessions.projects.get(&picker.project);
         let status = if self.sessions_revision(picker.project).is_none() {
-            PickerStatus::Error(tr!("Reconnect to see existing terminals"))
+            PickerStatus::Error("Reconnect to see existing terminals".into())
         } else if let Some(error) = listing.and_then(|listing| listing.error.as_ref()) {
             PickerStatus::Error(error.clone().into())
         } else if listing.is_none_or(|listing| listing.revision.is_none() && listing.pending) {
-            PickerStatus::Loading(tr!("Loading terminals…"))
+            PickerStatus::Loading("Loading terminals…".into())
         } else if items.is_empty() {
             PickerStatus::Empty(if query.is_empty() {
-                tr!("No other terminals in this project")
+                "No other terminals in this project".into()
             } else {
-                tr!("No matching terminals")
+                "No matching terminals".into()
             })
         } else {
             PickerStatus::Ready

@@ -2,7 +2,6 @@
 //! tab: one server, the servers selected in the tab, or a group.
 
 use codesh_app_core::ServerId;
-use codesh_ui::tr;
 use gpui::{Context, Pixels, Point, SharedString, Window};
 
 use super::menu::{Command, Item};
@@ -62,10 +61,10 @@ pub(crate) fn connect_choice(members: &[&RemoteServer]) -> (SharedString, Action
         .filter(|server| server.status == ServerStatus::Disconnected)
         .count();
     let label = match (offline, members.len()) {
-        (0, 1) => tr!("Reconnect"),
-        (0, count) => tr!("Reconnect %lld Servers", count),
-        (1, _) => tr!("Connect"),
-        (count, _) => tr!("Connect %lld Servers", count),
+        (0, 1) => "Reconnect".into(),
+        (0, count) => format!("Reconnect {count} Servers").into(),
+        (1, _) => "Connect".into(),
+        (count, _) => format!("Connect {count} Servers").into(),
     };
     let action = if offline == 0 {
         Action::Reconnect
@@ -82,9 +81,9 @@ fn connection_items(servers: Servers, members: &[&RemoteServer]) -> Vec<Item> {
     let live = members.iter().filter(|server| live(server)).count();
     if live > 0 {
         let label = if live == 1 {
-            tr!("Disconnect")
+            "Disconnect".into()
         } else {
-            tr!("Disconnect %lld Servers", live)
+            format!("Disconnect {live} Servers").into()
         };
         items.push(item(label, servers, Action::Disconnect));
     }
@@ -93,9 +92,9 @@ fn connection_items(servers: Servers, members: &[&RemoteServer]) -> Vec<Item> {
 
 fn remove_label(count: usize) -> SharedString {
     if count == 1 {
-        tr!("Remove Server…")
+        "Remove Server…".into()
     } else {
-        tr!("Remove %lld Servers…", count)
+        format!("Remove {count} Servers…").into()
     }
 }
 
@@ -119,13 +118,13 @@ fn move_items(groups: &[&str], servers: Servers, members: &[&RemoteServer]) -> V
             .checked_if(shared(Some(group)))
         })
         .collect();
-    let none = item(tr!("No Group"), servers, Action::MoveTo(None)).checked_if(shared(None));
+    let none = item("No Group".into(), servers, Action::MoveTo(None)).checked_if(shared(None));
     items.push(if items.is_empty() {
         none
     } else {
         none.separated()
     });
-    items.push(item(tr!("New Group…"), servers, Action::NewGroup));
+    items.push(item("New Group…".into(), servers, Action::NewGroup));
     items
 }
 
@@ -133,8 +132,8 @@ fn move_items(groups: &[&str], servers: Servers, members: &[&RemoteServer]) -> V
 fn single_server_items(server: &RemoteServer, groups: &[&str], controls: bool) -> Vec<Item> {
     let servers = Servers::One(server.entry.id);
     let mut items = vec![
-        item(tr!("New Terminal"), servers, Action::NewTab),
-        item(tr!("Add Project…"), servers, Action::AddProject),
+        item("New Terminal".into(), servers, Action::NewTab),
+        item("Add Project…".into(), servers, Action::AddProject),
     ];
     items.extend(
         connection_items(servers, &[server])
@@ -142,26 +141,26 @@ fn single_server_items(server: &RemoteServer, groups: &[&str], controls: bool) -
             .enumerate()
             .map(|(index, row)| if index == 0 { row.separated() } else { row }),
     );
-    items.push(item(tr!("Edit…"), servers, Action::Edit));
+    items.push(item("Edit…".into(), servers, Action::Edit));
     items.push(Item::submenu(
-        tr!("Move to Group"),
+        "Move to Group",
         move_items(groups, servers, &[server]),
     ));
     if controls {
-        items.push(item(tr!("Restart Server…"), servers, Action::Restart).separated());
-        items.push(item(tr!("Stop Server…"), servers, Action::Stop));
+        items.push(item("Restart Server…".into(), servers, Action::Restart).separated());
+        items.push(item("Stop Server…".into(), servers, Action::Stop));
     }
     if server.missing && crate::model::released_version().is_some() {
-        items.push(item(tr!("Install Codesh…"), servers, Action::Install));
+        items.push(item("Install Codesh…".into(), servers, Action::Install));
     }
     if server.incompatible && crate::model::released_version().is_some() {
         items.push(item(
-            tr!("Copy Update Command"),
+            "Copy Update Command".into(),
             servers,
             Action::CopyUpdateCommand,
         ));
     }
-    items.push(item(tr!("Remove…"), servers, Action::Remove).separated());
+    items.push(item("Remove…".into(), servers, Action::Remove).separated());
     items
 }
 
@@ -254,7 +253,7 @@ impl AppModel {
             several => {
                 let mut items = connection_items(servers, several);
                 items.push(Item::submenu(
-                    tr!("Move to Group"),
+                    "Move to Group",
                     move_items(&groups, servers, several),
                 ));
                 items.push(item(remove_label(several.len()), servers, Action::Remove).separated());
@@ -298,8 +297,8 @@ impl AppModel {
         let members: Vec<_> = members.iter().collect();
         let mut items = connection_items(servers, &members);
         if named {
-            items.push(item(tr!("Rename Group…"), servers, Action::RenameGroup).separated());
-            items.push(item(tr!("Delete Group…"), servers, Action::DeleteGroup));
+            items.push(item("Rename Group…".into(), servers, Action::RenameGroup).separated());
+            items.push(item("Delete Group…".into(), servers, Action::DeleteGroup));
         }
         items.push(item(remove_label(members.len()), servers, Action::Remove).separated());
         self.open_server_items(items, position, window, cx);
@@ -409,7 +408,7 @@ impl AppModel {
         cx: &mut Context<Self>,
     ) -> bool {
         if name.is_empty() {
-            self.fail(tr!("Enter a group name").to_string(), cx);
+            self.fail("Enter a group name".to_string(), cx);
             return false;
         }
         let ids = self.menu_servers(servers);

@@ -92,7 +92,6 @@ use gpui::{
     TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowOptions, point, px, size,
 };
 
-use codesh_ui::tr;
 use model::AppModel;
 use views::workspace::{
     AddProject, CheckForUpdates, ClosePane, CloseTab, DecreaseFontSize, EndAllSessionsAndQuit,
@@ -289,81 +288,82 @@ fn menus() -> Vec<Menu> {
     use codesh_ui::text_input;
     let backends = model::capabilities::backends();
     let mut window_items = vec![
-        MenuItem::action(tr!("Minimize"), Minimize),
-        MenuItem::action(tr!("Zoom"), Zoom),
+        MenuItem::action("Minimize", Minimize),
+        MenuItem::action("Zoom", Zoom),
         MenuItem::separator(),
-        MenuItem::action(tr!("Split Right"), SplitRight),
-        MenuItem::action(tr!("Split Down"), SplitDown),
-        MenuItem::action(tr!("Focus Pane Left"), FocusPaneLeft),
-        MenuItem::action(tr!("Focus Pane Right"), FocusPaneRight),
-        MenuItem::action(tr!("Focus Pane Up"), FocusPaneUp),
-        MenuItem::action(tr!("Focus Pane Down"), FocusPaneDown),
-        MenuItem::action(tr!("Toggle Pane Zoom"), ToggleZoomPane),
-        MenuItem::action(tr!("Equalize Splits"), EqualizeSplits),
-        MenuItem::action(tr!("Close Pane"), ClosePane),
-        MenuItem::action(tr!("Close Tab"), CloseTab),
+        MenuItem::action("Split Right", SplitRight),
+        MenuItem::action("Split Down", SplitDown),
+        MenuItem::action("Focus Pane Left", FocusPaneLeft),
+        MenuItem::action("Focus Pane Right", FocusPaneRight),
+        MenuItem::action("Focus Pane Up", FocusPaneUp),
+        MenuItem::action("Focus Pane Down", FocusPaneDown),
+        MenuItem::action("Toggle Pane Zoom", ToggleZoomPane),
+        MenuItem::action("Equalize Splits", EqualizeSplits),
+        MenuItem::action("Close Pane", ClosePane),
+        MenuItem::action("Close Tab", CloseTab),
         MenuItem::separator(),
-        MenuItem::action(tr!("Next Tab"), NextTab),
-        MenuItem::action(tr!("Previous Tab"), PreviousTab),
+        MenuItem::action("Next Tab", NextTab),
+        MenuItem::action("Previous Tab", PreviousTab),
         MenuItem::separator(),
-        MenuItem::action(tr!("Previous Project"), PreviousProject),
-        MenuItem::action(tr!("Next Project"), NextProject),
+        MenuItem::action("Previous Project", PreviousProject),
+        MenuItem::action("Next Project", NextProject),
         MenuItem::separator(),
     ];
     window_items.extend(
-        (0..9).map(|index| MenuItem::action(tr!("Tab %lld", index + 1), SelectTab { index })),
+        (0..9).map(|index| MenuItem::action(format!("Tab {}", index + 1), SelectTab { index })),
     );
     window_items.push(MenuItem::separator());
-    window_items
-        .extend((0..9).map(|index| {
-            MenuItem::action(tr!("Project %lld", index + 1), SelectProject { index })
-        }));
-    let mut app_items = vec![MenuItem::action(tr!("Settings…"), OpenSettings)];
+    window_items.extend(
+        (0..9).map(|index| {
+            MenuItem::action(format!("Project {}", index + 1), SelectProject { index })
+        }),
+    );
+    let mut app_items = vec![MenuItem::action("Settings…", OpenSettings)];
     if backends.has_backend(Feature::Updates) {
-        app_items.push(MenuItem::action(tr!("Check for Updates…"), CheckForUpdates));
+        app_items.push(MenuItem::action("Check for Updates…", CheckForUpdates));
     }
     if backends.has_backend(Feature::CommandLineTool) {
         app_items.push(MenuItem::action(
-            tr!("Install Command Line Tool…"),
+            "Install Command Line Tool…",
             InstallCommandLineTool,
         ));
     }
     app_items.extend([
         MenuItem::separator(),
-        MenuItem::os_submenu(tr!("Services"), SystemMenuType::Services),
+        MenuItem::os_submenu("Services", SystemMenuType::Services),
         MenuItem::separator(),
-        MenuItem::action(tr!("Hide %@", app_name()), HideApp),
-        MenuItem::action(tr!("Hide Others"), HideOthers),
-        MenuItem::action(tr!("Show All"), ShowAll),
+        MenuItem::action(format!("Hide {}", app_name()), HideApp),
+        MenuItem::action("Hide Others", HideOthers),
+        MenuItem::action("Show All", ShowAll),
         MenuItem::separator(),
-        MenuItem::action(tr!("Quit %@", app_name()), Quit),
-        MenuItem::action(tr!("End All Sessions and Quit"), EndAllSessionsAndQuit),
+        MenuItem::action(format!("Quit {}", app_name()), Quit),
+        MenuItem::action("End All Sessions and Quit", EndAllSessionsAndQuit),
     ]);
     let mut view_items = vec![
-        MenuItem::action(tr!("Command Palette…"), ToggleCommandPalette),
+        MenuItem::action("Command Palette…", ToggleCommandPalette),
         MenuItem::separator(),
     ];
     if backends.has_backend(Feature::Voice) {
         view_items.push(MenuItem::action(
-            tr!("Toggle Voice Recording"),
+            "Toggle Voice Recording",
             ToggleVoiceRecording,
         ));
     }
     view_items.extend([
         MenuItem::separator(),
-        MenuItem::action(tr!("Toggle Sidebar"), ToggleSidebar),
-        MenuItem::action(tr!("Toggle Agents Panel"), ToggleAgentsPanel),
-        MenuItem::action(tr!("Toggle Agent Sessions"), ToggleAgentSessions),
-        MenuItem::action(tr!("Toggle Files"), ToggleFiles),
-        MenuItem::action(tr!("Toggle Source Control"), ToggleSourceControl),
-        MenuItem::action(tr!("Go to File…"), GoToFile),
-        MenuItem::action(tr!("Find in Files…"), FindInFiles),
-        MenuItem::action(tr!("Toggle Full Screen"), ToggleFullScreen),
+        MenuItem::action("Toggle Sidebar", ToggleSidebar),
+        MenuItem::action("Toggle Agents Panel", ToggleAgentsPanel),
+        MenuItem::action("Toggle Agent Sessions", ToggleAgentSessions),
+        MenuItem::action("Toggle Files", ToggleFiles),
+        MenuItem::action("Toggle Source Control", ToggleSourceControl),
+        MenuItem::action("Go to File…", GoToFile),
+        MenuItem::action("Find in Files…", FindInFiles),
+        MenuItem::action("Toggle Full Screen", ToggleFullScreen),
         MenuItem::separator(),
-        MenuItem::action(tr!("Theme Picker"), ToggleThemePicker),
+        MenuItem::action("Theme Picker", ToggleThemePicker),
         MenuItem::separator(),
-        MenuItem::action(tr!("Increase Font Size"), IncreaseFontSize),
-        MenuItem::action(tr!("Decrease Font Size"), DecreaseFontSize),
+        MenuItem::action("Increase Font Size", IncreaseFontSize),
+        MenuItem::action("Decrease Font Size", DecreaseFontSize),
     ]);
     vec![
         Menu {
@@ -371,42 +371,38 @@ fn menus() -> Vec<Menu> {
             items: app_items,
         },
         Menu {
-            name: tr!("Edit"),
+            name: "Edit".into(),
             items: vec![
-                MenuItem::os_action(tr!("Cut"), text_input::Cut, OsAction::Cut),
-                MenuItem::os_action(tr!("Copy"), text_input::Copy, OsAction::Copy),
-                MenuItem::os_action(tr!("Paste"), text_input::Paste, OsAction::Paste),
-                MenuItem::os_action(
-                    tr!("Select All"),
-                    text_input::SelectAll,
-                    OsAction::SelectAll,
-                ),
+                MenuItem::os_action("Cut", text_input::Cut, OsAction::Cut),
+                MenuItem::os_action("Copy", text_input::Copy, OsAction::Copy),
+                MenuItem::os_action("Paste", text_input::Paste, OsAction::Paste),
+                MenuItem::os_action("Select All", text_input::SelectAll, OsAction::SelectAll),
                 MenuItem::separator(),
-                MenuItem::action(tr!("Find…"), Find),
-                MenuItem::action(tr!("Find Next"), FindNext),
-                MenuItem::action(tr!("Find Previous"), FindPrevious),
+                MenuItem::action("Find…", Find),
+                MenuItem::action("Find Next", FindNext),
+                MenuItem::action("Find Previous", FindPrevious),
                 MenuItem::separator(),
-                MenuItem::action(tr!("Previous Prompt"), PreviousPrompt),
-                MenuItem::action(tr!("Next Prompt"), NextPrompt),
-                MenuItem::action(tr!("Select Command Output"), SelectCommandOutput),
+                MenuItem::action("Previous Prompt", PreviousPrompt),
+                MenuItem::action("Next Prompt", NextPrompt),
+                MenuItem::action("Select Command Output", SelectCommandOutput),
             ],
         },
         Menu {
-            name: tr!("File"),
+            name: "File".into(),
             items: vec![
-                MenuItem::action(tr!("New Terminal"), NewTab),
-                MenuItem::action(tr!("New Browser Pane"), NewBrowserTab),
-                MenuItem::action(tr!("New Home Terminal"), NewHomeTab),
-                MenuItem::action(tr!("New Terminal in Project…"), NewTabInProject),
-                MenuItem::action(tr!("New Worktree…"), NewWorktree),
-                MenuItem::action(tr!("Switch Worktree…"), SwitchWorktree),
-                MenuItem::action(tr!("Open Project…"), AddProject),
+                MenuItem::action("New Terminal", NewTab),
+                MenuItem::action("New Browser Pane", NewBrowserTab),
+                MenuItem::action("New Home Terminal", NewHomeTab),
+                MenuItem::action("New Terminal in Project…", NewTabInProject),
+                MenuItem::action("New Worktree…", NewWorktree),
+                MenuItem::action("Switch Worktree…", SwitchWorktree),
+                MenuItem::action("Open Project…", AddProject),
                 MenuItem::separator(),
-                MenuItem::action(tr!("Close Tab"), CloseTab),
+                MenuItem::action("Close Tab", CloseTab),
             ],
         },
         Menu {
-            name: tr!("View"),
+            name: "View".into(),
             items: view_items,
         },
         Menu {

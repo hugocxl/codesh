@@ -1,7 +1,5 @@
 use codesh_ui::controls::{self, Style};
-use codesh_ui::l10n::tr_key;
 use codesh_ui::popover;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
     StatefulInteractiveElement, Styled, Window, div, px,
@@ -42,18 +40,18 @@ pub(crate) fn render(model: &AppModel, window: &Window, cx: &mut Context<AppMode
         .child(
             popover::header(theme, m)
                 .justify_between()
-                .child(tr!("Codesh updates"))
+                .child("Codesh updates")
                 .child(controls::button(
                     Style { theme, metrics: &m },
                     "close-updates",
-                    &tr!("Close"),
+                    "Close",
                     true,
                     cx.listener(|model, _, _, cx| model.dismiss_overlay(cx)),
                 )),
         );
     let mut content = popover::body(m)
-        .child(version_row(tr!("App"), app, model))
-        .child(version_row(tr!("Server"), server, model));
+        .child(version_row("App".into(), app, model))
+        .child(version_row("Server".into(), server, model));
     let mut actions = Vec::new();
     if let Some(details) = details {
         content = content
@@ -74,7 +72,7 @@ pub(crate) fn render(model: &AppModel, window: &Window, cx: &mut Context<AppMode
         content = content.child(
             div()
                 .text_color(theme.fg_muted)
-                .child(tr!("No pending updates.")),
+                .child("No pending updates."),
         );
     }
     if separate_server_action {
@@ -84,7 +82,7 @@ pub(crate) fn render(model: &AppModel, window: &Window, cx: &mut Context<AppMode
                 div()
                     .text_size(m.font_footnote())
                     .text_color(theme.fg_muted)
-                    .child(tr!("The installed app includes a server update. Restarting the server ends all terminal sessions.")),
+                    .child("The installed app includes a server update. Restarting the server ends all terminal sessions."),
             );
         let (action, label) = model.server_update_action();
         actions.push(action_button(action, label, model, cx));
@@ -92,7 +90,7 @@ pub(crate) fn render(model: &AppModel, window: &Window, cx: &mut Context<AppMode
     if model.update_scheduled() {
         actions.push(action_button(
             UpdateAction::CancelSchedule,
-            tr_key!("Cancel scheduled update"),
+            "Cancel scheduled update",
             model,
             cx,
         ));
@@ -122,7 +120,7 @@ fn action_button(
             metrics: &model.metrics,
         },
         id,
-        &codesh_ui::l10n::translate(label),
+        label,
         model.update_action_enabled(action),
         cx.listener(move |model, _, _, cx| model.perform_update_action(action, cx)),
     )

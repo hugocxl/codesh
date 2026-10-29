@@ -5,24 +5,22 @@ use codesh_app_core::settings::{
     CellHeight, NewPaneDirectory, PaddingColor, TerminalColor, TerminalSettings,
 };
 use codesh_ui::controls;
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px,
 };
 
 pub(super) const SECTIONS: &[&str] = &[
-    tr_key!("Font"),
-    tr_key!("Background"),
-    tr_key!("Colors"),
-    tr_key!("Cursor"),
-    tr_key!("Selection"),
-    tr_key!("Scrolling"),
-    tr_key!("Input"),
-    tr_key!("Key bindings"),
-    tr_key!("Migration"),
-    tr_key!("Reset"),
+    "Font",
+    "Background",
+    "Colors",
+    "Cursor",
+    "Selection",
+    "Scrolling",
+    "Input",
+    "Key bindings",
+    "Migration",
+    "Reset",
 ];
 pub(super) const PICKERS: &[&str] = &[
     "cursor-style",
@@ -166,7 +164,7 @@ fn color_control(
         .child(change_button(
             pane,
             &format!("{id}-theme"),
-            &tr!("Use Theme"),
+            "Use Theme",
             color.is_some(),
             Change::Terminal(id, String::new()),
             cx,
@@ -224,7 +222,7 @@ fn style_font(pane: &SettingsView, slot: FontSlot, cx: &mut Context<SettingsView
         FontSlot::Italic => font.italic.first(),
         _ => font.bold_italic.first(),
     };
-    let default = tr!("Default");
+    let default = "Default";
     div()
         .flex()
         .flex_wrap()
@@ -239,7 +237,7 @@ fn style_font(pane: &SettingsView, slot: FontSlot, cx: &mut Context<SettingsView
             row.child(change_button(
                 pane,
                 &format!("{}-default", slot.id()),
-                &tr!("Use Default"),
+                "Use Default",
                 true,
                 Change::Terminal(slot.id(), String::new()),
                 cx,
@@ -296,11 +294,11 @@ pub(super) fn choices(pane: &SettingsView, id: &str) -> (String, Vec<(&'static s
             }
             .to_owned(),
             vec![
-                ("", tr!("Default")),
-                ("block", tr!("Block")),
-                ("bar", tr!("Bar")),
-                ("underline", tr!("Underline")),
-                ("block_hollow", tr!("Outline")),
+                ("", "Default"),
+                ("block", "Block"),
+                ("bar", "Bar"),
+                ("underline", "Underline"),
+                ("block_hollow", "Outline"),
             ],
         ),
         "cursor-style-blink" => (
@@ -310,19 +308,15 @@ pub(super) fn choices(pane: &SettingsView, id: &str) -> (String, Vec<(&'static s
                 Some(false) => "false",
             }
             .to_owned(),
-            vec![
-                ("", tr!("Default")),
-                ("true", tr!("On")),
-                ("false", tr!("Off")),
-            ],
+            vec![("", "Default"), ("true", "On"), ("false", "Off")],
         ),
         "macos-option-as-alt" => (
             terminal.macos_option_as_alt.to_string(),
             vec![
-                ("true", tr!("Both")),
-                ("false", tr!("Neither")),
-                ("left", tr!("Left")),
-                ("right", tr!("Right")),
+                ("true", "Both"),
+                ("false", "Neither"),
+                ("left", "Left"),
+                ("right", "Right"),
             ],
         ),
         "directory" => (
@@ -332,10 +326,7 @@ pub(super) fn choices(pane: &SettingsView, id: &str) -> (String, Vec<(&'static s
                 "project"
             })
             .to_owned(),
-            vec![
-                ("project", tr!("Project")),
-                ("current", tr!("Current pane")),
-            ],
+            vec![("project", "Project"), ("current", "Current pane")],
         ),
         "window-padding-color" => (
             match terminal.options.padding_color {
@@ -345,9 +336,9 @@ pub(super) fn choices(pane: &SettingsView, id: &str) -> (String, Vec<(&'static s
             }
             .to_owned(),
             vec![
-                ("background", tr!("Background")),
-                ("extend", tr!("Extend")),
-                ("extend-always", tr!("Extend always")),
+                ("background", "Background"),
+                ("extend", "Extend"),
+                ("extend-always", "Extend always"),
             ],
         ),
         BINDING_ACTION => return terminal_lists::action_choices(pane),
@@ -358,7 +349,7 @@ pub(super) fn choices(pane: &SettingsView, id: &str) -> (String, Vec<(&'static s
                 "pixels"
             })
             .to_owned(),
-            vec![("pixels", tr!("Pixels")), ("percent", tr!("Percent"))],
+            vec![("pixels", "Pixels"), ("percent", "Percent")],
         ),
     };
     (
@@ -610,13 +601,13 @@ pub(super) fn rows(
                 "window-padding-x" | "window-padding-y" => {
                     let items = if id == "window-padding-x" {
                         [
-                            ("padding-left", tr!("Left"), options.padding_x[0]),
-                            ("padding-right", tr!("Right"), options.padding_x[1]),
+                            ("padding-left", "Left", options.padding_x[0]),
+                            ("padding-right", "Right", options.padding_x[1]),
                         ]
                     } else {
                         [
-                            ("padding-top", tr!("Top"), options.padding_y[0]),
-                            ("padding-bottom", tr!("Bottom"), options.padding_y[1]),
+                            ("padding-top", "Top", options.padding_y[0]),
+                            ("padding-bottom", "Bottom", options.padding_y[1]),
                         ]
                     };
                     div()
@@ -660,7 +651,7 @@ pub(super) fn rows(
                         .child(div().flex().child(change_button(
                             pane,
                             "dismiss-import-notes",
-                            &tr!("Dismiss"),
+                            "Dismiss",
                             true,
                             Change::Terminal("dismiss-import-notes", String::new()),
                             cx,
@@ -672,7 +663,7 @@ pub(super) fn rows(
                 "terminal-reset" => controls::button(
                     pane.style(),
                     id,
-                    &tr!("Reset"),
+                    "Reset",
                     *terminal != TerminalSettings::default()
                         || pane.snapshot.settings.panes.new_pane_directory
                             != NewPaneDirectory::default(),

@@ -1,9 +1,9 @@
 use codesh_app_core::settings::CustomCommand;
-use codesh_ui::{controls, form, tr};
+use codesh_ui::{controls, form};
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Context, Focusable, InteractiveElement, IntoElement, ParentElement, Styled, Window,
-    div, px,
+    AnyElement, Context, Focusable, InteractiveElement, IntoElement, ParentElement, SharedString,
+    Styled, Window, div, px,
 };
 
 use super::{Category, Change, SettingsEvent, SettingsView};
@@ -29,16 +29,16 @@ pub(super) fn heading(pane: &SettingsView, cx: &mut Context<SettingsView>) -> An
         .flex()
         .flex_col()
         .gap(px(8.0))
-        .child(pane.note(&tr!("Run a saved shell command in a new tab in the selected project. Assign a direct shortcut or find it in the command palette."), false))
+        .child(pane.note("Run a saved shell command in a new tab in the selected project. Assign a direct shortcut or find it in the command palette.", false))
         .child(div().flex().child(controls::button(
             pane.style(),
             "add-command",
-            &tr!("Add Command"),
+            "Add Command",
             pane.command_editor.is_none(),
             cx.listener(|pane, _, window, cx| pane.edit_command(None, window, cx)),
         ).debug_selector(|| "settings-add-command".into())))
         .when(pane.snapshot.settings.commands.is_empty() && pane.command_editor.is_none(), |body| {
-            body.child(pane.note(&tr!("No custom commands yet."), false))
+            body.child(pane.note("No custom commands yet.", false))
         })
         .when(pane.command_editor.is_some(), |body| body.child(editor(pane, cx)))
         .when_some(pane.errors.get("commands"), |body, error| body.child(pane.note(error, true)))
@@ -51,15 +51,15 @@ fn editor(pane: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
         .flex_col()
         .child(form::row(
             pane.layout_style(),
-            &tr!("Name"),
+            "Name",
             None,
             pane.field("command-name"),
             pane.compact,
         ))
         .child(form::row(
             pane.layout_style(),
-            &tr!("Command"),
-            Some(tr!("A single-line shell command, such as cargo test or npm run dev.").as_str()),
+            "Command",
+            Some("A single-line shell command, such as cargo test or npm run dev."),
             pane.field("command-text"),
             pane.compact,
         ))
@@ -71,7 +71,7 @@ fn editor(pane: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
                     controls::button(
                         pane.style(),
                         "save-command",
-                        &tr!("Save"),
+                        "Save",
                         true,
                         cx.listener(|pane, _, _, cx| pane.save_command(cx)),
                     )
@@ -81,7 +81,7 @@ fn editor(pane: &SettingsView, cx: &mut Context<SettingsView>) -> AnyElement {
                     controls::button(
                         pane.style(),
                         "cancel-command",
-                        &tr!("Cancel"),
+                        "Cancel",
                         true,
                         cx.listener(|pane, _, _, cx| pane.cancel_command(cx)),
                     )
@@ -95,11 +95,11 @@ pub(super) fn row(pane: &SettingsView, index: usize, cx: &mut Context<SettingsVi
     let command = &pane.snapshot.settings.commands[index];
     let id = command.shortcut_id();
     let chord = pane.snapshot.settings.keymap.binding(&id);
-    let label = if pane.recording.as_deref() == Some(id.as_str()) {
-        tr!("Press a shortcut…")
+    let label: SharedString = if pane.recording.as_deref() == Some(id.as_str()) {
+        "Press a shortcut…".into()
     } else {
         chord.map_or_else(
-            || tr!("Record shortcut"),
+            || "Record shortcut".into(),
             |chord| chord.as_str().to_owned().into(),
         )
     };
@@ -133,7 +133,7 @@ pub(super) fn row(pane: &SettingsView, index: usize, cx: &mut Context<SettingsVi
             controls::button(
                 pane.style(),
                 &format!("unassign-{id}"),
-                &tr!("Unassign"),
+                "Unassign",
                 enabled && chord.is_some(),
                 cx.listener(move |pane, _, _, cx| {
                     pane.recording = None;
@@ -149,7 +149,7 @@ pub(super) fn row(pane: &SettingsView, index: usize, cx: &mut Context<SettingsVi
             controls::button(
                 pane.style(),
                 &format!("edit-{id}"),
-                &tr!("Edit"),
+                "Edit",
                 enabled,
                 cx.listener(move |pane, _, window, cx| {
                     pane.edit_command(Some(edit.clone()), window, cx);
@@ -165,7 +165,7 @@ pub(super) fn row(pane: &SettingsView, index: usize, cx: &mut Context<SettingsVi
             controls::button(
                 pane.style(),
                 &format!("delete-{id}"),
-                &tr!("Delete"),
+                "Delete",
                 enabled,
                 cx.listener(move |pane, _, _, cx| {
                     pane.recording = None;

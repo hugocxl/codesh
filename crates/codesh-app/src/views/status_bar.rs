@@ -2,7 +2,6 @@ use codesh_protocol::{GitAction, GitPullRequestAction, WorktreeAction, WorktreeI
 use codesh_ui::components::{ButtonInteraction, IconGlyph, SymbolGlyph, Tooltip};
 use codesh_ui::icon::Icon;
 use codesh_ui::popover::PopoverAnchor;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, Context, FontWeight, Hsla, InteractiveElement, IntoElement,
@@ -66,7 +65,7 @@ fn update_control(model: &AppModel, cx: &mut Context<AppModel>) -> Option<AnyEle
     } else {
         theme.accent
     };
-    let label = details.map_or_else(|| tr!("Updates").to_string(), |details| details.label);
+    let label = details.map_or_else(|| "Updates".to_string(), |details| details.label);
     let anchor = model.update_anchor();
     Some(
         div()
@@ -147,7 +146,7 @@ fn path_chip(model: &AppModel, cx: &mut Context<AppModel>) -> impl IntoElement {
                 .on_mouse_down(
                     MouseButton::Right,
                     cx.listener(move |model, event: &gpui::MouseDownEvent, window, cx| {
-                        let mut items = vec![Item::action(tr!("Copy Path"), Command::CopyPath(id))];
+                        let mut items = vec![Item::action("Copy Path", Command::CopyPath(id))];
                         if local {
                             items.push(Item::action(
                                 crate::opener::reveal_label(),
@@ -194,14 +193,14 @@ fn git_controls(model: &AppModel, cx: &mut Context<AppModel>) -> Vec<AnyElement>
         && !model.ai.running(project);
     let branch = summary.branch.clone().unwrap_or_else(|| {
         summary.head.as_ref().map_or_else(
-            || tr!("Unborn HEAD").to_string(),
-            |h| tr!("Detached %@", &h[..h.len().min(8)]).to_string(),
+            || "Unborn HEAD".to_string(),
+            |h| format!("Detached {}", &h[..h.len().min(8)]),
         )
     });
     let changes = match summary.changed {
-        0 => tr!("Clean").to_string(),
-        1 => tr!("1 Change").to_string(),
-        count => tr!("%lld Changes", count).to_string(),
+        0 => "Clean".to_string(),
+        1 => "1 Change".to_string(),
+        count => format!("{count} Changes"),
     };
     let color = if summary.conflicted > 0 {
         model.theme.danger
@@ -236,7 +235,7 @@ fn git_controls(model: &AppModel, cx: &mut Context<AppModel>) -> Vec<AnyElement>
                 .worktree_children(project)
                 .iter()
                 .any(|child| model.worktree_removing(child.id))
-                .then(|| tr!("Removing worktree"))
+                .then(|| "Removing worktree".into())
         });
     if let Some(label) = label {
         controls.push(separator(model));
@@ -380,7 +379,7 @@ fn ai_action_chip(
                         div()
                             .text_size(m.font_footnote())
                             .font_weight(FontWeight::MEDIUM)
-                            .child(codesh_ui::l10n::translate(label)),
+                            .child(label),
                     ),
             )
             .child(
@@ -415,23 +414,23 @@ fn ai_action_chip(
 fn progress_label(action: &GitAction) -> Option<SharedString> {
     match action {
         GitAction::PullRequest(GitPullRequestAction::Merge { number, .. }) => {
-            Some(tr!("Merging PR #%lld", *number))
+            Some(format!("Merging PR #{}", *number).into())
         }
         GitAction::PullRequest(GitPullRequestAction::Close { number }) => {
-            Some(tr!("Closing PR #%lld", *number))
+            Some(format!("Closing PR #{}", *number).into())
         }
         GitAction::PullRequest(GitPullRequestAction::UpdateBranch { number, .. }) => {
-            Some(tr!("Updating PR #%lld", *number))
+            Some(format!("Updating PR #{}", *number).into())
         }
-        GitAction::SwitchToBase(base) => Some(tr!("Updating %@", base)),
+        GitAction::SwitchToBase(base) => Some(format!("Updating {base}").into()),
         GitAction::Worktree(WorktreeIntent {
             action: WorktreeAction::Create { .. },
             ..
-        }) => Some(tr!("Creating worktree")),
+        }) => Some("Creating worktree".into()),
         GitAction::Worktree(WorktreeIntent {
             action: WorktreeAction::Remove { .. },
             ..
-        }) => Some(tr!("Removing worktree")),
+        }) => Some("Removing worktree".into()),
         _ => None,
     }
 }
@@ -481,11 +480,11 @@ fn pull_request_chip(
         model.theme.fg_muted
     };
     let checks_label = if checks.failing > 0 {
-        Some(tr!("%lld failing", checks.failing))
+        Some(format!("{} failing", checks.failing))
     } else if checks.pending > 0 {
-        Some(tr!("%lld running", checks.pending))
+        Some(format!("{} running", checks.pending))
     } else if checks.passing > 0 {
-        Some(tr!("%lld passed", checks.passing))
+        Some(format!("{} passed", checks.passing))
     } else {
         None
     };
@@ -523,7 +522,7 @@ fn pull_request_chip(
             div()
                 .text_size(model.metrics.font_footnote())
                 .font_weight(FontWeight::MEDIUM)
-                .child(tr!("PR #%lld", number)),
+                .child(format!("PR #{number}")),
         )
         .children(checks_label.map(|label| {
             div()
@@ -546,7 +545,7 @@ fn pull_request_unavailable(model: &AppModel, cx: &mut Context<AppModel>) -> Any
         .cursor_pointer()
         .hover(|style| style.text_color(model.theme.fg))
         .tooltip(tooltip(
-            tr!("Pull request status is unavailable. Click to retry. GitHub pull requests require an installed and authenticated gh CLI.").to_string(),
+            "Pull request status is unavailable. Click to retry. GitHub pull requests require an installed and authenticated gh CLI.".to_string(),
             model,
         ))
         .button_interaction(

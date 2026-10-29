@@ -2,7 +2,6 @@ use crate::views::menu::{Command, Item};
 use codesh_app_core::settings::SidebarHost;
 use codesh_core::shortcuts::ShortcutId;
 use codesh_ui::icon::Icon;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
@@ -61,7 +60,7 @@ pub(crate) fn bottom(model: &AppModel, _window: &Window, cx: &mut Context<AppMod
             titlebar::icon_button(
                 "sidebar-host",
                 Icon::FilterCircle,
-                tr!("Filter by Host"),
+                "Filter by Host",
                 None,
                 model,
             )
@@ -102,7 +101,7 @@ pub(crate) fn bottom(model: &AppModel, _window: &Window, cx: &mut Context<AppMod
             titlebar::icon_button(
                 "codesh-add",
                 Icon::Plus,
-                tr!("Add Project"),
+                "Add Project",
                 Some(ShortcutId::AddProject),
                 model,
             )
@@ -113,19 +112,13 @@ pub(crate) fn bottom(model: &AppModel, _window: &Window, cx: &mut Context<AppMod
             })),
         )
         .child(
-            titlebar::icon_button(
-                "new-browser-tab",
-                Icon::Globe,
-                tr!("New Browser"),
-                None,
-                model,
-            )
-            .debug_selector(|| "browser-button".into())
-            .mr(px(0.0))
-            .on_click(cx.listener(|model, _, _, cx| {
-                cx.stop_propagation();
-                model.new_browser_tab(cx);
-            })),
+            titlebar::icon_button("new-browser-tab", Icon::Globe, "New Browser", None, model)
+                .debug_selector(|| "browser-button".into())
+                .mr(px(0.0))
+                .on_click(cx.listener(|model, _, _, cx| {
+                    cx.stop_propagation();
+                    model.new_browser_tab(cx);
+                })),
         )
         .into_any_element()
 }

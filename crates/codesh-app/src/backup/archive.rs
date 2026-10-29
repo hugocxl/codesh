@@ -4,7 +4,6 @@ use std::io::{Read, Write};
 use std::path::{Component, Path};
 
 use codesh_app_core::backup::Result;
-use codesh_ui::tr;
 use serde_json::Value;
 
 use super::{Files, MAX_BYTES, MAX_FILE_BYTES, ROOTS, Restore};
@@ -37,9 +36,9 @@ fn failure(message: &str) -> Box<dyn std::error::Error + Send + Sync> {
 pub(super) fn read_file(path: &Path) -> Result<Vec<u8>> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
-        return Err(failure(&tr!(
-            "%@ must be a regular file no larger than 16 MiB",
-            path.display().to_string()
+        return Err(failure(&format!(
+            "{} must be a regular file no larger than 16 MiB",
+            path.display()
         )));
     }
     let mut bytes = Vec::new();
@@ -47,7 +46,7 @@ pub(super) fn read_file(path: &Path) -> Result<Vec<u8>> {
         .take(MAX_FILE_BYTES + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_FILE_BYTES {
-        return Err(failure(&tr!("Configuration file exceeds 16 MiB")));
+        return Err(failure("Configuration file exceeds 16 MiB"));
     }
     Ok(bytes)
 }
@@ -67,7 +66,7 @@ pub(super) fn collect(directory: &Path, roots: &[&str]) -> Result<Files> {
     while let Some(path) = pending.pop() {
         count += 1;
         if count > MAX_FILES {
-            return Err(failure(&tr!("Configuration contains too many files")));
+            return Err(failure("Configuration contains too many files"));
         }
         let metadata = fs::symlink_metadata(&path)?;
         if metadata.is_dir() {
@@ -79,15 +78,15 @@ pub(super) fn collect(directory: &Path, roots: &[&str]) -> Result<Files> {
         let name = path
             .strip_prefix(directory)?
             .to_str()
-            .ok_or_else(|| failure(&tr!("Configuration filenames must be UTF-8")))?
+            .ok_or_else(|| failure("Configuration filenames must be UTF-8"))?
             .to_owned();
         if !allowed(&name, roots) {
-            return Err(failure(&tr!("Invalid configuration path")));
+            return Err(failure("Invalid configuration path"));
         }
         let bytes = read_file(&path)?;
         size += bytes.len() as u64;
         if size > MAX_BYTES {
-            return Err(failure(&tr!("Configuration exceeds 64 MiB")));
+            return Err(failure("Configuration exceeds 64 MiB"));
         }
         files.insert(name, bytes);
     }
@@ -117,7 +116,7 @@ pub(super) fn write(destination: &Path, files: &Files, restore: Restore) -> Resu
     for (name, bytes) in files {
         size += bytes.len() as u64;
         if !allowed(name, ROOTS) || bytes.len() as u64 > MAX_FILE_BYTES || size > MAX_BYTES {
-            return Err(failure(&tr!("Invalid or oversized backup content")));
+            return Err(failure("Invalid or oversized backup content"));
         }
         archive.start_file(name, options)?;
         archive.write_all(bytes)?;
@@ -131,16 +130,16 @@ pub(super) fn write(destination: &Path, files: &Files, restore: Restore) -> Resu
 pub(super) fn read(source: &Path) -> Result<(Files, Restore)> {
     let file = File::open(source)?;
     if file.metadata()?.len() > MAX_BYTES {
-        return Err(failure(&tr!("Backup exceeds 64 MiB")));
+        return Err(failure("Backup exceeds 64 MiB"));
     }
     let mut archive = zip::ZipArchive::new(file)?;
     if archive.len() > MAX_FILES {
-        return Err(failure(&tr!("Backup contains too many entries")));
+        return Err(failure("Backup contains too many entries"));
     }
     let manifest: Value = {
         let file = archive.by_name("manifest.json")?;
         if file.size() > 1024 * 1024 {
-            return Err(failure(&tr!("Backup manifest is too large")));
+            return Err(failure("Backup manifest is too large"));
         }
         let mut bytes = Vec::new();
         file.take(1024 * 1024 + 1).read_to_end(&mut bytes)?;
@@ -149,9 +148,9 @@ pub(super) fn read(source: &Path) -> Result<(Files, Restore)> {
     match manifest["schemaVersion"].as_u64() {
         Some(2) if manifest["format"].as_str() == Some("codesh.configuration") => (),
         _ => {
-            return Err(failure(&tr!(
-                "This backup format is not supported by this version of Codesh"
-            )));
+            return Err(failure(
+                "This backup format is not supported by this version of Codesh",
+            ));
         }
     }
     let names: Vec<String> = serde_json::from_value(manifest["files"].clone())?;
@@ -168,9 +167,7 @@ pub(super) fn read(source: &Path) -> Result<(Files, Restore)> {
                 .unix_mode()
                 .is_some_and(|mode| mode & 0o170_000 == 0o120_000)
         {
-            return Err(failure(&tr!(
-                "Backup contains an unsafe or duplicate entry"
-            )));
+            return Err(failure("Backup contains an unsafe or duplicate entry"));
         }
         if entry.is_dir() || name == "manifest.json" || name.starts_with("__MACOSX/") {
             continue;
@@ -183,10 +180,10 @@ pub(super) fn read(source: &Path) -> Result<(Files, Restore)> {
                         .is_some_and(|suffix| suffix.starts_with('/'))
             })
         {
-            return Err(failure(&tr!("Unexpected backup entry: %@", &name)));
+            return Err(failure(&format!("Unexpected backup entry: {name}")));
         }
         if entry.size() > MAX_FILE_BYTES || size + entry.size() > MAX_BYTES {
-            return Err(failure(&tr!("Backup contents exceed the size limit")));
+            return Err(failure("Backup contents exceed the size limit"));
         }
         let mut bytes = Vec::new();
         (&mut entry)
@@ -194,13 +191,13 @@ pub(super) fn read(source: &Path) -> Result<(Files, Restore)> {
             .read_to_end(&mut bytes)?;
         size += bytes.len() as u64;
         if bytes.len() as u64 > MAX_FILE_BYTES || size > MAX_BYTES {
-            return Err(failure(&tr!("Backup contents exceed the size limit")));
+            return Err(failure("Backup contents exceed the size limit"));
         }
         files.insert(name, bytes);
     }
     for name in names {
         if !safe_name(&name) {
-            return Err(failure(&tr!("Invalid manifest path")));
+            return Err(failure("Invalid manifest path"));
         }
         if allowed(&name, roots)
             && !seen.contains(&name)
@@ -208,7 +205,7 @@ pub(super) fn read(source: &Path) -> Result<(Files, Restore)> {
                 .keys()
                 .any(|file| file.starts_with(&format!("{name}/")))
         {
-            return Err(failure(&tr!("Backup is missing %@", &name)));
+            return Err(failure(&format!("Backup is missing {name}")));
         }
     }
     let restore = if manifest["complete"].as_bool().unwrap_or(false) {
@@ -225,7 +222,7 @@ pub(super) fn materialize(directory: &Path, files: &Files) -> Result<()> {
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     for (name, bytes) in files {
         if !allowed(name, ROOTS) {
-            return Err(failure(&tr!("Invalid restore path")));
+            return Err(failure("Invalid restore path"));
         }
         let path = directory.join(name);
         if let Some(parent) = path.parent() {

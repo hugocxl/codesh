@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use codesh_protocol::{FilesAction, FilesReply, FilesRequest, ProjectId, ServerPath};
-use codesh_ui::tr;
 
 use super::path_service::{DirectoryItem, TypedPathState, standardize};
 
@@ -91,7 +90,7 @@ impl RemoteFolders {
                     "directory" => Ok(TypedPathState::Directory),
                     "file" => Ok(TypedPathState::NotDirectory),
                     "missing" => Ok(TypedPathState::Missing),
-                    _ => Err(tr!("The server sent an unexpected folder status").to_string()),
+                    _ => Err("The server sent an unexpected folder status".to_string()),
                 }
             },
             move |path, job| {
@@ -124,8 +123,7 @@ impl RemoteFolders {
 
 fn validate(path: &str) -> Result<(), String> {
     codesh_protocol::validate_folder_path(&ServerPath(path.as_bytes().into())).map_err(|_| {
-        tr!("Use an absolute folder path of at most 4096 bytes, without NUL characters.")
-            .to_string()
+        "Use an absolute folder path of at most 4096 bytes, without NUL characters.".to_string()
     })
 }
 
@@ -148,15 +146,15 @@ fn run(
         })
         .map_err(|error| error.to_string())?;
     if result.timed_out {
-        return Err(tr!("The server took too long to check or create the folder.").to_string());
+        return Err("The server took too long to check or create the folder.".to_string());
     }
     if result.cancelled {
-        return Err(tr!("The folder operation was cancelled.").to_string());
+        return Err("The folder operation was cancelled.".to_string());
     }
     if result.exit_code != 0 || result.truncated {
         let message = result.stderr.trim();
         return Err(if message.is_empty() {
-            tr!("The server could not check or create the folder.").to_string()
+            "The server could not check or create the folder.".to_string()
         } else {
             message.into()
         });
@@ -173,11 +171,7 @@ fn home_folders(
     path: &str,
 ) -> Result<Vec<DirectoryItem>, String> {
     let relative = inside(root, path).ok_or_else(|| {
-        tr!(
-            "%@ runs an older Codesh that lists only folders inside %@. Update it there to browse others, or type a full path.",
-            name,
-            root
-        )
+        format!("{name} runs an older Codesh that lists only folders inside {root}. Update it there to browse others, or type a full path.")
         .to_string()
     })?;
     let request = FilesRequest {
@@ -192,7 +186,7 @@ fn home_folders(
                 DirectoryItem::Directory(String::from_utf8_lossy(&entry.name.0).into_owned())
             })
             .collect()),
-        Ok(_) => Err(tr!("The server sent an unexpected reply").to_string()),
+        Ok(_) => Err("The server sent an unexpected reply".to_string()),
         Err(error) => Err(error.to_string()),
     }
 }

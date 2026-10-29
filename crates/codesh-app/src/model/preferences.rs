@@ -1,6 +1,5 @@
 use codesh_app_core::ServerId;
 use codesh_app_core::settings::TerminalEdit;
-use codesh_ui::tr;
 use gpui::{
     AppContext, Bounds, Context, Entity, TitlebarOptions, Window, WindowBounds, WindowHandle,
     WindowOptions, point, px, size,
@@ -155,7 +154,7 @@ impl AppModel {
             window_background: gpui::WindowBackgroundAppearance::Transparent,
             is_movable: !cfg!(target_os = "macos"),
             titlebar: Some(TitlebarOptions {
-                title: Some(tr!("Codesh Settings")),
+                title: Some("Codesh Settings".into()),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(14.0), px(16.0))),
             }),
@@ -163,7 +162,7 @@ impl AppModel {
         };
         match cx.open_window(options, move |window, cx| {
             #[cfg(target_os = "linux")]
-            window.set_window_title(&tr!("Codesh Settings"));
+            window.set_window_title(&"Codesh Settings");
             let model = weak.clone();
             window.on_window_should_close(cx, move |_, cx| {
                 let _ = model.update(cx, |model, cx| {
@@ -180,10 +179,7 @@ impl AppModel {
                 self.read_remote_access(cx);
             }
             Err(error) => {
-                self.fail(
-                    tr!("Could not open Settings: %@", error.to_string()).to_string(),
-                    cx,
-                );
+                self.fail(format!("Could not open Settings: {error}"), cx);
             }
         }
     }
@@ -263,7 +259,7 @@ impl AppModel {
         self.flush_preferences(cx);
         if self.server_preferences.busy || self.server_preferences.control_busy {
             self.fail(
-                tr!("Wait for the server settings operation to finish before quitting").to_string(),
+                "Wait for the server settings operation to finish before quitting".to_string(),
                 cx,
             );
             return false;
@@ -326,7 +322,7 @@ impl AppModel {
             let error = result.err().map(|error| error.to_string());
             self.preference_result(&id, error.as_deref(), cx);
             if theme_change && let Some(error) = error {
-                self.fail(tr!("Could not save theme: %@", &error).to_string(), cx);
+                self.fail(format!("Could not save theme: {error}"), cx);
             }
         }
         self.sync_preferences(cx);
@@ -418,9 +414,9 @@ impl AppModel {
             Change::Field("sidebar-vibrancy-level", value) => {
                 let level: u8 = value
                     .parse()
-                    .map_err(|_| tr!("Enter a whole number from 0 to 100").to_string())?;
+                    .map_err(|_| "Enter a whole number from 0 to 100".to_string())?;
                 if level > 100 {
-                    return Err(tr!("Enter a whole number from 0 to 100").to_string().into());
+                    return Err("Enter a whole number from 0 to 100".into());
                 }
                 settings.appearance.sidebar_vibrancy_level = level;
                 settings.appearance = settings.appearance.save_changes(&self.appearance, &path)?;
@@ -528,7 +524,7 @@ impl AppModel {
                     settings.save_panes(&path)?;
                 }
             }
-            _ => return Err(tr!("Unknown app setting").to_string().into()),
+            _ => return Err("Unknown app setting".into()),
         }
         let theme_changed = theme_changed
             || self.appearance.dark_theme != settings.appearance.dark_theme
@@ -771,7 +767,7 @@ impl AppModel {
 
     fn write_server_preference(&mut self, change: Change, cx: &mut Context<Self>) -> Result<()> {
         if !self.ready(ServerId::local()) || self.server_preferences.control_busy {
-            return Err(tr!("Connect to the server before editing its settings")
+            return Err("Connect to the server before editing its settings"
                 .to_string()
                 .into());
         }
@@ -779,7 +775,7 @@ impl AppModel {
             .server_preferences
             .document
             .clone()
-            .ok_or_else(|| tr!("Load server settings first").to_string())?;
+            .ok_or_else(|| "Load server settings first".to_string())?;
         let id = change_id(&change).to_owned();
         match change {
             Change::ShellIntegration(value) => settings.shell_integration = value,
@@ -791,19 +787,18 @@ impl AppModel {
                 settings.history_budget_bytes = value
                     .parse::<u64>()?
                     .checked_mul(1024 * 1024)
-                    .ok_or_else(|| tr!("History budget is too large").to_string())?;
+                    .ok_or_else(|| "History budget is too large".to_string())?;
             }
-            _ => return Err(tr!("Unknown server setting").to_string().into()),
+            _ => return Err("Unknown server setting".into()),
         }
         settings.validate().map_err(|_| {
-            tr!("Use an absolute shell path and a history budget between 0 and 65536 MiB")
-                .to_string()
+            "Use an absolute shell path and a history budget between 0 and 65536 MiB".to_string()
         })?;
         self.server_preferences.busy =
             self.send(ServerId::local(), Work::WriteServerSettings(settings), cx);
         self.server_preferences.row = id;
         if !self.server_preferences.busy {
-            return Err(tr!("Could not send server settings").to_string().into());
+            return Err("Could not send server settings".into());
         }
         Ok(())
     }
@@ -857,8 +852,8 @@ impl AppModel {
                 }
             }
             Err(error) => {
-                let message = self
-                    .server_message(server, &tr!("Could not stop server: %@", error.to_string()));
+                let message =
+                    self.server_message(server, &format!("Could not stop server: {error}"));
                 if server.is_local() {
                     self.preference_result("server", Some(&message), cx);
                 }

@@ -1,6 +1,4 @@
 use super::{Category, SettingsView, appearance, keyboard, server, terminal};
-use codesh_ui::l10n::tr_key;
-use codesh_ui::tr;
 use gpui::{
     AnyElement, Context, FocusHandle, InteractiveElement, IntoElement, ListAlignment, ListState,
     ParentElement, Pixels, Styled, Window, div, px,
@@ -184,10 +182,7 @@ impl SettingsView {
             } else if category == Category::Commands {
                 let commands = super::commands::matching(self);
                 if !commands.is_empty()
-                    || self.matches(
-                        category,
-                        tr_key!("Custom commands shell terminal shortcuts"),
-                    )
+                    || self.matches(category, "Custom commands shell terminal shortcuts")
                 {
                     items.push(Item::CommandsHeading);
                     items.extend(commands.into_iter().map(Item::CustomCommand));
@@ -292,12 +287,12 @@ impl SettingsView {
             })
             .text_size(px(13.0))
             .font_weight(gpui::FontWeight::SEMIBOLD)
-            .child(codesh_ui::l10n::translate(category.label()))
+            .child(category.label())
             .into_any_element()
     }
 
     pub(super) fn subsection_heading(&self, section: &'static str) -> AnyElement {
-        codesh_ui::form::section_heading(self.layout_style(), &codesh_ui::l10n::translate(section))
+        codesh_ui::form::section_heading(self.layout_style(), section)
             .debug_selector(move || format!("settings-heading-{section}"))
             .into_any_element()
     }
@@ -328,8 +323,8 @@ impl SettingsView {
                 .w_full()
                 .debug_selector(|| "settings-section-Keyboard".into())
                 .children((!self.query.is_empty()).then(|| self.section_heading(Category::Keyboard, index == 0)))
-                .child(self.subsection_heading(tr_key!("Shortcuts")))
-                .child(self.note(&tr!("Click a shortcut to record it. Escape cancels. Conflicts in the same context must be resolved first."), false))
+                .child(self.subsection_heading("Shortcuts"))
+                .child(self.note("Click a shortcut to record it. Escape cancels. Conflicts in the same context must be resolved first.", false))
                 .into_any_element(),
             Item::Shortcut(index) => {
                 #[cfg(test)]
@@ -340,13 +335,13 @@ impl SettingsView {
             Item::Empty => div()
                 .w_full()
                 .debug_selector(|| "settings-empty".into())
-                .child(self.note(&tr!("No settings found. Try another search."), false))
+                .child(self.note("No settings found. Try another search.", false))
                 .into_any_element(),
             Item::Footer => self.note(
-                    &if self.category == Category::Commands {
-                        tr!("Use Save to keep command edits. Shortcut changes apply immediately.")
+                    if self.category == Category::Commands {
+                        "Use Save to keep command edits. Shortcut changes apply immediately."
                     } else {
-                        tr!("Changes apply immediately. Press Return or leave a field to save text.")
+                        "Changes apply immediately. Press Return or leave a field to save text."
                     },
                     false,
                 )

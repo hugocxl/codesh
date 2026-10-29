@@ -1,7 +1,6 @@
 use codesh_app_core::{Project, ProjectId, ProjectStatus, Tab, TabId, settings::AppLayout};
 use codesh_ui::components::{IconButton, IconGlyph, SymbolGlyph};
 use codesh_ui::icon::Icon;
-use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
@@ -297,7 +296,7 @@ fn add_project_button(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElemen
                     theme.fg_muted,
                 )),
         )
-        .child(tr!("Add Project"))
+        .child("Add Project")
         .into_any_element()
 }
 
@@ -436,9 +435,9 @@ fn project_disclosure(
             )
             .tooltip(
                 if expanded {
-                    tr!("Collapse Project")
+                    "Collapse Project"
                 } else {
-                    tr!("Expand Project")
+                    "Expand Project"
                 },
                 theme.raised(),
                 theme.fg,
@@ -536,11 +535,11 @@ fn project_controls(project: &Project, model: &AppModel, cx: &mut Context<AppMod
                     .tooltip(
                         if model.appearance.sidebar_focus {
                             model.state.active_workspace().map_or_else(
-                                || tr!("Show All Projects"),
-                                |workspace| tr!("Show “%@”", &workspace.name),
+                                || "Show All Projects".to_string(),
+                                |workspace| format!("Show “{}”", &workspace.name),
                             )
                         } else {
-                            tr!("Focus Project")
+                            "Focus Project".to_string()
                         },
                         theme.raised(),
                         theme.fg,
@@ -577,7 +576,7 @@ fn project_controls(project: &Project, model: &AppModel, cx: &mut Context<AppMod
                             theme.fg,
                         )
                         .tooltip(
-                            tr!("New Terminal Tab"),
+                            "New Terminal Tab",
                             theme.raised(),
                             theme.fg,
                             theme.border,

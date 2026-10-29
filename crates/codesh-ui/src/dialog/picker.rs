@@ -13,8 +13,6 @@ use gpui::{App, AsyncApp};
 use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
-use crate::tr;
-
 const PORTAL: &str = "org.freedesktop.portal.Desktop";
 const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const REQUEST: &str = "org.freedesktop.portal.Request";
@@ -261,12 +259,10 @@ fn explain(error: zbus::Error) -> io::Error {
     ]
     .contains(&name.as_str());
     io::Error::other(if missing {
-        tr!(
-            "This desktop has no file chooser service. Install xdg-desktop-portal and its backend for your desktop."
-        )
+        "This desktop has no file chooser service. Install xdg-desktop-portal and its backend for your desktop."
         .to_string()
     } else {
-        tr!("Could not open the file chooser: %@", error.to_string()).to_string()
+        format!("Could not open the file chooser: {}", error.to_string())
     })
 }
 

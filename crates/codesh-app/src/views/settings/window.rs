@@ -5,9 +5,7 @@ use gpui::{
 };
 
 use codesh_ui::command_palette::{CommandPalette, CommandPaletteEvent};
-use codesh_ui::l10n::translate;
 use codesh_ui::picker::{Picker, PickerConfig, PickerEvent, PickerItem, PickerRow};
-use codesh_ui::tr;
 
 use super::languages::{LanguageEvent, LanguagePicker};
 use super::{Change, PickerRequest, SettingsEvent, SettingsView, pickers};
@@ -245,7 +243,7 @@ impl SettingsWindow {
         let (theme, metrics) = (view.theme.clone(), view.metrics);
         let picker = cx.new(|cx| {
             Picker::new(
-                PickerConfig::popover(id, tr!("Search options…")),
+                PickerConfig::popover(id, "Search options…"),
                 theme,
                 metrics,
                 cx,
@@ -292,12 +290,12 @@ impl SettingsWindow {
         let view = self.view.read(cx);
         let openers: Vec<(String, String)> = super::appearance::FILE_OPENERS
             .iter()
-            .map(|&(id, label)| (id.to_owned(), translate(label).to_string()))
+            .map(|&(id, label)| (id.to_owned(), label.to_string()))
             .collect();
         let (theme, metrics) = (view.theme.clone(), view.metrics);
         let picker = cx.new(|cx| {
             Picker::new(
-                PickerConfig::popover("file-opener", tr!("Search openers…")),
+                PickerConfig::popover("file-opener", "Search openers…"),
                 theme,
                 metrics,
                 cx,
@@ -374,18 +372,18 @@ impl SettingsWindow {
         let (theme, metrics) = (view.theme.clone(), view.metrics);
         let picker = cx.new(|cx| {
             Picker::new(
-                PickerConfig::popover("ai-provider", tr!("Search providers…")),
+                PickerConfig::popover("ai-provider", "Search providers…"),
                 theme,
                 metrics,
                 cx,
             )
         });
-        let items = std::iter::once(PickerItem::Row(PickerRow::new("", tr!("Auto"))))
+        let items = std::iter::once(PickerItem::Row(PickerRow::new("", "Auto")))
             .chain(crate::ai::PROVIDERS.iter().map(|provider| {
                 let title = if installed.contains(&provider.id) {
                     SharedString::from(provider.name)
                 } else {
-                    tr!("%@ · Not installed", provider.name)
+                    format!("{} · Not installed", provider.name).into()
                 };
                 PickerItem::Row(PickerRow::new(provider.id, title))
             }))
@@ -526,9 +524,9 @@ impl SettingsWindow {
                     if status.success() {
                         Ok(())
                     } else {
-                        Err(std::io::Error::other(
-                            tr!("System editor exited with %@", status.to_string()).to_string(),
-                        ))
+                        Err(std::io::Error::other(format!(
+                            "System editor exited with {status}"
+                        )))
                     }
                 })
                 .await;
@@ -538,10 +536,7 @@ impl SettingsWindow {
                         "configuration",
                         result
                             .err()
-                            .map(|error| {
-                                tr!("Could not open %@: %@", filename, error.to_string())
-                                    .to_string()
-                            })
+                            .map(|error| format!("Could not open {filename}: {error}"))
                             .as_deref(),
                         cx,
                     );

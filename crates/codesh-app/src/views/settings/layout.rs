@@ -1,7 +1,6 @@
 use codesh_ui::components::{ButtonInteraction, IconGlyph, Tooltip};
 use codesh_ui::icon::Icon;
-use codesh_ui::l10n::{tr_key, translate};
-use codesh_ui::{controls, navigation, tr};
+use codesh_ui::{controls, navigation};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
@@ -48,34 +47,22 @@ impl Category {
 
     fn sections(self) -> &'static [&'static str] {
         match self {
-            Self::Browser => &[tr_key!("General"), tr_key!("Browsing"), tr_key!("Profiles")],
-            Self::Ai => &[tr_key!("Commit"), tr_key!("Create Pull Request")],
+            Self::Browser => &["General", "Browsing", "Profiles"],
+            Self::Ai => &["Commit", "Create Pull Request"],
             Self::General => &[
-                tr_key!("Closing terminals"),
-                tr_key!("Files"),
-                tr_key!("Window size"),
-                tr_key!("Worktrees"),
-                tr_key!("Voice"),
+                "Closing terminals",
+                "Files",
+                "Window size",
+                "Worktrees",
+                "Voice",
             ],
-            Self::Appearance => &[
-                tr_key!("Themes"),
-                tr_key!("Interface"),
-                tr_key!("Agents Panel"),
-            ],
-            Self::Keyboard => &[tr_key!("Shortcuts")],
+            Self::Appearance => &["Themes", "Interface", "Agents Panel"],
+            Self::Keyboard => &["Shortcuts"],
             Self::Terminal => super::terminal::SECTIONS,
-            Self::Server => &[
-                tr_key!("Connection"),
-                tr_key!("Sessions"),
-                tr_key!("Server control"),
-            ],
-            Self::Mobile => &[tr_key!("Access"), tr_key!("Pairing"), tr_key!("Devices")],
+            Self::Server => &["Connection", "Sessions", "Server control"],
+            Self::Mobile => &["Access", "Pairing", "Devices"],
             Self::Commands => &[],
-            Self::Backup => &[
-                tr_key!("Backup & Restore"),
-                tr_key!("Migration"),
-                tr_key!("Configuration"),
-            ],
+            Self::Backup => &["Backup & Restore", "Migration", "Configuration"],
         }
     }
 }
@@ -149,12 +136,12 @@ impl SettingsView {
                 )
                 .when(selected, |row| row.bg(self.theme.fg_alpha(0.10)))
                 .child(category.tile())
-                .child(translate(category.label())),
+                .child(category.label()),
             );
             if expanded && !self.compact {
                 for &section in category.sections() {
                     if category == Category::Terminal
-                        && section == tr_key!("Migration")
+                        && section == "Migration"
                         && self.snapshot.terminal.diagnostics.is_empty()
                     {
                         continue;
@@ -169,7 +156,7 @@ impl SettingsView {
                             }),
                         )
                         .debug_selector(move || format!("settings-subcategory-{section}"))
-                        .child(translate(section)),
+                        .child(section),
                     );
                 }
             }
@@ -272,15 +259,15 @@ impl SettingsView {
                     .flex()
                     .flex_col()
                     .text_size(px(13.0))
-                    .child(translate(Category::Server.label()))
+                    .child(Category::Server.label())
                     .child(
                         div()
                             .text_size(px(11.0))
                             .text_color(self.theme.fg_muted)
                             .child(match self.snapshot.connection {
-                                crate::model::ConnectionState::Connecting => tr!("Connecting…"),
-                                crate::model::ConnectionState::Ready => tr!("Running"),
-                                crate::model::ConnectionState::Disconnected => tr!("Stopped"),
+                                crate::model::ConnectionState::Connecting => "Connecting…",
+                                crate::model::ConnectionState::Ready => "Running",
+                                crate::model::ConnectionState::Disconnected => "Stopped",
                             }),
                     ),
             )
@@ -370,7 +357,7 @@ impl SettingsView {
                 div()
                     .text_size(px(17.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child(translate(self.category.label())),
+                    .child(self.category.label()),
             )
             .child(div().flex_1())
             .when_some(self.configuration_file(), |header, file| {
@@ -390,7 +377,7 @@ impl SettingsView {
                         .button_interaction(cx.listener(move |_, _, _, cx| {
                             cx.emit(SettingsEvent::OpenConfiguration(file));
                         }))
-                        .child(tr!("Edit in %@", file)),
+                        .child(format!("Edit in {file}")),
                 )
             })
             .into_any_element()
@@ -425,7 +412,7 @@ impl SettingsView {
                     .tooltip(move |_, cx| {
                         cx.new(|_| {
                             Tooltip::new(
-                                tr!("Dismiss"),
+                                "Dismiss",
                                 tooltip_theme.raised(),
                                 tooltip_theme.fg,
                                 tooltip_theme.border,

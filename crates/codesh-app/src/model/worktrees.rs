@@ -10,7 +10,6 @@ use codesh_protocol::{
     GitAction, GitReply, GitRequest, GitWorktree, OperationId, ProjectId, ReplyBody, ServerPath,
     WorktreeAction, WorktreeIntent,
 };
-use codesh_ui::tr;
 use gpui::Context;
 
 use super::{AppModel, Work, git::Repository};
@@ -313,9 +312,8 @@ impl AppModel {
         match settings.save_worktrees(&self.path.with_file_name("settings.toml")) {
             Ok(()) => self.settings.worktrees = settings.worktrees,
             Err(error) => self.fail(
-                tr!(
-                    "Worktree created, but its location preference could not be saved: %@",
-                    error.to_string()
+                format!(
+                    "Worktree created, but its location preference could not be saved: {error}"
                 )
                 .to_string(),
                 cx,

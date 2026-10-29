@@ -1,7 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use codesh_ui::tr;
-
 #[derive(Clone, Debug)]
 pub(crate) enum Source {
     Release(String),
@@ -46,18 +44,9 @@ impl Source {
 
     pub(crate) fn description(&self, name: &str) -> String {
         match self {
-            Self::Release(version) => tr!(
-                "Codesh %@ is downloaded from GitHub and installed in ~/.local/bin on %@. It needs curl and glibc 2.35 or newer there.",
-                version,
-                name
-            ),
-            Self::Development(archive) => tr!(
-                "The development build at %@ is uploaded to %@. It installs codesh-server and its codesh helper in ~/.local/bin, then tests the connection. It requires x86_64 Linux with glibc 2.35 or newer.",
-                archive.display().to_string(),
-                name
-            ),
-        }
-        .to_string()
+            Self::Release(version) => format!("Codesh {version} is downloaded from GitHub and installed in ~/.local/bin on {name}. It needs curl and glibc 2.35 or newer there."),
+            Self::Development(archive) => format!("The development build at {} is uploaded to {}. It installs codesh-server and its codesh helper in ~/.local/bin, then tests the connection. It requires x86_64 Linux with glibc 2.35 or newer.", archive.display(), name),
+        }.clone()
     }
 }
 
