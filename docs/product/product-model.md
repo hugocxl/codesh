@@ -80,8 +80,8 @@ if it has no panes in this app and no terminal history.
 
 ```mermaid
 flowchart LR
-    PARENT["codesh<br/>~/code/codesh"] --> FEATURE["feature-x<br/>~/code/codesh-feature-x"]
-    PARENT --> FIX["fix-login<br/>~/code/codesh-fix-login"]
+    PARENT["codesh<br/>~/code/codesh"] --> FEATURE["feature-x<br/>~/.codesh/worktrees/codesh/feature-x"]
+    PARENT --> FIX["fix-login<br/>~/.codesh/worktrees/codesh/fix-login"]
 ```
 
 ## Deleting

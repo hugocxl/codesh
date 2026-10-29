@@ -12,7 +12,7 @@ first. They describe how Codesh works and how it is built.
 
 - macOS 14+ for the desktop app, or Linux for the CLI and server
 - [Rust](https://rustup.rs) (`rustup` installs the version pinned in `rust-toolchain.toml`)
-- [Zig](https://ziglang.org) 0.15.2, used to build the Ghostty terminal library
+- [Zig](https://ziglang.org) 0.17.0, used to build the Ghostty terminal library
 
 ### Setup
 

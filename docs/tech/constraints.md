@@ -46,8 +46,7 @@ Browser panes load the system's WebKitGTK 4.1, version 2.42 or later. A GPUI win
 - content processes outside WebKit's sandbox where the system forbids the
   sandbox, as Ubuntu 24.04 does for an app without an AppArmor profile.
 
-On Ubuntu, download `codesh-desktop.apparmor` from the
-[latest stable release](https://github.com/hugocxl/codesh/releases/latest) to allow
+On Ubuntu, the profile at `packaging/linux/codesh-desktop.apparmor` allows
 WebKit's sandbox at the default installation paths for all three Linux formats.
 An administrator can install it:
 
@@ -106,12 +105,12 @@ uses at most four CPU threads and times out after ten minutes. One dictation
 session can run in the app at a time. macOS keeps its native speech service and
 resolves language selections imported from Linux to installed speech locales.
 
-Linux releases installed with the user-local installer use a versioned installation
+Linux desktop packages are not currently published. When they are, installs
+made with the user-local installer use a versioned installation
 with an atomic `current` link, verified downloads and the shared session-compatibility
 rules. Debian packages are managed by APT; AppImages are replaced manually. Neither
 uses the in-app updater. AppImages retain a private, unpacked copy so background
 servers and CLI commands do not depend on a temporary FUSE mount.
-See [Linux desktop installation and updates](../user-guide/getting-started.md#linux-desktop-app).
 The package baseline is Ubuntu 24.04 and glibc 2.39; this does not change the
 standalone CLI/server floor of 2.35.
 Clipboard image submission is unavailable because the current

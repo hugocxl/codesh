@@ -123,18 +123,27 @@ class InstallerTests(unittest.TestCase):
                 self.assertNotEqual(self.install(version=version).returncode, 0)
                 self.assertFalse((self.root / 'curl.log').exists())
 
-    def test_all_platform_aliases_install_only_exact_selected_asset(self):
-        for system in ('Darwin', 'Linux'):
-            for arch in ('arm64', 'aarch64', 'x86_64', 'amd64'):
-                with self.subTest(system=system, arch=arch):
-                    self.env.update(TEST_OS=system, TEST_ARCH=arch)
-                    self.archive()
-                    result = self.install('--replace')
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assert_pair()
-                    urls = (self.root / 'curl.log').read_text().splitlines()[-2:]
-                    self.assertEqual(urls, [f'https://github.com/hugocxl/codesh/releases/download/v{VERSION}/{name}'
-                                           for name in (self.asset.name, 'SHA256SUMS')])
+    def test_published_platform_aliases_install_only_exact_selected_asset(self):
+        for arch in ('arm64', 'aarch64'):
+            with self.subTest(arch=arch):
+                self.env.update(TEST_ARCH=arch)
+                self.archive()
+                result = self.install('--replace')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assert_pair()
+                urls = (self.root / 'curl.log').read_text().splitlines()[-2:]
+                self.assertEqual(urls, [f'https://github.com/hugocxl/codesh/releases/download/v{VERSION}/{name}'
+                                       for name in (self.asset.name, 'SHA256SUMS')])
+
+    def test_unpublished_platforms_fail_before_download(self):
+        for system, arch in (('Darwin', 'x86_64'), ('Linux', 'arm64'), ('Linux', 'amd64')):
+            with self.subTest(system=system, arch=arch):
+                self.env.update(TEST_OS=system, TEST_ARCH=arch)
+                result = self.install()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('not currently published', result.stderr)
+                self.assertFalse(self.dest.exists())
+                self.assertFalse((self.root / 'curl.log').exists())
 
     def test_replacement_requires_opt_in_and_switches_one_generation(self):
         self.assertEqual(self.install().returncode, 0)

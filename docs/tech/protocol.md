@@ -83,5 +83,6 @@ values neutrally.
 Encoded samples of each version are kept in
 `crates/codesh-protocol/tests/fixtures/v<N>` and are only ever added to. CI
 checks that the current build reads every sample and that the last release
-reads the current ones. Saved user data must never be lost when a format
-changes.
+reads the current ones. From 1.0, saved user data must never be lost when a
+format changes; before 1.0, formats written by earlier pre-releases may be
+dropped.

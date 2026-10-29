@@ -34,18 +34,18 @@ workspace reaches other machines over SSH.
 
 ## Install
 
-Codesh runs on macOS 14 or newer, on Apple Silicon or Intel.
+Codesh runs on macOS 14 or newer on Apple Silicon.
 
-1. Download `Codesh-<version>-arm64.dmg` (Apple Silicon) or
-   `Codesh-<version>-x86_64.dmg` (Intel) from the
+1. Download `Codesh-<version>-arm64.dmg` from the
    [latest release](https://github.com/hugocxl/codesh/releases/latest).
 2. Drag **Codesh** to `/Applications` and open it.
 
 The app updates itself from GitHub Releases. To use `codesh` in your shell,
 choose **Install Command Line Tool…** from the app menu.
 
-The CLI and server alone, for Macs and Linux machines you reach over SSH, are
-also on the Releases page. See [Getting started](docs/user-guide/getting-started.md).
+The CLI and server alone, for Macs you reach over SSH, are also on the Releases
+page. Intel Mac and Linux builds are not currently published; build them from
+source. See [Getting started](docs/user-guide/getting-started.md).
 
 ### Build from source
 

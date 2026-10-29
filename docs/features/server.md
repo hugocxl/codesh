@@ -82,7 +82,8 @@ displays correctly. If neither is installed, it leaves them unset.
 
 ## Files
 
-Everything lives in one profile folder:
+Everything lives in one profile folder. Beta is the identity of local
+development builds; there is no beta release channel.
 
 | Platform | Stable | Beta |
 | --- | --- | --- |

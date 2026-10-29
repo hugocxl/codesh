@@ -58,6 +58,14 @@ case "$(uname -m)" in
     arm64|aarch64) ARCH=arm64 ;;
     *) fail 'Supported architectures: x86_64 and ARM64.' ;;
 esac
+# Release archives are currently published for these platforms only.
+PUBLISHED='macos-arm64'
+if [ "$DEV_ARCHIVE" = false ]; then
+    case " $PUBLISHED " in
+        *" $PLATFORM-$ARCH "*) ;;
+        *) fail "Codesh releases are not currently published for $PLATFORM-$ARCH. Build from source instead." ;;
+    esac
+fi
 if [ "$DEV_ARCHIVE" = true ]; then
     [ "$PLATFORM-$ARCH" = linux-x86_64 ] || fail 'This development archive requires x86_64 Linux.'
 elif command -v sha256sum >/dev/null 2>&1; then
