@@ -313,3 +313,123 @@ fn manual_order_lists_local_projects_before_remote_ones(cx: &mut TestAppContext)
         assert_eq!(parent_ids(model), [local_home, local, remote]);
     });
 }
+
+#[gpui::test]
+fn project_palette_search_switches_projects_and_keeps_root_hit_ids(cx: &mut TestAppContext) {
+    use crate::views::command_palette::{Kind, PaletteEntry};
+
+    let (mut state, [ten, _, _, _]) = fixture();
+    for name in ["repo-extra-a", "repo-extra-b"] {
+        let id = state
+            .add_project(ServerId::local(), std::env::temp_dir())
+            .expect("project");
+        state.rename_project(id, name).expect("name");
+    }
+    let (boot, _requests) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update_in(cx, |model, window, cx| {
+        model.open_palette(PaletteEntry::Root, window, cx);
+        let palette = model.palette_entity().expect("palette");
+        palette.update(cx, |palette, cx| palette.set_query("repo10", cx));
+    });
+    cx.run_until_parked();
+    view.read_with(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        let items = palette.read(cx).items();
+        let hit = items
+            .iter()
+            .find(|item| {
+                item.kind
+                    .as_ref()
+                    .is_some_and(|kind| kind == Kind::Project.label())
+            })
+            .expect("project hit");
+        assert_eq!(hit.id, ten.to_string());
+        assert!(!hit.highlights.is_empty());
+        assert!(hit.subtitle.is_some());
+    });
+    view.update(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        palette.update(cx, |palette, cx| palette.set_query("repo", cx));
+    });
+    cx.run_until_parked();
+    view.read_with(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        let items = palette.read(cx).items();
+        assert_eq!(
+            items
+                .iter()
+                .filter(|item| item
+                    .kind
+                    .as_ref()
+                    .is_some_and(|kind| kind == Kind::Project.label()))
+                .count(),
+            5
+        );
+        assert!(items.iter().any(|item| item.id == "see-all:projects"));
+    });
+    view.update(cx, |model, cx| {
+        model.push_palette_page(PaletteEntry::Projects, Some("repo10"), cx);
+    });
+    cx.run_until_parked();
+    view.read_with(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        let items = palette.read(cx).items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, ten.to_string());
+    });
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    view.read_with(cx, |model, _| {
+        assert_eq!(model.state.current_project().id, ten);
+        assert!(model.overlay.is_none());
+    });
+}
+
+#[gpui::test]
+fn workspace_palette_switches_and_marks_remote_servers_separately(cx: &mut TestAppContext) {
+    use crate::views::command_palette::PaletteEntry;
+
+    let mut state = AppState::bootstrap().expect("state");
+    let workspace = state.create_workspace("Work").expect("workspace");
+    let server = ServerId::new();
+    let home = ProjectId::new();
+    state
+        .apply_catalog(server, &servers::page(2, home, &[]))
+        .expect("remote catalog");
+    state.select_remote_servers();
+    let (boot, _requests, _remotes) = remote_boot(state, vec![servers::entry(server, "Dev")]);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update_in(cx, |model, window, cx| {
+        acknowledge_catalog(model, cx);
+        model.open_palette(PaletteEntry::Workspaces, window, cx);
+    });
+    cx.run_until_parked();
+    view.read_with(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        let items = palette.read(cx).items();
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.id.as_ref())
+                .collect::<Vec<_>>(),
+            ["all", "remote_servers", &workspace.to_string()]
+        );
+        assert_eq!(items.iter().filter(|item| item.current).count(), 1);
+        assert!(items[1].current);
+    });
+    cx.simulate_input("Work");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    view.read_with(cx, |model, _| {
+        assert_eq!(
+            model.state.active_workspace().map(|workspace| workspace.id),
+            Some(workspace)
+        );
+        assert!(!model.state.remote_servers_selected());
+        assert!(model.overlay.is_none());
+    });
+}
