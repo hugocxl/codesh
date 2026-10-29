@@ -91,8 +91,9 @@ const VERSION_COMMAND: &str =
 pub(crate) fn incompatible_guidance(name: &str, there: Option<&str>) -> String {
     let here = env!("CARGO_PKG_VERSION");
     if there == Some(here) {
-        return format!("Codesh on {name} is {here}, but its running server is another version. Restart it there, which ends its terminals: pkill -x codesh-server")
-        .to_string();
+        return format!(
+            "Codesh on {name} is {here}, but its running server is another version. Restart it there, which ends its terminals: pkill -x codesh-server"
+        );
     }
     let there = there.map_or_else(
         || format!("Codesh on {name} is another version"),

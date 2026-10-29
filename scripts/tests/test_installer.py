@@ -214,20 +214,15 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(list(self.root.glob('codesh-install.*')))
 
     def test_traversal_extra_files_and_link_types_are_rejected(self):
-        for system in ('Darwin', 'Linux'):
-            self.env['TEST_OS'] = system
-            for members, kind in (({**self.pair, '../escaped': b'bad'}, None),
-                                  ({**self.pair, '/absolute': b'bad'}, None),
-                                  ({**self.pair, 'extra': b'bad'}, None), (self.pair, 'symlink')):
-                with self.subTest(system=system, kind=kind, members=list(members)):
-                    self.archive(members, kind)
-                    self.assertNotEqual(self.install().returncode, 0)
-                    self.assertFalse(self.dest.exists())
-            if system == 'Linux':
-                for kind in ('hardlink', 'fifo'):
-                    self.archive(kind=kind)
-                    self.assertNotEqual(self.install().returncode, 0)
-                    self.assertFalse(self.dest.exists())
+        # Release archives are zips for the one published platform; tar entries
+        # are covered by the development-archive tests below.
+        for members, kind in (({**self.pair, '../escaped': b'bad'}, None),
+                              ({**self.pair, '/absolute': b'bad'}, None),
+                              ({**self.pair, 'extra': b'bad'}, None), (self.pair, 'symlink')):
+            with self.subTest(kind=kind, members=list(members)):
+                self.archive(members, kind)
+                self.assertNotEqual(self.install().returncode, 0)
+                self.assertFalse(self.dest.exists())
 
     def test_unsupported_hosts_and_missing_tools_fail_before_download(self):
         for values in ({'TEST_OS': 'FreeBSD'}, {'TEST_ARCH': 'riscv64'},
@@ -284,6 +279,8 @@ class InstallerTests(unittest.TestCase):
 
     def test_development_archive_rejects_unsafe_or_incomplete_pairs(self):
         for members, kind in (({'../escape': b'bad', 'codesh-server': b'server'}, None),
+                              ({'codesh': b'c', 'codesh-server': b's', '/absolute': b'bad'}, None),
+                              ({'codesh': b'c', 'codesh-server': b's', 'extra': b'bad'}, None),
                               ({'codesh': b'only-one'}, None),
                               ({'codesh': b'', 'codesh-server': b'server'}, None),
                               (None, 'symlink'), (None, 'hardlink'), (None, 'fifo')):

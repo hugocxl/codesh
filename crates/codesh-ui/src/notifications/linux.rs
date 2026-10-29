@@ -94,13 +94,9 @@ impl Service {
     /// unavailable instead, since one can start later.
     pub(super) fn start() -> Result<(Self, Receiver<Event>), Capability> {
         let unreachable = |error: &dyn std::fmt::Display| {
-            Capability::Unavailable(
-                format!(
-                    "Desktop notifications need the session's D-Bus: {}",
-                    error.to_string()
-                )
-                .to_string(),
-            )
+            Capability::Unavailable(format!(
+                "Desktop notifications need the session's D-Bus: {error}"
+            ))
         };
         let connection = crate::dbus::session().map_err(|error| unreachable(&error))?;
         let proxy =
@@ -203,11 +199,7 @@ impl Worker {
             body.to_owned()
         };
         // A notification with nothing to open offers no action.
-        let actions = if opens {
-            vec![OPEN, open.as_ref()]
-        } else {
-            Vec::new()
-        };
+        let actions = if opens { vec![OPEN, open] } else { Vec::new() };
         // Held until the number is recorded, so a click on it is not ignored.
         let mut shown = lock(&self.shown);
         let sent = self.proxy.call::<_, _, u32>(
@@ -227,10 +219,9 @@ impl Worker {
             Ok(number) => shown.record(id, number),
             Err(error) => {
                 drop(shown);
-                self.report(Capability::Unavailable(
-                    format!("The desktop refused a notification: {}", error.to_string())
-                        .to_string(),
-                ));
+                self.report(Capability::Unavailable(format!(
+                    "The desktop refused a notification: {error}"
+                )));
             }
         }
     }

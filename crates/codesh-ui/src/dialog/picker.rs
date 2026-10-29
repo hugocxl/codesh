@@ -262,7 +262,7 @@ fn explain(error: zbus::Error) -> io::Error {
         "This desktop has no file chooser service. Install xdg-desktop-portal and its backend for your desktop."
         .to_string()
     } else {
-        format!("Could not open the file chooser: {}", error.to_string())
+        format!("Could not open the file chooser: {error}")
     })
 }
 

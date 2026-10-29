@@ -205,7 +205,6 @@ fn run(
             .map(std::process::Stdio::from)
             .map_err(|error| {
                 format!("Cannot read the development build at {}: {}. Run scripts/build-linux-dev.sh in this checkout, then retry installation.", path.display(), error)
-                .to_string()
             })?,
         None => std::process::Stdio::null(),
     };

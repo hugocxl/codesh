@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, reason = "Offline voice regression fixtures")]
 
 use super::*;
+use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::AtomicU64;
 
 struct Fixture(PathBuf);

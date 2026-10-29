@@ -143,9 +143,8 @@ fn validate_speech_model(path: &Path) -> Result<PathBuf, String> {
     let error = || {
         format!(
             "Install the Silero speech detection model at {} to use offline dictation.",
-            path.display().to_string()
+            path.display()
         )
-        .to_string()
     };
     let canonical = path.canonicalize().map_err(|_| error())?;
     if !canonical
@@ -176,7 +175,7 @@ fn executable(name: &str) -> Result<PathBuf, String> {
         .into_iter()
         .map(|directory| directory.join(name))
         .find(|path| codesh_core::executable::is_executable_file(path))
-        .ok_or_else(|| format!("Install {name} to use offline dictation.").into())
+        .ok_or_else(|| format!("Install {name} to use offline dictation."))
 }
 
 fn record(tools: &Tools, model: &Path, language: &str, shared: &Shared) -> Result<(), String> {

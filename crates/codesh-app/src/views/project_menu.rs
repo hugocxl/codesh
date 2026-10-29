@@ -160,10 +160,16 @@ impl AppModel {
         };
         let gone = record.parent_id.is_some() && record.status() != ProjectStatus::Available;
         let message = if gone {
-            format!("Remove “{}” from every client? Its folder is already gone. All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded.", &record.name)
+            format!(
+                "Remove “{}” from every client? Its folder is already gone. All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded.",
+                &record.name
+            )
         } else {
-            format!("Remove “{}” from every client? All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded. The folder and its files will stay on disk.", &record.name)
-        }.clone();
+            format!(
+                "Remove “{}” from every client? All of its terminal sessions will end, including those displayed in other clients, and their saved output will be discarded. The folder and its files will stay on disk.",
+                &record.name
+            )
+        };
         self.confirm(
             if gone {
                 "Remove Worktree?"

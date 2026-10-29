@@ -45,7 +45,6 @@ impl Installation {
             return Err(format!(
                 "Move {app_name}.app to Applications and reopen it before updating"
             )
-            .to_string()
             .into());
         }
         let details = Command::new("/usr/bin/codesign")
@@ -241,9 +240,7 @@ impl Installation {
                 .args(["-extract", key, "raw", "-o", "-"])
                 .arg(&plist))?;
             if actual.trim() != expected {
-                return Err(format!("The signed app has an unexpected {key}")
-                    .to_string()
-                    .into());
+                return Err(format!("The signed app has an unexpected {key}").into());
             }
         }
         if let Some(release::Version::Beta { build }) = release::Version::parse(version) {
@@ -393,7 +390,6 @@ impl PreparedUpdate {
                     error,
                     backup.display()
                 )
-                .to_string()
                 .into());
             }
             return Err(error);
@@ -473,7 +469,6 @@ fn run(command: &mut Command) -> Result<String> {
             command.get_program().to_string_lossy(),
             String::from_utf8_lossy(&output.stderr).trim()
         )
-        .to_string()
         .into());
     }
     Ok(String::from_utf8(output.stdout)?)

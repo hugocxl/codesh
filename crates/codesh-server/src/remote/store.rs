@@ -1,5 +1,5 @@
 use std::fmt::Write as _;
-use std::fs::{self};
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 

@@ -9,7 +9,6 @@ pub use crate::dialog_types::{
 use crate::{
     controls::Style,
     theme::{ColorScheme, Metrics, Theme},
-    tr,
 };
 
 mod picker;

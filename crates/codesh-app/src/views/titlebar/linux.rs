@@ -49,7 +49,7 @@ pub(in crate::views) fn controls(
             .when(capabilities.minimize, |controls| {
                 controls.child(button(
                     "window-minimize",
-                    "Minimize",
+                    "Minimize".into(),
                     "icons/window-minimize.svg",
                     theme,
                     |_, window, _| window.minimize_window(),
@@ -59,9 +59,9 @@ pub(in crate::views) fn controls(
                 controls.child(button(
                     "window-maximize",
                     if window.is_maximized() {
-                        "Restore Window"
+                        "Restore Window".into()
                     } else {
-                        "Maximize"
+                        "Maximize".into()
                     },
                     if window.is_maximized() {
                         "icons/window-restore.svg"
@@ -74,7 +74,7 @@ pub(in crate::views) fn controls(
             })
             .child(button(
                 "window-close",
-                "Close Window",
+                "Close Window".into(),
                 "icons/window-close.svg",
                 theme,
                 close,

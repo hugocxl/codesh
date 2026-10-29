@@ -44,9 +44,15 @@ impl Source {
 
     pub(crate) fn description(&self, name: &str) -> String {
         match self {
-            Self::Release(version) => format!("Codesh {version} is downloaded from GitHub and installed in ~/.local/bin on {name}. It needs curl and glibc 2.35 or newer there."),
-            Self::Development(archive) => format!("The development build at {} is uploaded to {}. It installs codesh-server and its codesh helper in ~/.local/bin, then tests the connection. It requires x86_64 Linux with glibc 2.35 or newer.", archive.display(), name),
-        }.clone()
+            Self::Release(version) => format!(
+                "Codesh {version} is downloaded from GitHub and installed in ~/.local/bin on {name}. It needs curl there, and builds are currently published for Apple Silicon Macs only."
+            ),
+            Self::Development(archive) => format!(
+                "The development build at {} is uploaded to {}. It installs codesh-server and its codesh helper in ~/.local/bin, then tests the connection. It requires x86_64 Linux with glibc 2.35 or newer.",
+                archive.display(),
+                name
+            ),
+        }
     }
 }
 

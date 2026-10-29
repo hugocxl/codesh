@@ -20,7 +20,6 @@ pub(super) fn replace_and_restart(
             codesh_core::release::Channel::current().app_name(),
             error
         )
-        .to_string()
         .into());
     }
     Ok(())
@@ -40,13 +39,10 @@ fn replace_with(
     if let Err(error) = rename(next, current) {
         if let Err(rollback) = rename(backup, current) {
             return Err(format!("Could not install update ({}) or restore the previous app ({}). The previous app is at {}", error, rollback, backup.display())
-            .to_string()
             .into());
         }
         return Err(
-            format!("Could not install update; the previous app was restored: {error}")
-                .to_string()
-                .into(),
+            format!("Could not install update; the previous app was restored: {error}").into(),
         );
     }
     Ok(())

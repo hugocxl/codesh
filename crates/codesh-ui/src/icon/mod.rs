@@ -276,7 +276,7 @@ mod tests {
     use gpui::AssetSource;
 
     /// What the app's own views name.
-    const DRAWN: [&str; 28] = [
+    const DRAWN: [&str; 29] = [
         "arrow.clockwise",
         "arrow.down.circle",
         "arrow.triangle.merge",
@@ -290,6 +290,7 @@ mod tests {
         "clock",
         "exclamationmark.triangle.fill",
         "magnifyingglass",
+        "network",
         "pause.fill",
         "pencil.circle",
         "pin",

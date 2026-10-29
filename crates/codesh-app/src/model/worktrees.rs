@@ -314,8 +314,7 @@ impl AppModel {
             Err(error) => self.fail(
                 format!(
                     "Worktree created, but its location preference could not be saved: {error}"
-                )
-                .to_string(),
+                ),
                 cx,
             ),
         }

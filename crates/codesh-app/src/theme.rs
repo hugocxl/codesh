@@ -38,14 +38,11 @@ impl Catalog {
         if let Err(error) = fs::create_dir_all(directory)
             .and_then(|()| Self::read_directory(directory, &mut entries, &mut errors))
         {
-            errors.push(
-                format!(
-                    "Could not load themes from {}: {}",
-                    directory.display(),
-                    error
-                )
-                .to_string(),
-            );
+            errors.push(format!(
+                "Could not load themes from {}: {}",
+                directory.display(),
+                error
+            ));
         }
         let mut entries: Vec<_> = entries
             .into_iter()
@@ -81,10 +78,9 @@ impl Catalog {
                 Ok(source) => {
                     let scheme = ColorScheme::parse(&source);
                     if scheme.background.is_none() || scheme.foreground.is_none() {
-                        errors.push(
-                            format!("Theme {name} needs valid background and foreground colors")
-                                .to_string(),
-                        );
+                        errors.push(format!(
+                            "Theme {name} needs valid background and foreground colors"
+                        ));
                         continue;
                     }
                     entries.insert(theme_name(name).to_owned(), scheme);

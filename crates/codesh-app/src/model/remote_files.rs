@@ -71,8 +71,7 @@ impl RemoteFiles {
             return Err(format!(
                 "{} is a folder. Only files can be sent to {}.",
                 name, &self.name
-            )
-            .to_string());
+            ));
         }
         if metadata.len() > MAX_UPLOAD_BYTES {
             return Err(too_large(name, &self.name));
@@ -91,14 +90,12 @@ impl RemoteFiles {
                 Err(format!(
                     "Codesh on {} can't receive files. Update Codesh there.",
                     &self.name
-                )
-                .to_string())
+                ))
             }
             Err(ClientError::Server(error)) => Err(format!(
                 "Could not send {} to {}: {}",
                 name, &self.name, &error.message
-            )
-            .to_string()),
+            )),
             Err(error) => Err(format!(
                 "Could not send {} to {}: {}",
                 name, &self.name, error
@@ -180,8 +177,7 @@ impl RemoteFiles {
             return Err(format!(
                 "Codesh can open copies only of files in {}'s projects and Home.",
                 &self.name
-            )
-            .to_string());
+            ));
         };
         let request = FilesRequest {
             project,

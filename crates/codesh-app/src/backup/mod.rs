@@ -84,10 +84,14 @@ fn prepare_from(profile: &Path, source: &Path) -> Result<PreparedImport> {
         .as_ref()
         .map_or(0, |state| state.projects().len().saturating_sub(1));
     let summary = if restore == Restore::Merge {
-        format!("Import settings and {count} projects with their layouts on the next launch. Projects you already have keep their details and tabs, and workspaces with the same name are combined. A recovery copy is saved in the profile’s Backups folder.")
+        format!(
+            "Import settings and {count} projects with their layouts on the next launch. Projects you already have keep their details and tabs, and workspaces with the same name are combined. A recovery copy is saved in the profile’s Backups folder."
+        )
     } else {
-        format!("Restore settings and {count} saved projects with their layouts on the next launch. Existing projects are kept; matching projects receive the saved layouts. A recovery copy is saved in the profile’s Backups folder. Restart the server from Settings to apply restored server settings.")
-    }.clone();
+        format!(
+            "Restore settings and {count} saved projects with their layouts on the next launch. Existing projects are kept; matching projects receive the saved layouts. A recovery copy is saved in the profile’s Backups folder. Restart the server from Settings to apply restored server settings."
+        )
+    };
 
     Ok(PreparedImport {
         files,

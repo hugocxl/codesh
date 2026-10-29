@@ -172,7 +172,6 @@ fn home_folders(
 ) -> Result<Vec<DirectoryItem>, String> {
     let relative = inside(root, path).ok_or_else(|| {
         format!("{name} runs an older Codesh that lists only folders inside {root}. Update it there to browse others, or type a full path.")
-        .to_string()
     })?;
     let request = FilesRequest {
         project,

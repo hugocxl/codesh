@@ -14,6 +14,12 @@ pub(crate) mod frame;
 #[cfg(target_os = "linux")]
 pub(crate) mod linux;
 
+/// The window area inside Linux's client-side frame; macOS uses the viewport.
+#[cfg(target_os = "linux")]
+pub(crate) fn content_size(window: &Window) -> gpui::Size<gpui::Pixels> {
+    frame::bounds(window).size
+}
+
 pub(crate) fn overlay(element: impl IntoElement, window: &Window) -> AnyElement {
     #[cfg(target_os = "linux")]
     return frame::overlay(element, window);

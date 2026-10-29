@@ -480,11 +480,7 @@ static API: OnceLock<Result<Api, String>> = OnceLock::new();
 pub(super) fn load() -> Result<&'static Api, String> {
     API.get_or_init(|| {
         Api::bind().map_err(|error| {
-            format!(
-                "Browser pages need WebKitGTK 4.1, which could not be loaded: {}",
-                error.to_string()
-            )
-            .to_string()
+            format!("Browser pages need WebKitGTK 4.1, which could not be loaded: {error}")
         })
     })
     .as_ref()

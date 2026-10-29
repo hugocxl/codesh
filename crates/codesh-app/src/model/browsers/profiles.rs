@@ -325,8 +325,7 @@ impl AppModel {
                     format!(
                         "Imported {} visits and {} bookmarks from {}",
                         report.visits_added, report.bookmarks_added, &label
-                    )
-                    .to_string(),
+                    ),
                     cx,
                 ),
                 Ok(Imported::Cookies(cookies)) => {

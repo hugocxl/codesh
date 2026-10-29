@@ -29,7 +29,9 @@ On Linux hosts that end your processes when you log out, run
 2. Enter the SSH host (a host name, address, or `~/.ssh/config` alias), and
    optionally the user, port, and identity file.
 3. Choose **Test Connection**. If Codesh isn't installed there, the app offers to
-   install the same version into `~/.local/bin`.
+   install the same version into `~/.local/bin`. Published builds currently
+   exist for Apple Silicon Macs only; on other hosts, build the CLI and server
+   from source first.
 4. Add projects with **Add Project → Remote**, which browses the server's
    folders.
 
@@ -126,4 +128,4 @@ arguments must be absolute paths on that computer.
 Codesh never updates a remote computer by itself. When versions can't talk, the
 app shows the command to run there. To update by hand, follow
 the [installation instructions](../user-guide/getting-started.md#cli-and-server-only)
-on that computer with `--replace`, choosing the same channel and a compatible version.
+on that computer with `--replace`, choosing a compatible version.
