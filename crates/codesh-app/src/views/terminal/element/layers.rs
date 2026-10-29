@@ -6,8 +6,6 @@ mod tests;
 
 #[derive(Default)]
 pub(super) struct Paths {
-    #[cfg(test)]
-    pub(super) legacy_dots: bool,
     groups: Vec<PathGroup>,
 }
 
@@ -26,30 +24,6 @@ impl Paths {
         self.groups.push(PathGroup {
             bounds: None,
             shapes: Shapes::Paths(vec![path]),
-        });
-    }
-
-    #[cfg(test)]
-    pub(super) fn extend_disjoint(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        paths: Vec<(Path<Pixels>, Hsla)>,
-    ) {
-        if paths.is_empty() {
-            return;
-        }
-        if let Some(previous) = self.groups.last_mut()
-            && let Shapes::Paths(previous_paths) = &mut previous.shapes
-            && let Some(previous_bounds) = &mut previous.bounds
-            && !previous_bounds.intersects(&bounds)
-        {
-            *previous_bounds = previous_bounds.union(&bounds);
-            previous_paths.extend(paths);
-            return;
-        }
-        self.groups.push(PathGroup {
-            bounds: Some(bounds),
-            shapes: Shapes::Paths(paths),
         });
     }
 

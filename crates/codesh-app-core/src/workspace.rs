@@ -55,22 +55,6 @@ impl AppState {
         Ok(id)
     }
 
-    pub fn rename_workspace(&mut self, id: WorkspaceId, name: &str) -> Result<(), AppError> {
-        let name = workspace_name(name)?;
-        self.workspace_mut(id)?.name = name;
-        Ok(())
-    }
-
-    /// Removes the group only; its projects stay.
-    pub fn delete_workspace(&mut self, id: WorkspaceId) -> Result<(), AppError> {
-        self.workspace_mut(id)?;
-        self.workspaces.retain(|workspace| workspace.id != id);
-        if self.window.workspace == Some(id) {
-            self.window.workspace = None;
-        }
-        Ok(())
-    }
-
     pub fn select_workspace(&mut self, id: Option<WorkspaceId>) -> Result<(), AppError> {
         if let Some(id) = id {
             self.workspace_mut(id)?;

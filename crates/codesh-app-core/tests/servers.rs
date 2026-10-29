@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 
@@ -162,19 +161,14 @@ fn equal_session_ids_on_two_servers_never_mix() -> TestResult {
     assert_eq!(state.pane_server(local_pane), Some(LOCAL));
     assert_eq!(state.pane_server(remote_pane), Some(remote));
     assert_eq!(state.project_server(remote_home), Some(remote));
-    assert_eq!(
-        state.session_references_by_server(),
-        BTreeMap::from([(LOCAL, vec![one]), (remote, vec![one])])
-    );
+    assert_eq!(state.session_references(LOCAL), [one]);
+    assert_eq!(state.session_references(remote), [one]);
 
     state.close_session_pane(remote_pane)?;
     assert_eq!(state.pending_discards(remote), [one]);
     assert!(state.pending_discards(LOCAL).is_empty());
     assert_eq!(state.session_references(LOCAL), [one]);
-    assert_eq!(
-        state.session_references_by_server(),
-        BTreeMap::from([(LOCAL, vec![one]), (remote, Vec::new())])
-    );
+    assert!(state.session_references(remote).is_empty());
 
     state.queue_discard(LOCAL, one);
     state.prepare_closes(LOCAL);

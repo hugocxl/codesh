@@ -345,7 +345,6 @@ impl AppState {
         &mut self,
         project: ProjectId,
         anchor: TabId,
-        side: crate::TabSide,
     ) -> Result<TabId, AppError> {
         let target = self
             .project(project)
@@ -364,7 +363,7 @@ impl AppState {
             return self.open_terminal_tab_near(project, Some(anchor));
         }
         let boundary = target.tabs.iter().take_while(|tab| tab.pinned).count();
-        let index = (index + usize::from(side == crate::TabSide::Right)).max(boundary);
+        let index = (index + 1).max(boundary);
         let id = self.open_terminal_tab_near(project, Some(anchor))?;
         let tabs = &mut self.project_mut(project)?.tabs;
         let tab = tabs

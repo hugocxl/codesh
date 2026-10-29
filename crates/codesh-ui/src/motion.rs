@@ -1,4 +1,3 @@
-use gpui::{Animation, AnimationExt as _, ElementId, Hsla, IntoElement, Pixels, Styled, div};
 use std::time::Duration;
 
 pub struct VisibilityMotion {
@@ -69,22 +68,4 @@ fn ease_in_out(progress: f32) -> f32 {
     }
     let time = (low + high) * 0.5;
     3.0 * (1.0 - time) * time * time + time * time * time
-}
-
-pub fn timed_progress_fill(
-    id: impl Into<ElementId>,
-    duration: Duration,
-    color: Hsla,
-    radius: Pixels,
-) -> impl IntoElement {
-    div()
-        .absolute()
-        .left(gpui::px(0.0))
-        .top(gpui::px(0.0))
-        .bottom(gpui::px(0.0))
-        .rounded(radius)
-        .bg(color)
-        .with_animation(id, Animation::new(duration), |fill, delta| {
-            fill.w(gpui::relative(delta))
-        })
 }

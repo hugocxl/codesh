@@ -539,7 +539,7 @@ impl AppModel {
             Command::Tab(id, action) => {
                 use super::tab_menu::Action;
                 match action {
-                    Action::New(side) => self.new_tab_adjacent(id, side, cx),
+                    Action::New => self.new_tab_adjacent(id, cx),
                     Action::Rename => {
                         self.open_tab_editor(id, position, window, cx);
                         return;

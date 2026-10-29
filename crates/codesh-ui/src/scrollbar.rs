@@ -90,23 +90,4 @@ impl ScrollbarRevealState {
     pub fn allows_hit(self, now: Duration) -> bool {
         self.dragging || self.revealed_until.is_some_and(|until| now < until)
     }
-
-    pub fn extend_near_track(
-        &mut self,
-        now: Duration,
-        pointer_x: f64,
-        view_width: f64,
-        scroller_width: f64,
-    ) -> bool {
-        if !pointer_x.is_finite()
-            || !view_width.is_finite()
-            || !scroller_width.is_finite()
-            || pointer_x < view_width - scroller_width.max(0.0) * 2.0
-        {
-            return false;
-        }
-
-        self.reveal(now);
-        true
-    }
 }

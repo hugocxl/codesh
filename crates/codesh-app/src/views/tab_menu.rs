@@ -1,4 +1,4 @@
-use codesh_app_core::{Color, Project, TabCloseScope, TabId, TabSide};
+use codesh_app_core::{Color, Project, TabCloseScope, TabId};
 
 use codesh_ui::tr;
 
@@ -6,7 +6,7 @@ use super::menu::{Command, Item, color_items};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Action {
-    New(TabSide),
+    New,
     Rename,
     ResetTitle,
     /// Sets the tab's color to `TAB_COLORS[index]`.
@@ -23,7 +23,7 @@ pub(crate) fn items(project: &Project, id: TabId) -> Vec<Item> {
     };
     let item = |label: gpui::SharedString, action| Item::action(label, Command::Tab(id, action));
     let mut items = vec![
-        item(tr!("New Terminal"), Action::New(TabSide::Right)),
+        item(tr!("New Terminal"), Action::New),
         item(tr!("Rename Tab"), Action::Rename).separated(),
     ];
     if tab.custom_title.is_some() {

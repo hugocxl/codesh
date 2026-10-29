@@ -3,12 +3,6 @@ use serde::{Deserialize, Serialize};
 use crate::{AppError, Color, Layout, Pane, PaneContent, PaneId, Project, TabId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TabSide {
-    Left,
-    Right,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TabCloseScope {
     Other,
     Left,

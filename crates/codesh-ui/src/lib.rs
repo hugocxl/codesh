@@ -53,12 +53,6 @@ pub mod notifications;
 
 pub mod pasteboard;
 
-#[allow(
-    unsafe_code,
-    reason = "Native menu actions are handled on the main dispatch queue"
-)]
-pub mod native_menu;
-
 #[allow(unsafe_code, reason = "Main-thread WebKit and native view integration")]
 pub mod webview;
 

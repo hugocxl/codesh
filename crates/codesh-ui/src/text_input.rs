@@ -11,9 +11,7 @@ use gpui::{
     UTF16Selection, UnderlineStyle, Window, WrapBoundary, WrappedLine, actions, div, fill, point,
     px, size,
 };
-use std::cell::RefCell;
 use std::ops::Range;
-use std::rc::Rc;
 use std::time::Duration;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -503,8 +501,6 @@ pub enum InputEvent {
     Cancelled,
 }
 
-type PasteDelegate = Rc<RefCell<Box<dyn FnMut(&mut Window, &mut App) -> bool + 'static>>>;
-
 #[must_use]
 #[allow(
     clippy::struct_excessive_bools,
@@ -519,7 +515,6 @@ pub struct TextInput {
     ghost: SharedString,
     style: InputStyle,
     font_family: Option<SharedString>,
-    placeholder_font_family: Option<SharedString>,
     key_context: &'static str,
     selected_range: Range<usize>,
     selection_reversed: bool,
@@ -540,7 +535,6 @@ pub struct TextInput {
     goal_x: Option<Pixels>,
     history: History,
     coalesce_next: bool,
-    paste_delegate: Option<PasteDelegate>,
     /// Shows `*` for the text, such as a password, and never copies it.
     secure: bool,
 }
@@ -557,7 +551,6 @@ impl TextInput {
             ghost: SharedString::default(),
             style,
             font_family: None,
-            placeholder_font_family: None,
             key_context: DEFAULT_CONTEXT,
             selected_range: 0..0,
             selection_reversed: false,
@@ -578,7 +571,6 @@ impl TextInput {
             goal_x: None,
             history: History::default(),
             coalesce_next: true,
-            paste_delegate: None,
             secure: false,
         }
     }
@@ -614,21 +606,8 @@ impl TextInput {
         self
     }
 
-    pub fn with_placeholder_font(mut self, family: impl Into<SharedString>) -> Self {
-        self.placeholder_font_family = Some(family.into());
-        self
-    }
-
     pub fn with_font_family(mut self, family: impl Into<SharedString>) -> Self {
         self.font_family = Some(family.into());
-        self
-    }
-
-    pub fn with_paste_delegate(
-        mut self,
-        delegate: impl FnMut(&mut Window, &mut App) -> bool + 'static,
-    ) -> Self {
-        self.paste_delegate = Some(Rc::new(RefCell::new(Box::new(delegate))));
         self
     }
 
@@ -646,10 +625,6 @@ impl TextInput {
         self.selected_range.clone()
     }
 
-    pub fn selected_text(&self) -> &str {
-        &self.content[self.selected_range.clone()]
-    }
-
     pub fn cursor_offset(&self) -> usize {
         selection_cursor(&self.selected_range, self.selection_reversed)
     }
@@ -661,10 +636,6 @@ impl TextInput {
         }
         let range = self.selected_range.clone();
         self.apply_edit(range, text, false, false, cx);
-    }
-
-    pub fn insert_at_selection(&mut self, text: &str, cx: &mut Context<Self>) {
-        self.replace_selection(text, cx);
     }
 
     pub fn set_text(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
@@ -699,25 +670,6 @@ impl TextInput {
             self.last_layout = None;
             cx.notify();
         }
-    }
-
-    pub fn set_font_family(&mut self, family: Option<SharedString>, cx: &mut Context<Self>) {
-        if self.font_family != family {
-            self.font_family = family;
-            self.last_layout = None;
-            cx.notify();
-        }
-    }
-
-    pub fn set_paste_delegate(
-        &mut self,
-        delegate: impl FnMut(&mut Window, &mut App) -> bool + 'static,
-    ) {
-        self.paste_delegate = Some(Rc::new(RefCell::new(Box::new(delegate))));
-    }
-
-    pub fn clear_paste_delegate(&mut self) {
-        self.paste_delegate = None;
     }
 
     pub fn set_placeholder(&mut self, placeholder: impl Into<SharedString>) {
@@ -907,20 +859,6 @@ impl TextInput {
     }
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(delegate) = self.paste_delegate.clone() else {
-            self.paste_from_clipboard(window, cx);
-            return;
-        };
-        let input = cx.entity();
-        window.defer(cx, move |window, cx| {
-            let consumed = delegate.borrow_mut()(window, cx);
-            if !consumed {
-                input.update(cx, |input, cx| input.paste_from_clipboard(window, cx));
-            }
-        });
-    }
-
-    fn paste_from_clipboard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
             let text = normalized_paste_text(text, self.multiline);
             self.coalesce_next = false;
@@ -1668,14 +1606,7 @@ impl Element for TextElement {
 
         let run = TextRun {
             len: display_text.len(),
-            font: if shows_placeholder {
-                input
-                    .placeholder_font_family
-                    .clone()
-                    .map_or_else(|| text_style.font(), gpui::font)
-            } else {
-                text_style.font()
-            },
+            font: text_style.font(),
             color,
             background_color: None,
             underline: None,

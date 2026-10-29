@@ -57,25 +57,6 @@ impl AppState {
             .collect()
     }
 
-    /// Sessions shown by panes, for every server with projects here. A server
-    /// whose panes show none has an empty list.
-    pub fn session_references_by_server(&self) -> BTreeMap<ServerId, Vec<SessionId>> {
-        let mut references: BTreeMap<_, BTreeSet<_>> = self
-            .projects
-            .iter()
-            .map(|project| (project.server_id, BTreeSet::new()))
-            .collect();
-        for (server, pane) in self.server_panes() {
-            if let Some(session) = terminal_session(pane) {
-                references.entry(server).or_default().insert(session);
-            }
-        }
-        references
-            .into_iter()
-            .map(|(server, sessions)| (server, sessions.into_iter().collect()))
-            .collect()
-    }
-
     pub fn pending_discards(&self, server: ServerId) -> &[SessionId] {
         self.servers
             .get(&server)

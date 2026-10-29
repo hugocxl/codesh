@@ -7,7 +7,6 @@ pub enum Appearance {
     Dark,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Theme {
     pub bg: Hsla,

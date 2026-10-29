@@ -3,7 +3,7 @@ pub(super) mod drag;
 
 pub(crate) use drag::{TabDragState, TabDrop};
 
-use codesh_app_core::{Tab, TabGroup, TabId, TabSide};
+use codesh_app_core::{Tab, TabGroup, TabId};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
@@ -184,7 +184,7 @@ pub(super) fn new_tab_button(
     .on_click(cx.listener(move |model, _, _, cx| {
         cx.stop_propagation();
         match anchor {
-            Some(anchor) => model.new_tab_adjacent(anchor, TabSide::Right, cx),
+            Some(anchor) => model.new_tab_adjacent(anchor, cx),
             None => model.new_tab_in(model.state.current_project().id, cx),
         }
     }))

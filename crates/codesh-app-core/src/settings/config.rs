@@ -230,11 +230,6 @@ impl Settings {
             .map_err(|error| Error::new("window", error))
     }
 
-    pub fn save_clipboard(&self, path: &Path) -> Result<()> {
-        crate::settings::appearance::save_section(path, "clipboard", &self.clipboard)
-            .map_err(|error| Error::new("clipboard", error))
-    }
-
     pub fn save_openers(&self, path: &Path) -> Result<()> {
         crate::settings::appearance::save_section(path, "openers", &self.openers)
             .map_err(|error| Error::new("openers", error))

@@ -1,4 +1,4 @@
-use codesh_app_core::{AppError, AppState, ProjectStatus, Tab, TabCloseScope, TabId, TabSide};
+use codesh_app_core::{AppError, AppState, ProjectStatus, Tab, TabCloseScope, TabId};
 use gpui::{Context, Pixels, Point, Window};
 
 use super::{AppModel, ConnectionState, Quitting};
@@ -105,12 +105,7 @@ impl AppModel {
         true
     }
 
-    pub(crate) fn new_tab_adjacent(
-        &mut self,
-        anchor: TabId,
-        side: TabSide,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn new_tab_adjacent(&mut self, anchor: TabId, cx: &mut Context<Self>) {
         let Some((project, project_server)) = self
             .tab_project(anchor)
             .map(|project| (project.id, project.server_id))
@@ -120,7 +115,7 @@ impl AppModel {
         if self.edit_tab(
             |state| {
                 state
-                    .open_terminal_tab_adjacent(project, anchor, side)
+                    .open_terminal_tab_adjacent(project, anchor)
                     .map(|_| ())
             },
             cx,

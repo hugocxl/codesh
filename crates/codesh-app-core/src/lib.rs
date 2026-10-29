@@ -33,7 +33,7 @@ pub use layout::{Axis, Branch, Direction, Layout};
 pub use pane::{Pane, PaneContent};
 pub use project::{Color, Project, ProjectKind, ProjectStatus, TAB_COLORS, initial};
 pub use state::AppState;
-pub use tab::{Tab, TabCloseScope, TabSide};
+pub use tab::{Tab, TabCloseScope};
 pub use window::{WindowBounds, WindowState};
 pub use workspace::Workspace;
 

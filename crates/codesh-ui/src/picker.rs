@@ -157,7 +157,6 @@ fn content_height(
     tab_count: usize,
     items: &[PickerItem],
     status: &PickerStatus,
-    detail_line_count: Option<usize>,
     has_footer: bool,
 ) -> f32 {
     let tabs = if tab_count > 1 && !layout.inline_tabs {
@@ -165,9 +164,7 @@ fn content_height(
     } else {
         0.0
     };
-    let body = if let Some(line_count) = detail_line_count {
-        line_count.max(1) as f32 * 20.0
-    } else if matches!(status, PickerStatus::Ready) && !items.is_empty() {
+    let body = if matches!(status, PickerStatus::Ready) && !items.is_empty() {
         items
             .iter()
             .enumerate()
@@ -192,15 +189,7 @@ fn content_height(
         + layout.shell_gap * gaps as f32
 }
 
-fn scrollbar_item_heights(
-    layout: PickerLayout,
-    scale: f32,
-    items: &[PickerItem],
-    detail_line_count: Option<usize>,
-) -> Vec<f32> {
-    if let Some(line_count) = detail_line_count {
-        return vec![20.0 * scale; line_count];
-    }
+fn scrollbar_item_heights(layout: PickerLayout, scale: f32, items: &[PickerItem]) -> Vec<f32> {
     items
         .iter()
         .enumerate()
@@ -427,13 +416,6 @@ impl PickerItem {
             row.disabled = disabled;
         }
         self
-    }
-
-    pub fn row_data(self) -> Option<PickerRow> {
-        match self {
-            Self::Row(row) => Some(row),
-            Self::Section(_) => None,
-        }
     }
 
     fn selectable_id(&self) -> Option<&SharedString> {
@@ -783,7 +765,6 @@ pub struct Picker {
     metrics: Metrics,
     focused: bool,
     can_navigate_back: bool,
-    detail: Option<(SharedString, Vec<SharedString>)>,
     confirmation_message: Option<SharedString>,
     scrollbar_drag: Option<Pixels>,
     _subscriptions: Vec<Subscription>,
@@ -838,7 +819,6 @@ impl Picker {
             metrics,
             focused: false,
             can_navigate_back: false,
-            detail: None,
             confirmation_message: None,
             scrollbar_drag: None,
             _subscriptions: vec![subscription],
@@ -883,10 +863,8 @@ impl Picker {
         }
         self.state.set_items(items);
         self.confirmation_message = None;
-        if self.detail.is_none() {
-            self.scroll.reset(self.state.item_count());
-            self.scroll_to_selection();
-        }
+        self.scroll.reset(self.state.item_count());
+        self.scroll_to_selection();
         cx.notify();
     }
 
@@ -931,32 +909,6 @@ impl Picker {
         cx.notify();
     }
 
-    pub fn show_detail(
-        &mut self,
-        title: impl Into<SharedString>,
-        body: &str,
-        cx: &mut Context<Self>,
-    ) {
-        let lines = body
-            .lines()
-            .map(|line| SharedString::from(line.to_owned()))
-            .collect::<Vec<_>>();
-        self.detail = Some((title.into(), lines));
-        self.focused = false;
-        self.scroll
-            .reset(self.detail.as_ref().map_or(0, |(_, lines)| lines.len()));
-        cx.notify();
-    }
-
-    pub fn open_confirmation(
-        &mut self,
-        row: &str,
-        action: &str,
-        cx: &mut Context<Self>,
-    ) -> Result<(), UnknownPickerRow> {
-        self.open_confirmation_with_message(row, action, None, cx)
-    }
-
     pub fn open_confirmation_with_message(
         &mut self,
         row: &str,
@@ -976,7 +928,6 @@ impl Picker {
         cx: &mut Context<Self>,
     ) -> Result<(), UnknownPickerTab> {
         self.state.activate_tab(tab)?;
-        self.detail = None;
         self.focused = false;
         let query = self.state.query().to_owned();
         self.input.update(cx, |input, cx| input.set_text(query, cx));
@@ -988,9 +939,6 @@ impl Picker {
     }
 
     fn move_selection(&mut self, direction: isize, cx: &mut Context<Self>) {
-        if self.detail.is_some() {
-            return;
-        }
         if direction > 0 {
             self.state.select_next();
         } else {
@@ -1033,14 +981,7 @@ impl Picker {
         }
     }
 
-    fn dismiss(&mut self, _: &Dismiss, window: &mut Window, cx: &mut Context<Self>) {
-        if self.detail.take().is_some() {
-            self.scroll.reset(self.state.item_count());
-            window.focus(&self.input.focus_handle(cx));
-            self.focused = true;
-            cx.notify();
-            return;
-        }
+    fn dismiss(&mut self, _: &Dismiss, _: &mut Window, cx: &mut Context<Self>) {
         match self.state.escape() {
             PickerEscape::CloseInlineAction => {
                 self.confirmation_message = None;
@@ -1079,11 +1020,10 @@ impl Picker {
     }
 
     fn accepts_submission(&self) -> bool {
-        self.detail.is_none()
-            && matches!(
-                self.state.status(),
-                PickerStatus::Ready | PickerStatus::Empty(_)
-            )
+        matches!(
+            self.state.status(),
+            PickerStatus::Ready | PickerStatus::Empty(_)
+        )
     }
 
     fn cycle_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
@@ -1122,7 +1062,6 @@ impl Picker {
             self.config.tabs.len(),
             self.state.items(),
             self.state.status(),
-            self.detail.as_ref().map(|(_, lines)| lines.len()),
             !self.config.footer_actions.is_empty(),
         );
         let borders = if self.config.footer_actions.is_empty() {
@@ -1287,9 +1226,7 @@ impl Picker {
                         element
                             .on_hover(cx.listener(move |popover, hovered: &bool, _, cx| {
                                 if *hovered {
-                                    if popover.detail.is_some()
-                                        || popover.state.select_row(&hover_id).is_err()
-                                    {
+                                    if popover.state.select_row(&hover_id).is_err() {
                                         return;
                                     }
                                     if let Some(selection) = popover.state.confirm() {
@@ -1300,9 +1237,7 @@ impl Picker {
                             }))
                             .on_click(cx.listener(
                                 move |popover, event: &gpui::ClickEvent, _, cx| {
-                                    if popover.detail.is_some()
-                                        || popover.state.select_row(&id).is_err()
-                                    {
+                                    if popover.state.select_row(&id).is_err() {
                                         return;
                                     }
                                     cx.emit(PickerEvent::RowClicked {
@@ -1621,24 +1556,6 @@ impl Picker {
             .into_any_element()
     }
 
-    fn render_detail_item(&self, index: usize) -> AnyElement {
-        let line = self
-            .detail
-            .as_ref()
-            .and_then(|(_, lines)| lines.get(index))
-            .cloned()
-            .unwrap_or_default();
-        div()
-            .w_full()
-            .min_h(self.metrics.scaled(20.0))
-            .px(self.metrics.spacing5())
-            .text_size(self.metrics.font_caption())
-            .font_family(crate::font::monospace())
-            .text_color(self.theme.fg)
-            .child(line)
-            .into_any_element()
-    }
-
     fn render_tab_strip(&mut self, cx: &mut Context<Self>) -> AnyElement {
         if self.config.tabs.len() <= 1 {
             return div().into_any_element();
@@ -1773,17 +1690,8 @@ impl Picker {
         let visible = f64::from(viewport.size.height);
         let layout = PickerLayout::resolve(self.config.presentation, self.config.compact);
         let scale = f32::from(self.metrics.scaled(1.0));
-        let heights = scrollbar_item_heights(
-            layout,
-            scale,
-            self.state.items(),
-            self.detail.as_ref().map(|(_, lines)| lines.len()),
-        );
-        let vertical_inset = if self.detail.is_none() {
-            f32::from(self.metrics.scaled(layout.list_vertical_inset)) * 2.0
-        } else {
-            0.0
-        };
+        let heights = scrollbar_item_heights(layout, scale, self.state.items());
+        let vertical_inset = f32::from(self.metrics.scaled(layout.list_vertical_inset)) * 2.0;
         let content = heights.iter().sum::<f32>() + vertical_inset;
         let maximum = f64::from((content - f32::from(viewport.size.height)).max(0.0));
         let inset = f64::from(self.metrics.spacing2());
@@ -1855,7 +1763,6 @@ impl Picker {
             layout,
             f32::from(self.metrics.scaled(1.0)),
             self.state.items(),
-            self.detail.as_ref().map(|(_, lines)| lines.len()),
         );
         self.scroll
             .scroll_to(scrollbar_list_offset(&heights, f32::from(offset)));
@@ -1923,16 +1830,11 @@ impl Render for Picker {
     )]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.focused
-            && (self.detail.is_some()
-                || self.focus_handle.is_focused(window)
+            && (self.focus_handle.is_focused(window)
                 || self.config.presentation != PickerPresentation::Embedded)
         {
             self.focused = true;
-            if self.detail.is_some() {
-                window.focus(&self.focus_handle);
-            } else {
-                window.focus(&self.input.focus_handle(cx));
-            }
+            window.focus(&self.input.focus_handle(cx));
         }
         let viewport = window.viewport_size();
         let layout = PickerLayout::resolve(self.config.presentation, self.config.compact);
@@ -2008,25 +1910,7 @@ impl Render for Picker {
         if self.config.tabs.len() > 1 && !layout.inline_tabs {
             panel = panel.child(self.render_tabs(cx));
         }
-        panel = if let Some((title, _)) = &self.detail {
-            let title = title.clone();
-            panel.child(
-                self.render_header()
-                    .id("picker-detail-header")
-                    .h(self.metrics.scaled(layout.header_height))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(self.theme.hover))
-                    .on_click(cx.listener(|popover, _, window, cx| {
-                        popover.dismiss(&Dismiss, window, cx);
-                    }))
-                    .child(IconGlyph::new(
-                        Icon::ChevronLeft,
-                        self.metrics.icon_md(),
-                        self.theme.fg_muted,
-                    ))
-                    .child(title),
-            )
-        } else {
+        panel = {
             let has_inline_tabs = self.config.tabs.len() > 1 && layout.inline_tabs;
             let inline_tabs = has_inline_tabs.then(|| self.render_tab_strip(cx));
             panel.child(
@@ -2081,9 +1965,7 @@ impl Render for Picker {
         let list = gpui::list(
             self.scroll.clone(),
             cx.processor(|popover, index: usize, window, cx| {
-                if popover.detail.is_some() {
-                    popover.render_detail_item(index)
-                } else if popover.config.presentation == PickerPresentation::Popover {
+                if popover.config.presentation == PickerPresentation::Popover {
                     let layout =
                         PickerLayout::resolve(popover.config.presentation, popover.config.compact);
                     let height = popover.state.items().get(index).map_or(0.0, |item| {
@@ -2101,14 +1983,12 @@ impl Render for Picker {
         )
         .w_full()
         .when(
-            self.config.presentation == PickerPresentation::Embedded || self.detail.is_some(),
+            self.config.presentation == PickerPresentation::Embedded,
             |element| element.pr(self.metrics.spacing5()),
         )
         .flex_grow()
         .min_h(px(0.0))
-        .when(self.detail.is_none(), |element| {
-            element.py(self.metrics.scaled(layout.list_vertical_inset))
-        });
+        .py(self.metrics.scaled(layout.list_vertical_inset));
         let list = div()
             .relative()
             .min_h(px(0.0))
@@ -2119,18 +1999,17 @@ impl Render for Picker {
             .when_some(self.render_scrollbar(cx), |element, scrollbar| {
                 element.child(scrollbar)
             });
-        panel = match (self.detail.is_some(), self.state.status()) {
-            (true, _) => panel.child(list),
-            (false, PickerStatus::Ready) if self.state.item_count() > 0 => panel.child(list),
-            (false, PickerStatus::Ready) => panel.child(status_message(
+        panel = match self.state.status() {
+            PickerStatus::Ready if self.state.item_count() > 0 => panel.child(list),
+            PickerStatus::Ready => panel.child(status_message(
                 tr!("No matches"),
                 self.theme.fg_muted,
                 self.metrics,
             )),
-            (false, PickerStatus::Loading(message) | PickerStatus::Empty(message)) => {
+            PickerStatus::Loading(message) | PickerStatus::Empty(message) => {
                 panel.child(status_message(message, self.theme.fg_muted, self.metrics))
             }
-            (false, PickerStatus::Error(message)) => {
+            PickerStatus::Error(message) => {
                 panel.child(status_message(message, self.theme.danger, self.metrics))
             }
         };
@@ -2174,7 +2053,6 @@ impl std::fmt::Debug for Picker {
         f.debug_struct("Picker")
             .field("config", &self.config)
             .field("state", &self.state)
-            .field("detail", &self.detail)
             .finish_non_exhaustive()
     }
 }

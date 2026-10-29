@@ -68,15 +68,6 @@ pub enum PanelMode {
     Floating,
 }
 
-impl PanelMode {
-    pub fn toggled(self) -> Self {
-        match self {
-            Self::Pinned => Self::Floating,
-            Self::Floating => Self::Pinned,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanelPlacement {
     pub id: PanelId,
@@ -144,10 +135,6 @@ impl PanelHost {
         self.placements.get(id)
     }
 
-    pub fn occupant(&self, slot: PanelSlot) -> Option<&PanelId> {
-        self.slots.get(&slot)
-    }
-
     pub fn placements(&self) -> impl Iterator<Item = &PanelPlacement> {
         self.placements.values()
     }
@@ -210,26 +197,6 @@ impl PanelLayout {
 
     pub fn dimension(self) -> f32 {
         self.dimension
-    }
-
-    pub fn consumed_width(self) -> f32 {
-        if self.mode == PanelMode::Pinned && self.position == PanelPosition::Right {
-            self.dimension
-        } else {
-            0.0
-        }
-    }
-
-    pub fn consumed_height(self) -> f32 {
-        if self.mode == PanelMode::Pinned && self.position == PanelPosition::Bottom {
-            self.dimension
-        } else {
-            0.0
-        }
-    }
-
-    pub fn overlays_workspace(self) -> bool {
-        self.mode == PanelMode::Floating
     }
 }
 
@@ -534,21 +501,6 @@ impl PanelChrome {
 
     pub fn with_trailing_action(mut self, action: PanelAction) -> Self {
         self.trailing_actions.push(action);
-        self
-    }
-
-    pub fn without_move_action(mut self) -> Self {
-        self.move_action = None;
-        self
-    }
-
-    pub fn without_mode_action(mut self) -> Self {
-        self.mode_action = None;
-        self
-    }
-
-    pub fn without_close_action(mut self) -> Self {
-        self.close_action = None;
         self
     }
 }

@@ -43,8 +43,6 @@ struct RowPainting {
 struct Painting {
     #[cfg(test)]
     unbatched: bool,
-    #[cfg(test)]
-    sequential_quads: bool,
     rows: Vec<Rc<RowPainting>>,
     thicken: f32,
     shade_sprites: Vec<shade::Sprite>,
@@ -868,11 +866,6 @@ fn paint(painting: Painting, palette: &Palette, window: &mut Window, cx: &mut Ap
         window.paint_quad(fill(bounds, color));
     }
     for row in &painting.rows {
-        #[cfg(test)]
-        if painting.sequential_quads {
-            layers::quads(&row.blocks, 1.0, layered, window);
-            continue;
-        }
         row.block_layers.paint(&row.blocks, None, layered, window);
     }
     shade::paint(&painting.shade_sprites, window);
@@ -972,13 +965,6 @@ fn paint(painting: Painting, palette: &Palette, window: &mut Window, cx: &mut Ap
                         row.paths.paint(Some(painting.cursor_text), layered, window);
                     }
                     for row in &painting.rows {
-                        #[cfg(test)]
-                        if painting.sequential_quads {
-                            for &(bounds, _) in &row.blocks {
-                                window.paint_quad(fill(bounds, painting.cursor_text));
-                            }
-                            continue;
-                        }
                         row.block_layers.paint(
                             &row.blocks,
                             Some(painting.cursor_text),

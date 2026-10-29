@@ -1,5 +1,5 @@
 use codesh_app_core::{
-    AppState, Axis, Direction, Layout, Pane, PaneContent, PaneId, ServerId, Tab, TabId, TabSide,
+    AppState, Axis, Direction, Layout, Pane, PaneContent, PaneId, ServerId, Tab, TabId,
     browser::BrowserPane, codesh,
 };
 use codesh_protocol::SessionId;
@@ -35,11 +35,8 @@ fn terminal_and_adjacent_creation_split_the_focused_leaf() -> Result {
     assert_ne!(first, second);
     state.focus_pane(first)?;
     let mut expected = vec![first];
-    for side in [TabSide::Left, TabSide::Right] {
-        assert_eq!(
-            state.open_terminal_tab_adjacent(project_id, tab, side)?,
-            tab
-        );
+    for _ in 0..2 {
+        assert_eq!(state.open_terminal_tab_adjacent(project_id, tab)?, tab);
         expected.push(active(&state)?);
     }
     let fourth = active(&state)?;

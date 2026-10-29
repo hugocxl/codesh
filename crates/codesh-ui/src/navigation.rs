@@ -1,10 +1,7 @@
 use gpui::prelude::FluentBuilder;
-use gpui::{
-    App, ClickEvent, Div, ElementId, InteractiveElement, ParentElement, Stateful,
-    StatefulInteractiveElement, Styled, Window,
-};
+use gpui::{App, ClickEvent, Div, ElementId, InteractiveElement, Stateful, Styled, Window};
 
-use crate::components::{ButtonInteraction, SymbolGlyph};
+use crate::components::ButtonInteraction;
 use crate::controls::Style;
 
 pub fn item(
@@ -46,32 +43,5 @@ pub fn subitem(
         .text_size(metrics.font_body())
         .when(selected, |row| {
             row.bg(theme.accent_soft).text_color(theme.accent)
-        })
-}
-
-pub fn disclosure(
-    style: Style,
-    id: impl Into<ElementId>,
-    expanded: bool,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
-    let Style { theme, metrics } = style;
-    gpui::div()
-        .id(id)
-        .flex()
-        .items_center()
-        .h_full()
-        .child(SymbolGlyph::new(
-            if expanded {
-                "chevron.down"
-            } else {
-                "chevron.right"
-            },
-            metrics.icon_xs(),
-            theme.fg_muted,
-        ))
-        .on_click(move |event, window, cx| {
-            on_click(event, window, cx);
-            cx.stop_propagation();
         })
 }

@@ -11,7 +11,6 @@ pub struct Metrics {
     multiplier: f32,
 }
 
-#[allow(dead_code)]
 impl Metrics {
     pub const fn new(multiplier: f32) -> Self {
         Self { multiplier }
@@ -30,10 +29,6 @@ impl Metrics {
         font_emphasis = 13.0;
         font_headline = 14.0;
         font_title = 15.0;
-        font_title_large = 16.0;
-        font_display = 20.0;
-        font_hero = 24.0;
-        font_mega = 28.0;
 
         line_height_field = 18.0;
         line_height_compact = 16.0;
@@ -52,8 +47,6 @@ impl Metrics {
         icon_xs = 10.0;
         icon_sm = 12.0;
         icon_md = 14.0;
-        icon_lg = 16.0;
-        icon_xl = 20.0;
         icon_xxl = 28.0;
 
         control_small = 20.0;
@@ -71,7 +64,6 @@ impl Metrics {
         sidebar_expanded_min_width = 180.0;
         sidebar_expanded_max_width = 480.0;
 
-        tab_bar_height = 28.0;
         header_height = 36.0;
         title_bar_height = 32.0;
         status_bar_height = 28.0;

@@ -324,15 +324,6 @@ impl<A: Clone + 'static> CommandPalette<A> {
         self.page.id.as_ref().is_some_and(|page| page == id)
     }
 
-    pub fn current_id(&self) -> Option<&str> {
-        self.page
-            .registry
-            .commands
-            .iter()
-            .find(|command| command.current)
-            .map(|command| command.id.as_ref())
-    }
-
     pub fn open_root_page(&mut self, id: &str, cx: &mut Context<Self>) {
         let Some(command) = self
             .page

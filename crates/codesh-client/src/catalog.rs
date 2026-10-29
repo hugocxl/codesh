@@ -30,13 +30,6 @@ impl Client {
         }
     }
 
-    pub fn cancel_exec(&self, job: u64) -> Result<(), ClientError> {
-        match self.request(RequestBody::CancelExec(job))? {
-            ReplyBody::ExecCancelled => Ok(()),
-            body => Err(ClientError::UnexpectedReply(Box::new(body))),
-        }
-    }
-
     pub fn activity(&self) -> Result<codesh_protocol::ActivitySnapshot, ClientError> {
         match self.request(RequestBody::ReadActivity)? {
             ReplyBody::Activity(snapshot) => Ok(snapshot),
