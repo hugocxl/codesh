@@ -34,6 +34,18 @@ gutter, which shows a subtle 1px accent line on hover/drag. Both pane-drop
 walkers reuse `split_bounds()`; nested ratios remain owned by the layout model.
 The whole grid receives one 8px inset, inside auxiliary panel composition.
 
+## Command palette
+
+`codesh_ui::command_palette` draws the palette 740pt wide, at most 480pt tall,
+72pt from the top, with a 14pt radius, 1px border and modal shadow over a 30%
+black backdrop. The header is 56pt with an 18/24pt search field; section
+headers are 28pt; rows are 40pt with 8pt side insets and radius, a 24pt
+rounded-square tile (6pt radius) with a white glyph over a hue gradient, title,
+muted subtitle, badge, keycaps, kind label and chevron; the footer is 40pt with
+the primary action and **Actions ⌘K**. Status messages centre in a 96pt body.
+Tile hues: red, orange, amber, green, teal, blue, indigo, purple, pink, gray and
+the theme accent. Heights are computed from row counts, never measured.
+
 ## Hooks
 
 - `splits::pane_element()` wraps every pane kind exactly once in `pane_card`;

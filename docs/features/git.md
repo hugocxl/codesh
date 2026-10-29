@@ -18,6 +18,14 @@ the [Files panel](files.md).
   field. **Amend** amends the last commit instead.
 - The panel refreshes when the worktree changes.
 
+## Palette pages
+
+The command palette (`Cmd+Shift+P`) has **Switch Branch…**, **Changes…** and
+**New Branch…** for the current project. Branches switch with Return; `Cmd+K`
+on a branch offers to delete it. On the Changes page Return opens a file's
+diff, and `Cmd+K` stages, unstages or discards it without closing the palette.
+Typing a branch name in the palette's root search finds it directly.
+
 ## Diffs
 
 Click a changed file to open its diff in a pane beside the focused one. A diff

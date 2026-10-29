@@ -65,8 +65,9 @@ flowchart LR
   layout.
 - `codesh <folder>` opens the folder in the desktop app, selecting its project or
   adding one. Without the desktop app, or over SSH, it opens in the terminal UI.
-- **Existing Terminals** lists a project's terminals that this app isn't
-  showing, and which app owns each one. Opening one adds it to your layout.
+- **Existing Terminals**, a command palette page, lists a project's terminals
+  that this app isn't showing, and which app owns each one. Opening one adds it
+  to your layout.
 
 ## Worktrees
 
@@ -157,7 +158,8 @@ ends.
 - **Native panels.** [Files](../features/files.md) and
   [Source Control](../features/git.md) panels pin on the right of the current
   project. Files open in editor panes with syntax highlighting; changes open in
-  diff panes. Go to File and Find in Files search the project on its server.
+  diff panes. Go to File and Find in Files are command palette pages that
+  search the project on its server.
 - **Browser.** Browser panes use the system web engine.
 - **Sidebar.** Worktrees show as activity cards with agent state, latest
   session or pull request, and branch.

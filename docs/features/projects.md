@@ -7,8 +7,13 @@ on that server; splits, workspaces, and project order are kept by each app.
 ## Projects
 
 - Add one with **Add Project** at the bottom of the sidebar, **File → Open
-  Project…**, or `Cmd+O`. Type to search folders, or type a path. With remote
-  servers set up, choose **Local** or a server.
+  Project…**, or `Cmd+O`, which open the command palette's Open Project page.
+  Type to search folders by name, or type a path (`/` or `~/`) to browse: `Tab`
+  completes the highlighted folder and lists it, Return opens it, `Cmd+Return`
+  adds it as a project, and `Cmd+K` offers Reveal in Finder, Copy Path and the
+  parent folder. The page also has **Choose in Finder…** and **Change Search
+  Location…**. With remote servers set up, **Add Project on <server>…** in the
+  palette browses that server instead.
 - `codesh <folder>` in a shell opens a folder in the desktop app.
 - The gear next to a project's name opens its menu: rename it, add it to
   workspaces, show its worktrees, or copy its path.

@@ -3,6 +3,21 @@
 Defaults for the desktop app. Change any of them in **Settings → Keyboard**.
 For the terminal UI, see [Terminal UI keys](../features/terminal-ui.md#keys).
 
+## Command palette
+
+`Cmd+Shift+P` opens the palette: type to search commands, files, branches,
+worktrees, projects and terminals at once. The shortcuts below that open a
+picker open the palette on that page.
+
+| Action | Shortcut |
+| --- | --- |
+| Command palette | `Cmd+Shift+P` |
+| Run the selected row | `Return` |
+| Secondary action of the row | `Cmd+Return` |
+| Actions for the selected row | `Cmd+K` |
+| Back to the previous page, then close | `Escape` |
+| Back when the search is empty | `Backspace` |
+
 ## Panes
 
 Each project has one workspace of split panes.
@@ -34,7 +49,7 @@ Each project has one workspace of split panes.
 
 | Action | Shortcut |
 | --- | --- |
-| Add project | `Cmd+O` |
+| Open project | `Cmd+O` |
 | New terminal in project… | `Cmd+Shift+N` |
 | New worktree | `Cmd+Opt+N` |
 | Switch worktree | `Cmd+Opt+W` |
@@ -43,8 +58,7 @@ Each project has one workspace of split panes.
 | Back / forward | `Cmd+Ctrl+Left` / `Cmd+Ctrl+Right` |
 | Toggle sidebar | `Cmd+B` |
 | Agents panel | `Cmd+Opt+A` |
-| Command palette | `Cmd+Shift+P` |
-| Theme picker | `Cmd+Shift+K` |
+| Change theme | `Cmd+Shift+K` |
 | Settings | `Cmd+,` |
 | Full screen | `Cmd+Ctrl+F` |
 
