@@ -477,7 +477,7 @@ impl AppModel {
         cx: &mut Context<Self>,
     ) {
         match entry {
-            PaletteEntry::Root => {}
+            PaletteEntry::Root => self.root_action(item, action, window, cx),
             PaletteEntry::Files => self.files_action(item, action, window, cx),
             PaletteEntry::Find => self.find_action(item, action, window, cx),
             PaletteEntry::Branches(project) => {

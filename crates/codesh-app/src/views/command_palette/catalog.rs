@@ -9,7 +9,7 @@ use codesh_core::shortcuts::ShortcutId;
 use codesh_protocol::GitAction;
 use codesh_ui::command_palette::{Item, PageContent, PageSpec, Section, Target};
 use codesh_ui::fuzzy;
-use gpui::{Action, Context, SharedString};
+use gpui::{Action, Context, SharedString, Window};
 
 use super::{Category, Handler, Kind, PaletteEntry, RECENT_LIMIT, dispatch};
 use crate::model::AppModel;
@@ -854,6 +854,41 @@ fn ranked_commands(catalog: &Catalog, query: &[char]) -> Vec<Item<Handler>> {
         .take(COMMAND_LIMIT)
         .map(|(_, command, ranges)| command.item(ranges))
         .collect()
+}
+
+impl AppModel {
+    /// Runs a ⌘K action on a root search hit through the page that found it.
+    pub(super) fn root_action(
+        &mut self,
+        item: &str,
+        action: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let query = self.command_palette.root_query.clone();
+        let content = self.root_items(&query, cx);
+        let Some(title) = content
+            .sections
+            .iter()
+            .find(|section| section.items.iter().any(|found| found.id == item))
+            .and_then(|section| section.title.clone())
+        else {
+            return;
+        };
+        let current = self.state.current_project().id;
+        let entry = match title.as_ref() {
+            "Files" => PaletteEntry::Files,
+            "Branches" => PaletteEntry::Branches(current),
+            "Worktrees" => match self.worktree_switcher_project() {
+                Some(parent) => PaletteEntry::Worktrees(parent),
+                None => return,
+            },
+            "Projects" => PaletteEntry::Projects,
+            "Terminals" => PaletteEntry::Terminals(current),
+            _ => return,
+        };
+        self.page_action(entry, item, action, window, cx);
+    }
 }
 
 /// A provider's section, with a row that opens its page on the same query
