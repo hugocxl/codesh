@@ -111,10 +111,14 @@ impl AppModel {
             return;
         };
         let mut message = if expected.dirty {
-            format!("Remove worktree “{name}” and permanently discard its uncommitted changes? Local processes will stop and its files will be deleted.")
+            format!(
+                "Remove worktree “{name}” and permanently discard its uncommitted changes? Local processes will stop and its files will be deleted."
+            )
         } else {
-            format!("Remove worktree “{name}” and delete its files? Local processes running from this worktree will stop.")
-        }.clone();
+            format!(
+                "Remove worktree “{name}” and delete its files? Local processes running from this worktree will stop."
+            )
+        };
         let hooks = match hooks {
             Ok(hooks) => {
                 if !hooks.is_empty() {

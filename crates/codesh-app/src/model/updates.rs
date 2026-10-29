@@ -85,13 +85,10 @@ impl AppModel {
         if Version::current().is_none() {
             self.capabilities.set(
                 Feature::Updates,
-                Capability::Unavailable(
-                    format!(
-                        "Automatic updates are available in installed releases of {}",
-                        Channel::current().app_name()
-                    )
-                    .to_string(),
-                ),
+                Capability::Unavailable(format!(
+                    "Automatic updates are available in installed releases of {}",
+                    Channel::current().app_name()
+                )),
             );
             return;
         }
@@ -459,8 +456,7 @@ impl AppModel {
             }
             Err(error) => {
                 let message =
-                    format!("Could not check for or download the latest app update: {error}")
-                        .to_string();
+                    format!("Could not check for or download the latest app update: {error}");
                 self.updates.app_error = Some(message.clone());
                 if manual {
                     self.update_message(&message, cx);
@@ -657,8 +653,7 @@ impl AppModel {
                     let _ = std::fs::remove_file(self.path.with_file_name("pending-update.json"));
                 }
                 self.fail(
-                    format!("Could not prepare the update: {error}. Check for updates to retry.")
-                        .to_string(),
+                    format!("Could not prepare the update: {error}. Check for updates to retry."),
                     cx,
                 );
                 return;

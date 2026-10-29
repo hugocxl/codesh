@@ -1213,8 +1213,7 @@ impl AppModel {
                     )
                 {
                     self.fail(
-                        format!("Could not save close confirmation preference: {error}")
-                            .to_string(),
+                        format!("Could not save close confirmation preference: {error}"),
                         cx,
                     );
                 }

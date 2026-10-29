@@ -484,7 +484,6 @@ pub(super) fn load() -> Result<&'static Api, String> {
                 "Browser pages need WebKitGTK 4.1, which could not be loaded: {}",
                 error.to_string()
             )
-            .to_string()
         })
     })
     .as_ref()

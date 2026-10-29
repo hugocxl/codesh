@@ -622,7 +622,6 @@ impl AppModel {
                         GitAction::SwitchToBase(base) => {
                             repository.post_merge.take().map(|(number, _)| {
                                 format!("Merged PR #{number}, but couldn't update {base}")
-                                    .to_string()
                             })
                         }
                         GitAction::PullRequest(GitPullRequestAction::Merge { number, .. }) => {

@@ -78,7 +78,12 @@ fn section(recency: Recency, model: &AppModel) -> Div {
 }
 
 fn age(session: &Session) -> SharedString {
-    codesh_core::time::ago(session.modified.elapsed().unwrap_or_default().as_secs()).into()
+    let age = session.modified.elapsed().unwrap_or_default().as_secs();
+    let mut text = codesh_core::time::ago(age);
+    if let Some(first) = text.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    text.into()
 }
 
 fn row(

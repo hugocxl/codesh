@@ -94,13 +94,10 @@ impl Service {
     /// unavailable instead, since one can start later.
     pub(super) fn start() -> Result<(Self, Receiver<Event>), Capability> {
         let unreachable = |error: &dyn std::fmt::Display| {
-            Capability::Unavailable(
-                format!(
-                    "Desktop notifications need the session's D-Bus: {}",
-                    error.to_string()
-                )
-                .to_string(),
-            )
+            Capability::Unavailable(format!(
+                "Desktop notifications need the session's D-Bus: {}",
+                error.to_string()
+            ))
         };
         let connection = crate::dbus::session().map_err(|error| unreachable(&error))?;
         let proxy =
@@ -227,10 +224,10 @@ impl Worker {
             Ok(number) => shown.record(id, number),
             Err(error) => {
                 drop(shown);
-                self.report(Capability::Unavailable(
-                    format!("The desktop refused a notification: {}", error.to_string())
-                        .to_string(),
-                ));
+                self.report(Capability::Unavailable(format!(
+                    "The desktop refused a notification: {}",
+                    error.to_string()
+                )));
             }
         }
     }

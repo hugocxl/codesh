@@ -702,8 +702,7 @@ impl AppModel {
                 let message = format!(
                     "Codesh will create \"{}\" on {} and add it as a project.",
                     &path, &folders.name
-                )
-                .to_string();
+                );
                 result = match create_prompt(window, message, cx).await {
                     Ok(true) if current(cx) => {
                         let creating_path = path.clone();
@@ -795,8 +794,7 @@ impl AppModel {
             let message = format!(
                 "Codesh will create \"{}\" and add it as a project.",
                 path.display()
-            )
-            .to_string();
+            );
             self.close_prompt = Some(cx.spawn(async move |model, cx| {
                 let response = create_prompt(window, message, cx).await;
                 if response.as_ref().is_ok_and(|confirmed| *confirmed) {

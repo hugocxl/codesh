@@ -34,10 +34,9 @@ pub(crate) fn apply_pending(profile: &Path) -> Result<Option<String>> {
     }
     if let Err(error) = restore(profile, &pending) {
         recover(profile)?;
-        return Ok(Some(
-            format!("Could not restore backup: {error}. Your previous configuration was kept. Cancel or replace the pending import in Settings → Backup & Restore, or reopen Codesh to retry.")
-            .to_string(),
-        ));
+        return Ok(Some(format!(
+            "Could not restore backup: {error}. Your previous configuration was kept. Cancel or replace the pending import in Settings → Backup & Restore, or reopen Codesh to retry."
+        )));
     }
     Ok(None)
 }

@@ -89,11 +89,14 @@ impl Runtime {
             .filter(|id| !id.is_empty())
         {
             Some(id) => match crate::ai::provider(id) {
-                None => Err(format!("The selected AI provider \"{id}\" is no longer supported. Choose another one in Settings → AI.")
-                .to_string()),
+                None => Err(format!(
+                    "The selected AI provider \"{id}\" is no longer supported. Choose another one in Settings → AI."
+                )),
                 Some(provider) if self.installed.contains(&provider) => Ok(provider),
-                Some(provider) => Err(format!("{} CLI is not installed. Choose another provider or install its CLI.", provider.name)
-                .to_string()),
+                Some(provider) => Err(format!(
+                    "{} CLI is not installed. Choose another provider or install its CLI.",
+                    provider.name
+                )),
             },
             None => crate::ai::selected(&self.installed, None).ok_or_else(|| {
                 "Install a supported AI provider CLI or choose one in Settings → AI.".to_string()
@@ -445,8 +448,7 @@ impl AppModel {
                 format!(
                     "{} is no longer available. Try again.",
                     &action.settings_title()
-                )
-                .to_string(),
+                ),
                 cx,
             );
             return;

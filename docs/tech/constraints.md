@@ -51,7 +51,7 @@ WebKit's sandbox at the default installation paths for all three Linux formats.
 An administrator can install it:
 
 ```sh
-sudo install -m 644 codesh-desktop.apparmor /etc/apparmor.d/codesh-desktop
+sudo install -m 644 packaging/linux/codesh-desktop.apparmor /etc/apparmor.d/codesh-desktop
 sudo apparmor_parser -r /etc/apparmor.d/codesh-desktop
 ```
 

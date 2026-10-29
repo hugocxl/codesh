@@ -17,7 +17,6 @@ use std::time::Duration;
 use codesh_core::release;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use codesh_core::release::Channel;
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
 #[cfg(target_os = "linux")]
 pub(crate) use linux::{CAPABILITY, Installation, PreparedUpdate};
 #[cfg(target_os = "macos")]

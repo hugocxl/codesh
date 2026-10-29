@@ -224,8 +224,7 @@ fn missing(program: &Path, error: io::Error) -> io::Error {
         format!(
             "{} is not installed, so there is nothing to open this with.",
             program.display()
-        )
-        .to_string(),
+        ),
     )
 }
 

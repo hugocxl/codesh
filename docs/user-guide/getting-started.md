@@ -7,10 +7,10 @@ After installing: [First steps](#first-steps)
 
 ## Requirements
 
-| Part | Runs on |
-| --- | --- |
-| Desktop app | macOS 14 or newer on Apple Silicon |
-| `codesh` CLI and server | macOS 14 or newer on Apple Silicon |
+| Part | Published builds run on | Builds from source also run on |
+| --- | --- | --- |
+| Desktop app | macOS 14 or newer on Apple Silicon | Intel Macs; experimental Linux (Ubuntu 24.04) |
+| `codesh` CLI and server | macOS 14 or newer on Apple Silicon | Intel Macs; Linux with glibc 2.35 or newer, x86_64 or ARM64 |
 
 Releases currently ship for Apple Silicon Macs only. Intel Macs and Linux
 (glibc 2.35 or newer, x86_64 or ARM64) can still

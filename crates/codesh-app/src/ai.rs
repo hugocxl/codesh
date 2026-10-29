@@ -293,8 +293,7 @@ impl Provider {
                 "{} returned an empty response: {}",
                 self.name,
                 String::from_utf8_lossy(&stderr).trim()
-            )
-            .to_string());
+            ));
         }
         Ok(output)
     }

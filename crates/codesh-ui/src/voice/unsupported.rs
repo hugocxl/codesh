@@ -11,5 +11,5 @@ pub fn languages() -> Vec<Language> {
 pub(super) fn start(_language: String, _model: String) -> Result<Recorder, String> {
     Err(codesh_core::capability::Feature::Voice
         .unsupported_reason()
-        .into_owned())
+        .to_owned())
 }

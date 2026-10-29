@@ -99,12 +99,9 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
             .file_name()
             .is_none_or(|name| name != "codesh-app")
     {
-        return Err(io::Error::other(
-            format!(
-                "Install {app_name} and open it from there before installing its command line tool."
-            )
-            .to_string(),
-        ));
+        return Err(io::Error::other(format!(
+            "Install {app_name} and open it from there before installing its command line tool."
+        )));
     }
     Ok(executable.with_file_name("codesh"))
 }
@@ -119,10 +116,9 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
         .and_then(Path::parent)
         .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
         .ok_or_else(|| {
-            io::Error::other(
-                format!("Install and open {app_name}.app before installing its command line tool.")
-                    .to_string(),
-            )
+            io::Error::other(format!(
+                "Install and open {app_name}.app before installing its command line tool."
+            ))
         })?;
     if executable
         .file_name()
@@ -143,10 +139,9 @@ fn installed_tool(executable: &Path) -> io::Result<PathBuf> {
             .file_name()
             .is_some_and(|name| name == "previous.app")
     {
-        return Err(io::Error::other(
-            format!("Move {app_name}.app to Applications and reopen it before installing its command line tool.")
-            .to_string(),
-        ));
+        return Err(io::Error::other(format!(
+            "Move {app_name}.app to Applications and reopen it before installing its command line tool."
+        )));
     }
     Ok(bundle.join("Contents/MacOS/codesh"))
 }
@@ -176,24 +171,18 @@ fn install_link(target: &Path, destination: &Path) -> io::Result<()> {
                     .iter()
                     .any(|value| value == previous.as_os_str().as_bytes())
             {
-                return Err(io::Error::other(
-                    format!(
-                        "{} is an unrelated link; move it before installing Codesh.",
-                        destination.display()
-                    )
-                    .to_string(),
-                ));
+                return Err(io::Error::other(format!(
+                    "{} is an unrelated link; move it before installing Codesh.",
+                    destination.display()
+                )));
             }
             Some((metadata.dev(), metadata.ino(), previous))
         }
         Ok(_) => {
-            return Err(io::Error::other(
-                format!(
-                    "{} already exists; move it before installing Codesh.",
-                    destination.display()
-                )
-                .to_string(),
-            ));
+            return Err(io::Error::other(format!(
+                "{} already exists; move it before installing Codesh.",
+                destination.display()
+            )));
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => return Err(error),

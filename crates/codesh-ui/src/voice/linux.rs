@@ -145,7 +145,6 @@ fn validate_speech_model(path: &Path) -> Result<PathBuf, String> {
             "Install the Silero speech detection model at {} to use offline dictation.",
             path.display().to_string()
         )
-        .to_string()
     };
     let canonical = path.canonicalize().map_err(|_| error())?;
     if !canonical
