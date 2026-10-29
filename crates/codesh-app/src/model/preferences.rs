@@ -162,7 +162,7 @@ impl AppModel {
         };
         match cx.open_window(options, move |window, cx| {
             #[cfg(target_os = "linux")]
-            window.set_window_title(&"Codesh Settings");
+            window.set_window_title("Codesh Settings");
             let model = weak.clone();
             window.on_window_should_close(cx, move |_, cx| {
                 let _ = model.update(cx, |model, cx| {
