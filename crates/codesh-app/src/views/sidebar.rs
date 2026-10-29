@@ -452,6 +452,7 @@ fn project_list(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
         .collect();
     let terminals: Vec<_> = model.standalone_terminals().collect();
     let shortcuts = model.navigation_projects();
+    let cards = model.navigation_targets();
     let ids: Vec<_> = std::iter::repeat_n(None, terminals.len())
         .chain(projects.iter().map(|project| {
             (project.parent_id.is_none() && project.status() == ProjectStatus::Available)
@@ -498,10 +499,12 @@ fn project_list(model: &AppModel, cx: &mut Context<AppModel>) -> AnyElement {
                 .pt(if wide { m.spacing5() } else { m.spacing2() })
                 .pb(m.spacing3())
                 .when(!wide, Styled::items_center)
-                .children(terminals.into_iter().map(|(project, tab)| worktrees::terminal(project, tab, model, cx)))
+                .children(terminals.into_iter().map(|(project, tab)| {
+                    worktrees::terminal(project, tab, &cards, model, cx)
+                }))
                 .children(projects.iter().enumerate().map(|(index, project)| {
                     let shortcut = shortcuts.iter().take(9).position(|id| *id == project.id);
-                    worktrees::group(project, index, shortcut, model, cx)
+                    worktrees::group(project, index, shortcut, &cards, model, cx)
                 }))
                 .when(!model.appearance.sidebar_focus, |list| {
                     list.child(add_project_button(model, cx))

@@ -1040,3 +1040,51 @@ fn new_worktree_form_stays_closed_when_the_parent_is_no_longer_a_repository(
         Some(Overlay::Worktrees(_))
     )));
 }
+
+#[gpui::test]
+fn tab_shortcuts_follow_the_sidebar_cards_from_a_standalone_terminal(cx: &mut TestAppContext) {
+    use crate::views::tab_sidebar::NavigationTarget;
+    use codesh_core::shortcuts::ShortcutId;
+
+    let (mut state, root, children, _directory) = pruning_fixture();
+    let home = state.home().id;
+    let terminals = [(); 2].map(|()| state.open_terminal_tab(home).expect("terminal"));
+    state.select_project(home).expect("home");
+    state.select_tab(home, terminals[1]).expect("terminal");
+    let (boot, _) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    cx.run_until_parked();
+
+    let targets = view.read_with(cx, |model, _| model.navigation_targets());
+    assert_eq!(
+        targets[..2],
+        [
+            NavigationTarget::Tab(terminals[0]),
+            NavigationTarget::Tab(terminals[1]),
+        ],
+        "standalone terminals come first"
+    );
+    let card = targets
+        .iter()
+        .position(|target| *target == NavigationTarget::Project(root))
+        .expect("project card");
+    let NavigationTarget::Project(worktree) = targets[card + 1] else {
+        panic!("a worktree card follows its project");
+    };
+    assert!(children.contains(&worktree));
+
+    cx.simulate_keystrokes(ShortcutId::TABS[card].definition().keys[0]);
+    let current = view.read_with(cx, |model, _| model.state.current_project().id);
+    assert_eq!(
+        current, root,
+        "the shortcut past the Home tabs reaches the project card"
+    );
+
+    view.update(cx, |model, cx| model.cycle_tab(true, cx));
+    let current = view.read_with(cx, |model, _| model.state.current_project().id);
+    assert_eq!(
+        current, worktree,
+        "Next Tab moves on to the project's worktree card"
+    );
+}

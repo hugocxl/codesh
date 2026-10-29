@@ -108,7 +108,44 @@ impl AppModel {
         })
     }
 
-    pub(crate) fn navigation_tabs(&self) -> Vec<TabId> {
+    /// What ⌘1–9 and Next/Previous Tab step through, in sidebar order.
+    pub(crate) fn navigation_targets(&self) -> Vec<NavigationTarget> {
+        if self.appearance.layout == AppLayout::ProjectFocused {
+            return self.sidebar_cards();
+        }
+        self.navigation_tabs()
+            .into_iter()
+            .map(NavigationTarget::Tab)
+            .collect()
+    }
+
+    /// The standalone terminal, project, and worktree cards of the project
+    /// sidebar.
+    fn sidebar_cards(&self) -> Vec<NavigationTarget> {
+        let available = |project: &Project| {
+            project.status() == ProjectStatus::Available && !self.worktree_removing(project.id)
+        };
+        let terminals = self
+            .standalone_terminals()
+            .map(|(_, tab)| NavigationTarget::Tab(tab.id));
+        let projects = self
+            .sidebar_projects()
+            .into_iter()
+            .filter(|project| !project.home && available(project))
+            .flat_map(|project| {
+                let children = if self.has_worktrees(project) {
+                    self.worktree_children(project.id)
+                } else {
+                    Vec::new()
+                };
+                std::iter::once(project)
+                    .chain(children.into_iter().filter(|child| available(child)))
+                    .map(|project| NavigationTarget::Project(project.id))
+            });
+        terminals.chain(projects).collect()
+    }
+
+    fn navigation_tabs(&self) -> Vec<TabId> {
         let project = self.state.current_project();
         if project.groups().is_some()
             && let Some(tab) = self.active_tab()
@@ -132,6 +169,31 @@ impl AppModel {
             .flat_map(|project| project.tabs.iter().map(|tab| tab.id))
             .collect()
     }
+
+    pub(crate) fn active_navigation_target(&self) -> Option<NavigationTarget> {
+        let project = self.state.current_project();
+        if self.appearance.layout == AppLayout::ProjectFocused && !project.home {
+            return Some(NavigationTarget::Project(project.id));
+        }
+        self.active_tab().map(NavigationTarget::Tab)
+    }
+
+    pub(crate) fn select_navigation_target(
+        &mut self,
+        target: NavigationTarget,
+        cx: &mut Context<Self>,
+    ) {
+        match target {
+            NavigationTarget::Tab(tab) => self.select_tab(tab, cx),
+            NavigationTarget::Project(project) => self.select_project(project, cx),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NavigationTarget {
+    Tab(TabId),
+    Project(ProjectId),
 }
 
 pub(super) fn contents(
@@ -141,7 +203,14 @@ pub(super) fn contents(
 ) -> AnyElement {
     let targets = tab_strip::drag::TabBounds::default();
     let numbers = if model.appearance.layout == AppLayout::TabFocused {
-        model.navigation_tabs()
+        model
+            .navigation_targets()
+            .into_iter()
+            .filter_map(|target| match target {
+                NavigationTarget::Tab(tab) => Some(tab),
+                NavigationTarget::Project(_) => None,
+            })
+            .collect()
     } else {
         Vec::new()
     };
@@ -151,7 +220,13 @@ pub(super) fn contents(
         .pt(model.metrics.spacing5())
         .pb(model.metrics.spacing3());
     for (project, tab) in model.standalone_terminals() {
-        rows = rows.child(super::sidebar::worktrees::terminal(project, tab, model, cx));
+        rows = rows.child(super::sidebar::worktrees::terminal(
+            project,
+            tab,
+            &[],
+            model,
+            cx,
+        ));
     }
     for project in model
         .sidebar_projects()

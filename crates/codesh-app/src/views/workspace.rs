@@ -463,8 +463,8 @@ fn action_handlers(cx: &mut Context<AppModel>) -> gpui::Div {
         .on_action(cx.listener(|model, _: &NextTab, _, cx| model.cycle_tab(true, cx)))
         .on_action(cx.listener(|model, _: &PreviousTab, _, cx| model.cycle_tab(false, cx)))
         .on_action(cx.listener(|model, action: &SelectTab, _, cx| {
-            if let Some(tab) = model.navigation_tabs().get(action.index) {
-                model.select_tab(*tab, cx);
+            if let Some(target) = model.navigation_targets().get(action.index) {
+                model.select_navigation_target(*target, cx);
             }
         }))
         .on_action(
@@ -855,14 +855,14 @@ pub(crate) fn register_commands(
         )
         .disabled(model.navigation_projects().len() < 2),
         action(model, ShortcutId::NextTab, tr_key!("Next Tab"), NextTab)
-            .disabled(model.navigation_tabs().len() < 2),
+            .disabled(model.navigation_targets().len() < 2),
         action(
             model,
             ShortcutId::PreviousTab,
             tr_key!("Previous Tab"),
             PreviousTab,
         )
-        .disabled(model.navigation_tabs().len() < 2),
+        .disabled(model.navigation_targets().len() < 2),
     ] {
         registry.register(command);
     }

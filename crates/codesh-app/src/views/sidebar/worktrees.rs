@@ -1,4 +1,5 @@
 use codesh_app_core::{Project, ProjectId, ProjectStatus, Tab};
+use codesh_core::shortcuts::ShortcutId;
 use codesh_ui::{components::IconGlyph, icon::Icon, tr};
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -7,6 +8,7 @@ use gpui::{
 };
 
 use crate::model::AppModel;
+use crate::views::tab_sidebar::NavigationTarget;
 
 impl AppModel {
     pub(crate) fn worktrees_visible(&self, id: ProjectId) -> bool {
@@ -92,6 +94,7 @@ pub(super) fn group(
     project: &Project,
     index: usize,
     shortcut: Option<usize>,
+    cards: &[NavigationTarget],
     model: &AppModel,
     cx: &mut Context<AppModel>,
 ) -> AnyElement {
@@ -108,9 +111,9 @@ pub(super) fn group(
             .flex_col()
             .gap(model.metrics.scaled(2.0))
             .pb(model.metrics.spacing2())
-            .child(row(project, true, model, cx));
+            .child(row(project, true, cards, model, cx));
         for child in model.worktree_children(project.id) {
-            worktrees = worktrees.child(row(child, false, model, cx));
+            worktrees = worktrees.child(row(child, false, cards, model, cx));
         }
         for (index, creation) in model.worktree_creations(project.id).enumerate() {
             worktrees = worktrees.child(creating_row(&creation.name, project.id, index, model));
@@ -118,7 +121,7 @@ pub(super) fn group(
         group = group.child(worktrees);
     }
     if model.appearance.sidebar_expanded && !model.has_worktrees(project) {
-        group = group.child(row(project, true, model, cx));
+        group = group.child(row(project, true, cards, model, cx));
     }
     group.into_any_element()
 }
@@ -126,25 +129,34 @@ pub(super) fn group(
 pub(in crate::views) fn terminal(
     project: &Project,
     tab: &Tab,
+    cards: &[NavigationTarget],
     model: &AppModel,
     cx: &mut Context<AppModel>,
 ) -> AnyElement {
-    activity_row(project, Some(tab), false, model, cx)
+    let number = card_number(cards, NavigationTarget::Tab(tab.id));
+    activity_row(project, Some(tab), false, number, model, cx)
 }
 
 fn row(
     project: &Project,
     primary: bool,
+    cards: &[NavigationTarget],
     model: &AppModel,
     cx: &mut Context<AppModel>,
 ) -> AnyElement {
-    activity_row(project, None, primary, model, cx)
+    let number = card_number(cards, NavigationTarget::Project(project.id));
+    activity_row(project, None, primary, number, model, cx)
+}
+
+fn card_number(cards: &[NavigationTarget], card: NavigationTarget) -> Option<usize> {
+    cards.iter().take(9).position(|target| *target == card)
 }
 
 fn activity_row(
     project: &Project,
     tab: Option<&Tab>,
     primary: bool,
+    number: Option<usize>,
     model: &AppModel,
     cx: &mut Context<AppModel>,
 ) -> AnyElement {
@@ -215,7 +227,7 @@ fn activity_row(
                 }
             }),
         )
-        .child(card_content(project, tab, primary, activity, model))
+        .child(card_content(project, tab, primary, number, activity, model))
         .into_any_element()
 }
 
@@ -223,6 +235,7 @@ fn card_content(
     project: &Project,
     tab: Option<&Tab>,
     primary: bool,
+    number: Option<usize>,
     activity: super::activity_card::Data,
     model: &AppModel,
 ) -> impl IntoElement {
@@ -233,7 +246,12 @@ fn card_content(
         .flex_col()
         .gap(m.scaled(3.0))
         .min_w(px(0.0))
-        .child(headline(activity.headline, activity.provider, model))
+        .child(headline(
+            activity.headline,
+            activity.provider,
+            number,
+            model,
+        ))
         .child(
             div()
                 .flex()
@@ -305,6 +323,7 @@ fn card_content(
 fn headline(
     headline: super::activity_card::Headline,
     provider: Option<codesh_protocol::AgentProvider>,
+    number: Option<usize>,
     model: &AppModel,
 ) -> AnyElement {
     use super::activity_card::Headline;
@@ -316,6 +335,15 @@ fn headline(
         .gap(m.scaled(6.0))
         .min_w(px(0.0))
         .text_size(m.scaled(13.0));
+    let hint = number.and_then(|index| {
+        model
+            .shortcut_hints
+            .label(ShortcutId::TABS[index], &model.settings.keymap)
+    });
+    let lead = |icon: AnyElement| match hint.clone() {
+        Some(label) => super::super::shortcut_hints::badge(label, m.scaled(18.0), model),
+        None => icon,
+    };
     let chip = |icon: Icon, color: gpui::Hsla| {
         div()
             .flex_none()
@@ -328,6 +356,7 @@ fn headline(
             .border_1()
             .border_color(super::super::codesh::style::border(theme))
             .child(IconGlyph::new(icon, m.scaled(11.0), color))
+            .into_any_element()
     };
     let text = |content: String, color: gpui::Hsla, weight: FontWeight| {
         div()
@@ -340,28 +369,28 @@ fn headline(
     };
     match headline {
         Headline::Command(command) => line
-            .child(chip(Icon::Terminal, theme.fg))
+            .child(lead(chip(Icon::Terminal, theme.fg)))
             .child(text(command, theme.fg, FontWeight::SEMIBOLD))
             .into_any_element(),
         Headline::Editor(file) => line
-            .child(chip(Icon::File, theme.fg))
+            .child(lead(chip(Icon::File, theme.fg)))
             .child(text(file, theme.fg, FontWeight::SEMIBOLD))
             .into_any_element(),
         Headline::Diff(file) => line
-            .child(chip(Icon::GitBranch, theme.fg))
+            .child(lead(chip(Icon::GitBranch, theme.fg)))
             .child(text(file, theme.fg, FontWeight::SEMIBOLD))
             .into_any_element(),
         Headline::Browser(page) => line
-            .child(chip(Icon::Globe, theme.fg))
+            .child(lead(chip(Icon::Globe, theme.fg)))
             .child(text(page, theme.fg, FontWeight::SEMIBOLD))
             .into_any_element(),
         Headline::Agent { task } => line
-            .child(provider.map_or_else(
-                || chip(Icon::Terminal, theme.fg).into_any_element(),
+            .child(lead(provider.map_or_else(
+                || chip(Icon::Terminal, theme.fg),
                 |provider| {
                     super::super::tab_activity::provider_icon(provider, m.scaled(18.0), model)
                 },
-            ))
+            )))
             .child(match task {
                 Some(task) => text(task, theme.fg, FontWeight::MEDIUM),
                 None => text(
@@ -374,14 +403,14 @@ fn headline(
             })
             .into_any_element(),
         Headline::Shell { shell, directory } => line
-            .child(chip(Icon::Terminal, theme.diff_add))
+            .child(lead(chip(Icon::Terminal, theme.diff_add)))
             .child(div().flex_none().text_color(theme.fg_muted).child(shell))
             .when_some(directory, |line, directory| {
                 line.child(text(directory, theme.fg_dim, FontWeight::NORMAL))
             })
             .into_any_element(),
         Headline::Empty => line
-            .child(chip(Icon::Terminal, theme.fg_dim))
+            .child(lead(chip(Icon::Terminal, theme.fg_dim)))
             .child(text(
                 tr!("No terminal").to_string(),
                 theme.fg_dim,

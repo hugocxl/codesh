@@ -946,18 +946,19 @@ impl AppModel {
     }
 
     pub(crate) fn cycle_tab(&mut self, forward: bool, cx: &mut Context<Self>) {
-        let tabs = self.navigation_tabs();
-        if tabs.is_empty() {
+        let targets = self.navigation_targets();
+        if targets.is_empty() {
             return;
         }
-        let current = tabs.iter().position(|tab| Some(*tab) == self.active_tab());
+        let active = self.active_navigation_target();
+        let current = targets.iter().position(|target| Some(*target) == active);
         let next = match (current, forward) {
-            (Some(current), true) => (current + 1) % tabs.len(),
-            (Some(current), false) => (current + tabs.len() - 1) % tabs.len(),
+            (Some(current), true) => (current + 1) % targets.len(),
+            (Some(current), false) => (current + targets.len() - 1) % targets.len(),
             (None, true) => 0,
-            (None, false) => tabs.len() - 1,
+            (None, false) => targets.len() - 1,
         };
-        self.select_tab(tabs[next], cx);
+        self.select_navigation_target(targets[next], cx);
     }
 
     pub(crate) fn move_tab(&mut self, from: TabId, to: TabId, cx: &mut Context<Self>) {
