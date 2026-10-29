@@ -686,39 +686,48 @@ fn ring_path(
 }
 
 pub(super) fn provider_icon(provider: AgentProvider, size: Pixels, model: &AppModel) -> AnyElement {
-    if provider == AgentProvider::Claude {
-        return gpui::img("icons/provider-claude.svg")
-            .size(size)
-            .into_any_element();
-    }
-    // Full-colour logos. Codex and Grok are single-colour marks that would
-    // vanish on one of the themes, so they keep their tinted outlines.
     let logo = match provider {
-        AgentProvider::OpenCode => Some("opencode"),
-        AgentProvider::Cursor => Some("cursor"),
-        AgentProvider::Copilot => Some("copilot"),
-        AgentProvider::Droid => Some("droid"),
-        AgentProvider::Pi => Some("pi"),
-        AgentProvider::Kiro => Some("kiro"),
-        AgentProvider::Antigravity => Some("antigravity"),
-        AgentProvider::OhMyPi => Some("omp"),
-        _ => None,
+        AgentProvider::Claude => "claude",
+        AgentProvider::Codex => "codex",
+        AgentProvider::OpenCode => "opencode",
+        AgentProvider::Cursor => "cursor",
+        AgentProvider::Copilot => "copilot",
+        AgentProvider::Droid => "droid",
+        AgentProvider::Pi => "pi",
+        AgentProvider::Grok => "grok",
+        AgentProvider::Kiro => "kiro",
+        AgentProvider::Xal => "xal",
+        AgentProvider::Antigravity => "antigravity",
+        AgentProvider::OhMyPi => "omp",
+        AgentProvider::Unrecognized(_) => {
+            return svg()
+                .path("icons/terminal.svg")
+                .size(size)
+                .text_color(model.theme.fg)
+                .into_any_element();
+        }
     };
-    if let Some(name) = logo {
-        return gpui::img(SharedString::from(format!("icons/agent-{name}.png")))
+    agent_logo(logo, size, model)
+}
+
+/// Full-colour agent logo from `icons/agent-{name}.png`. Codex and Grok are
+/// single-colour marks, so light themes get a dark `-light` variant.
+pub(crate) fn agent_logo(name: &str, size: Pixels, model: &AppModel) -> AnyElement {
+    if name == "xal" {
+        return svg()
+            .path("icons/provider-xal.svg")
             .size(size)
-            .rounded(size * 0.25)
+            .text_color(model.theme.fg)
             .into_any_element();
     }
-    let path = match provider {
-        AgentProvider::Codex => "icons/provider-codex.svg",
-        AgentProvider::Grok => "icons/provider-grok.svg",
-        AgentProvider::Xal => "icons/provider-xal.svg",
-        _ => "icons/terminal.svg",
+    let variant = if matches!(name, "codex" | "grok") && model.theme.bg.l >= 0.5 {
+        "-light"
+    } else {
+        ""
     };
-    svg()
-        .path(path)
-        .size(size)
-        .text_color(model.theme.fg)
-        .into_any_element()
+    gpui::img(SharedString::from(format!(
+        "icons/agent-{name}{variant}.png"
+    )))
+    .size(size)
+    .into_any_element()
 }

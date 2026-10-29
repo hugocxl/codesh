@@ -8,8 +8,7 @@ use codesh_ui::tr;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, Context, Entity, Focusable, FontWeight, InteractiveElement,
-    IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Subscription,
-    Window, div, px, svg,
+    IntoElement, ParentElement, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 
 use crate::ai::{PROVIDERS, Provider};
@@ -142,23 +141,7 @@ fn provider_icon(provider: Option<Provider>, model: &AppModel) -> AnyElement {
     let size = model.metrics.icon_md();
     match provider {
         None => SymbolGlyph::new("sparkles", size, model.theme.fg).into_any_element(),
-        Some(provider) => {
-            let name = if provider.id == "droid" {
-                "factory"
-            } else {
-                provider.id
-            };
-            let path = SharedString::from(format!("icons/provider-{name}.svg"));
-            if provider.id == "claude" {
-                gpui::img(path).size(size).into_any_element()
-            } else {
-                svg()
-                    .path(path)
-                    .size(size)
-                    .text_color(model.theme.fg)
-                    .into_any_element()
-            }
-        }
+        Some(provider) => crate::views::tab_activity::agent_logo(provider.id, size, model),
     }
 }
 
