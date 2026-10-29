@@ -974,7 +974,11 @@ fn worktree_actions_open_rename_after_dismissing_the_palette(cx: &mut TestAppCon
         let page = palette.page().clone();
         assert!(palette.select(&page, &worktree.to_string(), cx));
     });
-    cx.simulate_keystrokes("cmd-k down enter");
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-k down enter"
+    } else {
+        "ctrl-k down enter"
+    });
     cx.run_until_parked();
     assert!(view.read_with(cx, |model, _| matches!(
         model.overlay,
