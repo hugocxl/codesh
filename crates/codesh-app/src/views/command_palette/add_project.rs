@@ -710,7 +710,11 @@ impl AppModel {
             return;
         };
         page.follow_selection(item);
+        let browsing_search_result = page.session.highlighted_search_result().is_some();
         page.session.complete_highlighted();
+        if browsing_search_result && !page.session.input.ends_with('/') {
+            page.session.set_input(format!("{}/", page.session.input));
+        }
         self.apply_add_project_input(cx);
     }
 

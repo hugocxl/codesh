@@ -259,13 +259,15 @@ fn palette_branches_switches_the_selected_branch_with_enter(cx: &mut TestAppCont
             Ok(GitReply::Branches(vec![
                 GitBranch { name: "main".into(), current: true, checked_out: true, default: true },
                 GitBranch { name: "feature/palette".into(), current: false, checked_out: false, default: false },
+                GitBranch { name: "new-branch".into(), current: false, checked_out: false, default: false },
             ])),
             cx,
         );
         let palette = model.palette_entity().expect("palette");
         let items = palette.read(cx).items();
         assert_eq!(items[0].id, "new-branch");
-        let main = items.iter().find(|item| item.id == "main").expect("main");
+        assert!(items.iter().any(|item| item.id == "branch:new-branch"));
+        let main = items.iter().find(|item| item.id == "branch:main").expect("main");
         assert!(main.current && main.disabled);
         assert_eq!(main.subtitle.as_ref().map(AsRef::as_ref), Some("Checked out"));
     });

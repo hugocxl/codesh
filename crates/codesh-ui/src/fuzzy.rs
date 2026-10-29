@@ -94,24 +94,21 @@ pub fn rank<T>(
         let Some(Match { score, ranges }) = fuzzy(text, &query) else {
             continue;
         };
-        let position = ranked.partition_point(|existing| {
-            let existing_key = key(&existing.item);
-            existing.score > score
-                || (existing.score == score
-                    && (existing_key.len(), existing_key) <= (text.len(), text))
+        ranked.push(Ranked {
+            item,
+            score,
+            ranges,
         });
-        if position < limit {
-            ranked.insert(
-                position,
-                Ranked {
-                    item,
-                    score,
-                    ranges,
-                },
-            );
-            ranked.truncate(limit);
-        }
     }
+    ranked.sort_by(|left, right| {
+        let left_key = key(&left.item);
+        let right_key = key(&right.item);
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| (left_key.len(), left_key).cmp(&(right_key.len(), right_key)))
+    });
+    ranked.truncate(limit);
     ranked
 }
 

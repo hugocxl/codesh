@@ -38,7 +38,7 @@ fn stub_project(text: &'static str) -> Rc<Stub> {
         }),
         exec: Box::new(|_| {
             Ok(ExecResult {
-                stdout: "src/main.rs\nREADME.md\n".into(),
+                stdout: "src/main.rs\nREADME.md\nsrc/main.rs\n".into(),
                 stderr: String::new(),
                 exit_code: 0,
                 timed_out: false,
@@ -91,6 +91,7 @@ fn root_search_ranks_commands_and_opens_a_file_hit_in_an_editor(cx: &mut TestApp
                 .map(|item| item.id.clone())
         })
         .expect("a file hit");
+    assert_eq!(file, "files/src/main.rs");
     view.update(cx, |model, cx| {
         let palette = model.palette_entity().expect("palette");
         palette.update(cx, |palette, cx| {
@@ -113,9 +114,14 @@ fn root_search_ranks_commands_and_opens_a_file_hit_in_an_editor(cx: &mut TestApp
 
 #[gpui::test]
 fn go_to_file_opens_over_root_and_escape_walks_back_then_closes(cx: &mut TestAppContext) {
-    let (boot, _requests) = stub_boot(AppState::bootstrap().expect("state"));
+    let (state, _) = git::registered_current_project();
+    let (boot, _requests) = stub_boot(state);
     cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
     let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update(cx, |model, _| {
+        model.servers.local.connection = ConnectionState::Ready;
+        model.native.stub = Some(stub_project("text"));
+    });
     let go_to_file = ShortcutId::GoToFile.definition().keys[0];
 
     cx.simulate_keystrokes(go_to_file);
@@ -128,6 +134,9 @@ fn go_to_file_opens_over_root_and_escape_walks_back_then_closes(cx: &mut TestApp
         Some(PaletteEntry::Root),
         "escape returns to root"
     );
+    cx.simulate_input("main.rs");
+    cx.run_until_parked();
+    assert!(rows(&view, cx).contains(&"files/src/main.rs".to_owned()));
     cx.simulate_keystrokes("escape");
     cx.run_until_parked();
     assert!(view.read_with(cx, |model, _| model.overlay.is_none()));
@@ -193,4 +202,68 @@ fn a_run_command_leads_the_suggestions_and_is_remembered(cx: &mut TestAppContext
         Some(sidebar),
         "the last command run leads the suggestions"
     );
+}
+
+#[gpui::test]
+fn root_file_and_branch_with_the_same_name_run_distinct_targets(cx: &mut TestAppContext) {
+    use codesh_protocol::{GitAction, GitBranch, GitReply, GitRequest};
+    let (state, project) = git::registered_current_project();
+    let (boot, requests) = stub_boot(state);
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    view.update(cx, |model, _| {
+        model.servers.local.connection = ConnectionState::Ready;
+        model.native.stub = Some(stub_project("text"));
+    });
+    cx.simulate_keystrokes(ShortcutId::ToggleCommandPalette.definition().keys[0]);
+    cx.run_until_parked();
+    view.update(cx, |model, cx| {
+        model.git.projects.entry(project).or_default().disconnect();
+        model.receive_git(
+            &GitRequest {
+                project,
+                action: GitAction::Branches,
+            },
+            Ok(GitReply::Branches(vec![GitBranch {
+                name: "src/main.rs".into(),
+                current: false,
+                checked_out: false,
+                default: false,
+            }])),
+            cx,
+        );
+    });
+    cx.simulate_input("src/main.rs");
+    cx.run_until_parked();
+    let ids = rows(&view, cx);
+    assert_eq!(
+        ids.iter().filter(|id| *id == "files/src/main.rs").count(),
+        1
+    );
+    assert!(ids.contains(&"branches/branch:src/main.rs".to_owned()));
+    for id in ["files/src/main.rs", "branches/branch:src/main.rs"] {
+        view.update(cx, |model, cx| {
+            let palette = model.palette_entity().expect("palette");
+            palette.update(cx, |palette, cx| {
+                assert!(palette.select("root", id, cx));
+            });
+        });
+        requests.try_iter().for_each(drop);
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        if id.starts_with("files/") {
+            assert!(view.read_with(cx, |model, _| {
+                model
+                    .active_pane()
+                    .is_some_and(|pane| model.editors.contains_key(&pane))
+            }));
+            cx.simulate_keystrokes(ShortcutId::ToggleCommandPalette.definition().keys[0]);
+            cx.run_until_parked();
+            cx.simulate_input("src/main.rs");
+            cx.run_until_parked();
+        } else {
+            assert!(requests.try_iter().any(|(_, work)| matches!(work,
+                Work::Git(GitRequest { action: GitAction::SwitchBranch(name), .. }) if name == "src/main.rs")));
+        }
+    }
 }

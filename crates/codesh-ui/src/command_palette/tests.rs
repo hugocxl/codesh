@@ -237,3 +237,32 @@ fn actions_panel_runs_actions_and_arms_destructive_ones(cx: &mut TestAppContext)
     cx.simulate_keystrokes("escape");
     assert_eq!(take(&host, cx), [PaletteEvent::Dismissed]);
 }
+
+#[gpui::test]
+fn actions_panel_refresh_preserves_highlight_and_destructive_confirmation(cx: &mut TestAppContext) {
+    let (host, palette, cx) = open_with_root_items(cx);
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-k"
+    } else {
+        "ctrl-k"
+    });
+    cx.simulate_keystrokes("up enter");
+    assert!(take(&host, cx).is_empty());
+    palette.update(cx, |palette, cx| {
+        let mut content = root_items();
+        content.sections[0].items[0]
+            .actions
+            .insert(1, ItemAction::new("copy", "Copy"));
+        palette.set_content("root", content, cx);
+    });
+    cx.simulate_keystrokes("enter");
+    assert_eq!(
+        take(&host, cx),
+        [PaletteEvent::RunAction {
+            page: "root".into(),
+            item: "alpha".into(),
+            action: "delete".into(),
+            payload: "run alpha",
+        }]
+    );
+}

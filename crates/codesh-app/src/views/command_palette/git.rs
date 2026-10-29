@@ -87,11 +87,14 @@ impl AppModel {
         if !self.palette_git_ready(project) {
             return;
         }
+        let Some(name) = item.strip_prefix("branch:") else {
+            return;
+        };
         let Some(branch) = self.git.projects.get(&project).and_then(|repository| {
             repository
                 .branches
                 .iter()
-                .find(|branch| branch.name == item)
+                .find(|branch| branch.name == name)
         }) else {
             return;
         };
@@ -306,15 +309,16 @@ fn branch_item(
     highlights: Vec<Range<usize>>,
     busy: bool,
 ) -> Item<Handler> {
-    let name = branch.name.clone();
+    let id = format!("branch:{}", branch.name);
+    let target_id = id.clone();
     let switch: Handler = Rc::new(move |model, window, cx| {
-        model.branches_action(project, &name, "switch", window, cx);
+        model.branches_action(project, &target_id, "switch", window, cx);
     });
     let mut actions = vec![ItemAction::new("switch", "Switch Branch")];
     if !branch.checked_out {
         actions.push(ItemAction::new("delete", "Delete").destructive());
     }
-    let mut item = Item::run(branch.name.clone(), branch.name.clone(), switch)
+    let mut item = Item::run(id, branch.name.clone(), switch)
         .highlights(highlights)
         .kind(Kind::Branch.label())
         .tile(Kind::Branch.tile())

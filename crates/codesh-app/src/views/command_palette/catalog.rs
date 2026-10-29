@@ -865,29 +865,22 @@ impl AppModel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let query = self.command_palette.root_query.clone();
-        let content = self.root_items(&query, cx);
-        let Some(title) = content
-            .sections
-            .iter()
-            .find(|section| section.items.iter().any(|found| found.id == item))
-            .and_then(|section| section.title.clone())
-        else {
+        let Some((tag, raw_id)) = split_hit_id(item) else {
             return;
         };
         let current = self.state.current_project().id;
-        let entry = match title.as_ref() {
-            "Files" => PaletteEntry::Files,
-            "Branches" => PaletteEntry::Branches(current),
-            "Worktrees" => match self.worktree_switcher_project() {
+        let entry = match tag {
+            "files" => PaletteEntry::Files,
+            "branches" => PaletteEntry::Branches(current),
+            "worktrees" => match self.worktree_switcher_project() {
                 Some(parent) => PaletteEntry::Worktrees(parent),
                 None => return,
             },
-            "Projects" => PaletteEntry::Projects,
-            "Terminals" => PaletteEntry::Terminals(current),
+            "projects" => PaletteEntry::Projects,
+            "terminals" => PaletteEntry::Terminals(current),
             _ => return,
         };
-        self.page_action(entry, item, action, window, cx);
+        self.page_action(entry, raw_id, action, window, cx);
     }
 }
 
@@ -904,6 +897,9 @@ fn push_hits(
     if items.is_empty() {
         return;
     }
+    for item in &mut items {
+        item.id = hit_id(entry, &item.id).into();
+    }
     if more {
         let query = query.to_owned();
         let open: Handler = Rc::new(move |model, _, cx| {
@@ -916,4 +912,26 @@ fn push_hits(
         ));
     }
     sections.push(Section::new(title, items));
+}
+
+/// A root search row's id, namespaced by the provider page that found it.
+fn hit_id(entry: PaletteEntry, id: &str) -> String {
+    let tag = match entry {
+        PaletteEntry::Files => "files",
+        PaletteEntry::Branches(_) => "branches",
+        PaletteEntry::Worktrees(_) => "worktrees",
+        PaletteEntry::Projects => "projects",
+        PaletteEntry::Terminals(_) => "terminals",
+        _ => return id.to_owned(),
+    };
+    format!("{tag}/{id}")
+}
+
+fn split_hit_id(id: &str) -> Option<(&str, &str)> {
+    let (tag, raw) = id.split_once('/')?;
+    matches!(
+        tag,
+        "files" | "branches" | "worktrees" | "projects" | "terminals"
+    )
+    .then_some((tag, raw))
 }

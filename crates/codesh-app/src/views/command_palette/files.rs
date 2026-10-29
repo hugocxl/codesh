@@ -5,7 +5,7 @@
     reason = "Every page function takes the model, used or not"
 )]
 
-use std::{collections::HashSet, rc::Rc};
+use std::rc::Rc;
 
 use codesh_app_core::ProjectId;
 use codesh_ui::{
@@ -110,9 +110,7 @@ fn file_items(
     query: &str,
     limit: usize,
 ) -> Vec<Item<Handler>> {
-    let mut seen = HashSet::new();
-    let paths = files.iter().filter(|path| seen.insert(path.as_str()));
-    fuzzy::rank(paths, |path| path.as_str(), query, limit)
+    fuzzy::rank(files.iter(), |path| path.as_str(), query, limit)
         .into_iter()
         .map(|found| {
             let path = found.item;
@@ -141,8 +139,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn file_rows_shift_unicode_basename_highlights_and_deduplicate_paths() {
-        let files = ["src/Éclair.rs", "src/Éclair.rs", "src/other.rs"].map(str::to_owned);
+    fn file_rows_shift_unicode_basename_highlights() {
+        let files = ["src/Éclair.rs", "src/other.rs"].map(str::to_owned);
         let project = ProjectId::new();
         let items = file_items(project, &files, "src/éc", 100);
         assert_eq!(items.len(), 1);

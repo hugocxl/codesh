@@ -107,6 +107,15 @@ impl ActionsPanel {
     }
 
     fn rebuild<A>(&mut self, item: &Item<A>, query: &str) {
+        let highlighted = self
+            .visible
+            .get(self.highlighted)
+            .and_then(|(index, _)| self.entries.get(*index))
+            .map(|entry| entry.action.clone());
+        let armed = self
+            .armed
+            .and_then(|index| self.entries.get(index))
+            .map(|entry| entry.action.clone());
         let has_payload = item.target.payload().is_some();
         let primary = item.actions.first();
         let mut entries = vec![Entry {
@@ -139,6 +148,18 @@ impl ActionsPanel {
         }
         self.entries = entries;
         self.filter(query);
+        if let Some(row) = self
+            .visible
+            .iter()
+            .position(|(index, _)| highlighted.as_ref() == Some(&self.entries[*index].action))
+        {
+            self.highlighted = row;
+        }
+        self.armed = self
+            .entries
+            .iter()
+            .position(|entry| entry.destructive && armed.as_ref() == Some(&entry.action));
+        self.scroll.scroll_to_item(self.highlighted);
     }
 
     fn filter(&mut self, query: &str) {

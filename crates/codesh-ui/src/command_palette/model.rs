@@ -444,6 +444,7 @@ pub(super) struct PageState<A> {
     pub(super) query: String,
     pub(super) ghost: SharedString,
     selected: Option<ItemId>,
+    counts: (usize, usize),
 }
 
 impl<A> fmt::Debug for PageState<A> {
@@ -466,6 +467,7 @@ impl<A> PageState<A> {
             query: String::new(),
             ghost: SharedString::default(),
             selected: None,
+            counts: (0, 0),
         };
         page.rebuild_rows();
         page.selected = page.first_selectable();
@@ -538,12 +540,7 @@ impl<A> PageState<A> {
     }
 
     pub(super) fn counts(&self) -> (usize, usize) {
-        self.rows
-            .iter()
-            .fold((0, 0), |(sections, items), row| match row {
-                Row::Section(_) => (sections + 1, items),
-                Row::Item { .. } => (sections, items + 1),
-            })
+        self.counts
     }
 
     pub(super) fn item(&self, id: &str) -> Option<&Item<A>> {
@@ -647,13 +644,16 @@ impl<A> PageState<A> {
 
     fn rebuild_rows(&mut self) {
         self.rows.clear();
+        self.counts = (0, 0);
         for (section_index, section) in self.content.sections.iter().enumerate() {
             if section.items.is_empty() {
                 continue;
             }
             if section.title.is_some() {
+                self.counts.0 += 1;
                 self.rows.push(Row::Section(section_index));
             }
+            self.counts.1 += section.items.len();
             for (item_index, item) in section.items.iter().enumerate() {
                 self.rows.push(Row::Item {
                     section: section_index,

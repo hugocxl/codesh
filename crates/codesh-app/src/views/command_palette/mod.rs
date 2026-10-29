@@ -278,6 +278,9 @@ impl AppModel {
         });
         self.focus_requested = false;
         self.page_opened(entry, cx);
+        if entry != PaletteEntry::Root {
+            self.root_opened(cx);
+        }
         self.refresh_palette(cx);
         cx.notify();
     }

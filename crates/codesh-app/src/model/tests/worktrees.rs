@@ -1000,13 +1000,13 @@ fn worktree_root_search_opens_the_same_worktree_as_the_page(cx: &mut TestAppCont
         let hit = palette
             .items()
             .into_iter()
-            .find(|item| item.id == row.id)
+            .find(|item| item.id == format!("worktrees/{}", row.id))
             .expect("worktree hit");
         assert_eq!(hit.kind.as_ref().map(AsRef::as_ref), Some("Worktree"));
         assert_eq!(hit.title, row.title);
         assert_eq!(hit.subtitle, row.subtitle);
         let page = palette.page().clone();
-        assert!(palette.select(&page, &row.id, cx));
+        assert!(palette.select(&page, &format!("worktrees/{}", row.id), cx));
     });
     cx.simulate_keystrokes("enter");
     view.read_with(cx, |model, _| {

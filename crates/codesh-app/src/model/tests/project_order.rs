@@ -345,7 +345,7 @@ fn project_palette_search_switches_projects_and_keeps_root_hit_ids(cx: &mut Test
                     .is_some_and(|kind| kind == Kind::Project.label())
             })
             .expect("project hit");
-        assert_eq!(hit.id, ten.to_string());
+        assert_eq!(hit.id, format!("projects/{ten}"));
         assert!(!hit.highlights.is_empty());
         assert!(hit.subtitle.is_some());
     });

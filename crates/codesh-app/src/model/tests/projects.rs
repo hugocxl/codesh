@@ -678,6 +678,57 @@ fn tab_completes_the_highlighted_folder_and_lists_it(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn tab_browses_a_folder_search_result_and_lists_its_children(cx: &mut TestAppContext) {
+    let root = std::env::temp_dir().join(format!("codesh-complete-project-{}", ProjectId::new()));
+    std::fs::create_dir_all(root.join("Alpha").join("Inner")).expect("mkdir");
+    std::fs::create_dir_all(root.join("Beta")).expect("mkdir");
+    let (mut boot, _) = stub_boot(AppState::bootstrap().expect("state"));
+    boot.settings.projects.search_root = Some(root.clone());
+    cx.update(|cx| crate::views::workspace::bind_keys(&boot.settings.keymap, cx));
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-o"
+    } else {
+        "ctrl-shift-o"
+    });
+    cx.simulate_input("Alpha");
+    cx.executor().advance_clock(Duration::from_millis(125));
+    cx.run_until_parked();
+    cx.simulate_keystrokes("tab");
+    cx.executor().advance_clock(Duration::from_millis(125));
+    cx.run_until_parked();
+    view.read_with(cx, |model, cx| {
+        let palette = model.palette_entity().expect("palette");
+        let palette = palette.read(cx);
+        assert_eq!(
+            palette.query(),
+            format!("{}/Alpha/", root.to_string_lossy())
+        );
+        let folders: Vec<_> = palette
+            .items()
+            .iter()
+            .filter(|item| item.id.starts_with("path-"))
+            .map(|item| item.title.to_string())
+            .collect();
+        assert_eq!(folders, ["Inner"]);
+    });
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-enter"
+    } else {
+        "ctrl-shift-enter"
+    });
+    cx.run_until_parked();
+    view.read_with(cx, |model, _| {
+        assert_eq!(
+            model.state.current_project().directory,
+            root.join("Alpha").join("Inner")
+        );
+        assert!(model.overlay.is_none());
+    });
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[gpui::test]
 fn creating_a_project_folder_requires_the_explicit_create_confirmation(cx: &mut TestAppContext) {
     let root = std::env::temp_dir().join(format!("codesh-create-project-{}", ProjectId::new()));
     std::fs::create_dir_all(&root).expect("root");

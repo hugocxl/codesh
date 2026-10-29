@@ -248,12 +248,19 @@ impl AppModel {
         });
     }
 
-    fn file_list_loaded(&mut self, project: ProjectId, files: Vec<String>, cx: &mut Context<Self>) {
+    fn file_list_loaded(
+        &mut self,
+        project: ProjectId,
+        mut files: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(list) = self.native.file_lists.get_mut(&project) else {
             return;
         };
         list.loading = false;
         list.stale = false;
+        files.sort();
+        files.dedup();
         list.files = files;
         self.refresh_files_page(cx);
         self.refresh_root_page(cx);
