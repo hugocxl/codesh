@@ -106,6 +106,10 @@ impl AppModel {
             .then(|| self.state.current_project().id);
         let newly_visible = visible_files.is_some() && visible_files != self.native.visible_files;
         self.native.visible_files = visible_files;
+        let visible_git = (self.appearance.side_panel == SidePanel::SourceControl)
+            .then(|| self.state.current_project().id);
+        let git_newly_visible = visible_git.is_some() && visible_git != self.native.visible_git;
+        self.native.visible_git = visible_git;
         let wanted = match self.appearance.side_panel {
             SidePanel::Files => Some(FILES_PANEL),
             SidePanel::SourceControl => Some(GIT_PANEL),
@@ -134,11 +138,18 @@ impl AppModel {
             }
             SidePanel::SourceControl => {
                 self.git_panel(project, cx);
-                if !self.native.git_loaded.contains(&project) {
+                if git_newly_visible || !self.native.git_loaded.contains(&project) {
                     self.refresh_git_panel(project, cx);
                 }
             }
             SidePanel::None => {}
+        }
+    }
+
+    /// Asks for the visible Source Control panel's status again.
+    pub(crate) fn refresh_visible_git_panel(&mut self, cx: &mut Context<Self>) {
+        if let Some(project) = self.native.visible_git {
+            self.refresh_git_panel(project, cx);
         }
     }
 

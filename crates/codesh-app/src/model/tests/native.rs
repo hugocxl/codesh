@@ -163,6 +163,54 @@ fn staging_from_the_source_control_panel_asks_git(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn source_control_panel_asks_for_status_each_time_it_comes_into_view(cx: &mut TestAppContext) {
+    let (state, project) = git::registered_current_project();
+    let (boot, requests) = stub_boot(state);
+    let (view, cx) = cx.add_window_view(|window, cx| AppModel::new(boot, window, cx));
+    let show = |side_panel, view: &Entity<AppModel>, cx: &mut VisualTestContext| {
+        view.update(cx, |model, cx| {
+            model.appearance.side_panel = side_panel;
+            model.sync_side_panel(cx);
+        });
+        cx.run_until_parked();
+    };
+    // Answers Git requests until none are left, noting a status read.
+    let status_asked = |view: &Entity<AppModel>, cx: &mut VisualTestContext| {
+        let mut asked = false;
+        for _ in 0..16 {
+            let sent: Vec<GitRequest> = requests
+                .try_iter()
+                .filter_map(|(_, work)| match work {
+                    Work::Git(request) => Some(request),
+                    _ => None,
+                })
+                .collect();
+            if sent.is_empty() {
+                break;
+            }
+            asked |= sent.iter().any(|request| {
+                request.project == project && request.action == GitAction::Status { local: true }
+            });
+            view.update(cx, |model, cx| {
+                for request in &sent {
+                    model.receive_git(request, Ok(GitReply::Done), cx);
+                }
+            });
+            cx.run_until_parked();
+        }
+        asked
+    };
+    view.update(cx, |model, _| {
+        model.servers.local.connection = ConnectionState::Ready;
+    });
+    show(SidePanel::SourceControl, &view, cx);
+    assert!(status_asked(&view, cx));
+    show(SidePanel::None, &view, cx);
+    show(SidePanel::SourceControl, &view, cx);
+    assert!(status_asked(&view, cx));
+}
+
+#[gpui::test]
 fn terminal_links_to_project_files_open_the_editor(cx: &mut TestAppContext) {
     let (state, project) = git::registered_current_project();
     let directory = state.project(project).expect("project").directory.clone();

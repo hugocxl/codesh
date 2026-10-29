@@ -411,6 +411,7 @@ impl AppModel {
             }
             self.notifications.refresh();
             self.refresh_git(cx);
+            self.refresh_visible_git_panel(cx);
             self.refresh_project_statuses(cx);
             self.reconnect_waiting(cx);
         } else {

@@ -33,6 +33,9 @@ pub(crate) struct Native {
     pub(crate) git: HashMap<ProjectId, (Entity<GitPanel>, Subscription)>,
     pub(crate) resize: PanelResizeState,
     pub(crate) visible_files: Option<ProjectId>,
+    /// The project whose Source Control panel is showing, refreshed each
+    /// time it comes into view.
+    visible_git: Option<ProjectId>,
     /// Projects whose Source Control panel is waiting for a change it asked
     /// for, shown busy until Git answers.
     git_busy: HashSet<ProjectId>,
@@ -55,6 +58,7 @@ impl Native {
             git: HashMap::new(),
             resize: PanelResizeState::default(),
             visible_files: None,
+            visible_git: None,
             git_busy: HashSet::new(),
             git_loaded: HashSet::new(),
             file_lists: HashMap::new(),
