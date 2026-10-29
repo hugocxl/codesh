@@ -550,6 +550,7 @@ fn create_worktree(
             return Err(error("Worktree changed during creation"));
         }
     } else {
+        run(repository, &["worktree", "prune"])?;
         let mut args: Vec<OsString> = vec!["worktree".into(), "add".into()];
         if base.is_some() {
             args.extend(["-b".into(), branch.into()]);

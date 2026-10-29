@@ -40,6 +40,40 @@ fn pruning_removes_deleted_worktrees_and_replays_without_changing_the_catalog() 
 }
 
 #[test]
+fn creation_reuses_a_branch_held_by_a_deleted_worktree() {
+    let repo = Repo::new(true);
+    let stale = repo.path.join("stale");
+    run(
+        &repo.path,
+        &["worktree", "add", "-b", "release", stale.to_str().unwrap()],
+    )
+    .unwrap();
+    std::fs::remove_dir_all(&stale).unwrap();
+    let directory = repo.path.join("release");
+    repo.registry
+        .git(&GitRequest {
+            project: repo.project,
+            action: GitAction::Worktree(WorktreeIntent {
+                options: None,
+                operation: OperationId::new(),
+                action: WorktreeAction::Create {
+                    project: ProjectId::new(),
+                    directory: server_path(&directory),
+                    branch: "release".into(),
+                    base: None,
+                },
+            }),
+        })
+        .unwrap();
+    let worktrees = read::worktrees(&repo.path).unwrap();
+    assert!(worktrees.iter().all(|worktree| !worktree.prunable));
+    assert!(worktrees.iter().any(|worktree| {
+        worktree.branch.as_deref() == Some("release")
+            && path(&worktree.directory).ends_with("release")
+    }));
+}
+
+#[test]
 fn pruning_preserves_existing_folders_home_and_regular_projects() {
     let repo = Repo::new(true);
     let (child, directory, _) = repo.create();
