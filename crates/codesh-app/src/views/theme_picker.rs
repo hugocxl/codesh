@@ -29,11 +29,7 @@ pub(crate) fn command(model: &AppModel, dark: bool, cx: &Context<AppModel>) -> C
                 Command::new(entry.name.clone(), entry.name.clone(), handler)
                     .current(entry.name == active)
                     .keep_open()
-                    .swatches(
-                        (0..16)
-                            .filter_map(|slot| entry.scheme.palette_color(slot).map(Into::into))
-                            .collect(),
-                    ),
+                    .swatches(entry.swatches()),
             );
         }
         themes

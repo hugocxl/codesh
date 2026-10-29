@@ -14,6 +14,14 @@ pub(crate) struct Entry {
     pub(crate) scheme: ColorScheme,
 }
 
+impl Entry {
+    pub(crate) fn swatches(&self) -> Vec<gpui::Hsla> {
+        (0..16)
+            .filter_map(|slot| self.scheme.palette_color(slot).map(Into::into))
+            .collect()
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Catalog {
     pub(crate) entries: Vec<Entry>,

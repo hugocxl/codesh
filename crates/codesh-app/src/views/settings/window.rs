@@ -4,23 +4,21 @@ use gpui::{
     Subscription, WeakEntity, Window, div,
 };
 
-use codesh_ui::command_palette::{CommandPalette, CommandPaletteEvent};
 use codesh_ui::picker::{Picker, PickerConfig, PickerEvent, PickerItem, PickerRow};
 
 use super::languages::{LanguageEvent, LanguagePicker};
+use super::themes::{ThemeDropdown, ThemeEvent};
 use super::{Change, PickerRequest, SettingsEvent, SettingsView, pickers};
 use crate::model::AppModel;
 use crate::views::{
-    command_palette::Handler,
     font_picker::{FontEvent, FontPicker},
-    theme_picker,
     titlebar::BeginWindowMove,
     workspace,
 };
 
 pub(crate) enum SettingsOverlay {
     Themes {
-        picker: Entity<CommandPalette<Handler>>,
+        picker: Entity<ThemeDropdown>,
         source: PickerRequest,
     },
     Fonts {
@@ -76,11 +74,11 @@ impl SettingsWindow {
             if let Some(overlay) = &root.overlay {
                 match overlay {
                     SettingsOverlay::Themes { picker, source } => {
-                        let active = if source.kind == super::PickerKind::Theme(true) {
-                            view.snapshot.settings.appearance.dark_theme.clone()
-                        } else {
-                            view.snapshot.settings.appearance.light_theme.clone()
-                        };
+                        let dark = source.kind == super::PickerKind::Theme(true);
+                        let active = root.model.upgrade().map_or_else(String::new, |model| {
+                            let model = model.read(cx);
+                            model.themes.active_name(&model.appearance, dark)
+                        });
                         picker.update(cx, |picker, cx| {
                             picker.set_appearance(theme, metrics, cx);
                             picker.set_current(&active, cx);
@@ -174,46 +172,41 @@ impl SettingsWindow {
                 });
             }
             super::PickerKind::Theme(dark) => {
-                let Ok(registry) = self
-                    .model
-                    .update(cx, |model, cx| model.command_registry(dark, cx))
-                else {
+                let Ok((entries, active)) = self.model.update(cx, |model, cx| {
+                    model.reload_themes(cx);
+                    (
+                        model.themes.entries.clone(),
+                        model.themes.active_name(&model.appearance, dark),
+                    )
+                }) else {
                     return;
                 };
-                let picker = cx.new(|cx| CommandPalette::dropdown(registry, theme, metrics, cx));
-                picker.update(cx, |picker, cx| {
-                    picker.open_root_page(theme_picker::PAGE_ID, cx);
-                });
+                let picker = cx.new(|cx| ThemeDropdown::new(entries, active, theme, metrics, cx));
                 self.overlay_subscription = Some(cx.subscribe_in(
                     &picker,
                     window,
-                    move |root, picker, event, window, cx| {
-                        let keep_open = matches!(event, CommandPaletteEvent::Applied(_));
-                        if !keep_open {
-                            root.dismiss_overlay(window, cx);
-                        }
-                        if let CommandPaletteEvent::Selected(handler)
-                        | CommandPaletteEvent::Applied(handler) = event
-                            && let Some(model) = root.model.upgrade()
-                        {
+                    move |root, picker, event, window, cx| match event {
+                        ThemeEvent::Selected(name) => {
+                            let Some(model) = root.model.upgrade() else {
+                                return;
+                            };
                             let workspace = model.read(cx).window;
-                            let handler = handler.clone();
+                            let name = name.clone();
                             let picker = picker.clone();
                             cx.defer(move |cx| {
-                                let _ = workspace.update(cx, |_, window, cx| {
+                                let _ = workspace.update(cx, |_, _, cx| {
                                     model.update(cx, |model, cx| {
-                                        handler(model, window, cx);
-                                        if keep_open {
-                                            let active =
-                                                model.themes.active_name(&model.appearance, dark);
-                                            picker.update(cx, |picker, cx| {
-                                                picker.set_current(&active, cx);
-                                            });
-                                        }
+                                        model.change_preference(Change::Theme(dark, name), cx);
+                                        let active =
+                                            model.themes.active_name(&model.appearance, dark);
+                                        picker.update(cx, |picker, cx| {
+                                            picker.set_current(&active, cx);
+                                        });
                                     });
                                 });
                             });
                         }
+                        ThemeEvent::Dismiss => root.dismiss_overlay(window, cx),
                     },
                 ));
                 self.overlay = Some(SettingsOverlay::Themes {

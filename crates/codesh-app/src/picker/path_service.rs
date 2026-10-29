@@ -1,4 +1,4 @@
-use std::env::home_dir;
+use std::path::Path;
 
 pub(crate) const PARENT_ROW: &str = "..";
 
@@ -76,7 +76,9 @@ impl Default for PathService {
     fn default() -> Self {
         Self {
             home_directory: standardize(
-                &home_dir().unwrap_or_else(|| "/".into()).to_string_lossy(),
+                &std::env::home_dir()
+                    .unwrap_or_else(|| "/".into())
+                    .to_string_lossy(),
             ),
         }
     }
@@ -321,4 +323,13 @@ fn take_number(chars: &mut std::iter::Peekable<std::str::Chars>) -> u128 {
         chars.next();
     }
     value
+}
+
+pub(crate) fn display_path(path: &Path) -> String {
+    std::env::home_dir()
+        .and_then(|home| codesh_core::dirs::abbreviate_home(path, &home))
+        .as_deref()
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned()
 }

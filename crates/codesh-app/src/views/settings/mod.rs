@@ -13,6 +13,7 @@ mod results;
 mod server;
 mod terminal;
 mod terminal_lists;
+mod themes;
 mod voice;
 pub(crate) mod window;
 

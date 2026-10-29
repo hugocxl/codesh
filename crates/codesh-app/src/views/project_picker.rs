@@ -15,7 +15,7 @@ use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     Subscription,
 };
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -1076,13 +1076,4 @@ async fn folder_prompt(
         .map_err(|error| error.to_string())?
         .map(|paths| paths.and_then(|paths| paths.into_iter().next()))
         .map_err(|error| error.to_string())
-}
-
-pub(crate) fn display_path(path: &Path) -> String {
-    std::env::home_dir()
-        .and_then(|home| codesh_core::dirs::abbreviate_home(path, &home))
-        .as_deref()
-        .unwrap_or(path)
-        .to_string_lossy()
-        .into_owned()
 }

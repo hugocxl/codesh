@@ -223,7 +223,7 @@ impl AppModel {
     /// The project's folder, with `~` for its own computer's Home.
     pub(crate) fn project_path_label(&self, project: &Project) -> String {
         if project.server_id.is_local() {
-            return super::project_picker::display_path(&project.directory);
+            return crate::picker::path_service::display_path(&project.directory);
         }
         let directory = project.directory.to_string_lossy();
         match self.remote_home(project.server_id) {
