@@ -15,13 +15,6 @@ pub(crate) mod frame;
 #[cfg(target_os = "linux")]
 pub(crate) mod linux;
 
-pub(crate) fn content_size(window: &Window) -> gpui::Size<gpui::Pixels> {
-    #[cfg(target_os = "linux")]
-    return frame::bounds(window).size;
-    #[cfg(not(target_os = "linux"))]
-    window.viewport_size()
-}
-
 pub(crate) fn overlay(element: impl IntoElement, window: &Window) -> AnyElement {
     #[cfg(target_os = "linux")]
     return frame::overlay(element, window);
@@ -216,16 +209,4 @@ pub(crate) fn sidebar_toggle(model: &AppModel, cx: &Context<AppModel>) -> Statef
         cx.stop_propagation();
         model.toggle_sidebar(window, cx);
     }))
-}
-
-pub(super) fn navigation_width(model: &AppModel, _: &Window) -> f32 {
-    if cfg!(target_os = "linux") {
-        return f32::from(model.metrics.sidebar_collapsed_width() + model.metrics.scaled(52.0));
-    }
-    let arrows = model.metrics.navigation_arrows_width();
-    f32::from(if cfg!(target_os = "macos") {
-        model.metrics.traffic_light_width() + arrows
-    } else {
-        arrows
-    })
 }

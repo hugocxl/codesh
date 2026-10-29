@@ -8,7 +8,7 @@ use gpui::{
     SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
-use super::{tab_activity, tab_strip, titlebar};
+use super::{tab_activity, tab_strip};
 use crate::model::AppModel;
 
 impl AppModel {
@@ -726,49 +726,6 @@ fn tab_row(
             model,
             cx,
         ))
-        .into_any_element()
-}
-
-#[allow(
-    dead_code,
-    reason = "Codesh moves titlebar actions to the sidebar footer"
-)]
-pub(super) fn titlebar(
-    model: &AppModel,
-    sidebar_width: f32,
-    window: &Window,
-    actions: gpui::Div,
-    cx: &mut Context<AppModel>,
-) -> AnyElement {
-    let theme = &model.theme;
-    let project = model.state.current_project();
-    titlebar::background("project-titlebar")
-        .flex()
-        .items_center()
-        .flex_none()
-        .h(px(32.0))
-        .pl(px((titlebar::navigation_width(model, window)
-            - sidebar_width)
-            .max(0.0)
-            + 12.0))
-        .child(
-            div()
-                .debug_selector(|| "project-title".into())
-                .flex_1()
-                .min_w(px(0.0))
-                .truncate()
-                .text_size(px(12.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme.fg_muted)
-                .child(model.project_title(project)),
-        )
-        .when(
-            (!codesh_app_core::codesh::SINGLE_TAB || project.home)
-                && project.status() == ProjectStatus::Available
-                && project.groups().is_none(),
-            |bar| bar.child(tab_strip::new_tab_button(None, model, cx)),
-        )
-        .child(actions)
         .into_any_element()
 }
 

@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use codesh_app_core::{Direction, Project, ProjectId, ProjectStatus, TabId};
 use gpui::{
-    AnyElement, Bounds, Context, DispatchPhase, Div, IntoElement, MouseButton, MouseMoveEvent,
+    AnyElement, Bounds, Context, DispatchPhase, IntoElement, MouseButton, MouseMoveEvent,
     MouseUpEvent, Pixels, Point, Styled, canvas, point, size,
 };
 
@@ -262,20 +262,6 @@ fn half(bounds: Bounds<Pixels>, edge: Direction) -> Bounds<Pixels> {
             size(bounds.size.width, height),
         ),
     }
-}
-
-/// Records where the strip's tabs, `ids` in order, were laid out.
-pub(super) fn measure_tabs(cells: Div, ids: Vec<TabId>, targets: TabBounds) -> Div {
-    cells.on_children_prepainted(move |bounds, window, _| {
-        let clip = window.content_mask().bounds;
-        let mut targets = targets.borrow_mut();
-        targets.retain(|(id, _)| !ids.contains(id));
-        targets.extend(
-            ids.iter()
-                .zip(bounds)
-                .map(|(id, bounds)| (*id, bounds.intersect(&clip))),
-        );
-    })
 }
 
 fn move_pointer(

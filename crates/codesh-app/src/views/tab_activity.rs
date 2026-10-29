@@ -9,7 +9,6 @@ use codesh_ui::l10n::{tr_key, translate};
 #[cfg(target_os = "macos")]
 use codesh_ui::spinner::NativeSpinner;
 use codesh_ui::tr;
-use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Bounds, Hsla, IntoElement, ParentElement, PathBuilder, Pixels, SharedString,
     StatefulInteractiveElement, Styled, canvas, div, point, px, svg,
@@ -245,46 +244,6 @@ pub(super) fn icon(tab: &Tab, model: &AppModel, size: Pixels, fallback: AnyEleme
     } else {
         fallback
     }
-}
-
-pub(super) fn glyph(tab: &Tab, model: &AppModel, size: Pixels, fallback: AnyElement) -> AnyElement {
-    let status = tab_status(tab, model);
-    let fallback = if tab.pinned {
-        fallback
-    } else {
-        icon(tab, model, size, fallback)
-    };
-    let dot = match status {
-        Status::Blocked => Some(model.theme.warning),
-        Status::Completed | Status::Unread(_) => Some(model.theme.accent),
-        _ => None,
-    };
-    let id = tab.id;
-    div()
-        .relative()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(size)
-        .child(if matches!(status, Status::Progress(_)) {
-            status_glyph(format!("tab-{id}"), status, size, model)
-        } else {
-            fallback
-        })
-        .when_some(dot, |glyph, color| {
-            glyph.child(
-                div()
-                    .debug_selector(move || format!("tab-completion-{id}"))
-                    .absolute()
-                    .top(model.metrics.scaled(-3.0))
-                    .right(model.metrics.scaled(-3.0))
-                    .size(model.metrics.scaled(6.0))
-                    .rounded_full()
-                    .bg(color),
-            )
-        })
-        .into_any_element()
 }
 
 #[cfg(target_os = "macos")]
